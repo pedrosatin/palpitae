@@ -23,15 +23,12 @@ import type { Member } from './types'
 interface LeaderboardTabProps {
   groupId: string
   currentUserId: string
-  /** Critério de desempate mostrado sob a tabela. */
   tiebreakNote?: string
   onOpenRules?: () => void
 }
 
-/** Rodadas seguidas a partir das quais o selo de sequência aparece. */
 const STREAK_BADGE_MIN = 3
 
-/** Reis da rodada, os membros com a maior pontuação. Sem pontos, ninguém. Empate coroa todos. */
 function roundKings(standings: RoundStanding[]): Set<string> {
   const top = Math.max(0, ...standings.map((standing) => standing.round_points))
   if (top === 0) return new Set()
@@ -93,7 +90,6 @@ function MemberBadges({
   )
 }
 
-/** Pontos na rodada. Membro sem linha na resposta fica com o traço. */
 function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
   if (!standing) {
     return (
@@ -106,7 +102,6 @@ function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
   return <>{standing.round_points > 0 ? `+${standing.round_points}` : standing.round_points}</>
 }
 
-/** Seta da variação de posição. 0 e `null` não mostram nada. */
 function PositionChange({ change }: { change: number | null | undefined }) {
   if (!change) return null
   const up = change > 0
@@ -154,7 +149,6 @@ export default function LeaderboardTab({
     return <ErrorState message={error} />
   }
 
-  // Espera as duas respostas para a tabela não ganhar uma coluna depois de aparecer.
   if (loading || roundLoading) {
     return <p className={styles.loading}>Carregando classificação...</p>
   }
@@ -197,7 +191,6 @@ export default function LeaderboardTab({
                 <abbr className={styles.labelShort} title="Pontos" aria-hidden="true">
                   Pts
                 </abbr>
-                {/* Nome completo para leitor de tela, já que a forma curta seria lida como "Pts". */}
                 <span className="sr-only">Pontos</span>
               </th>
               <th className={styles.thExact}>

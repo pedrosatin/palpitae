@@ -26,7 +26,6 @@ import { RoundSummaryStats } from './RoundSummaryStats'
 import styles from './RoundSummary.module.css'
 
 interface GroupRoundData {
-  /** Jogos encerrados para os quais a resposta foi pedida. */
   key: string
   selfUserId: string
   members: GroupMember[]
@@ -36,19 +35,13 @@ interface GroupRoundData {
 interface RoundSummaryProps {
   groupId: string
   groupName?: string
-  /** Rótulo exibido ("Rodada 34"). */
   roundLabel: string
-  /** Número da rodada selecionada, para cruzar com a referência da API. */
   selectedRound?: string | null
   roundMatches: Match[]
-  /** Palpites do próprio usuário, os mesmos dos chips dos cards. */
   predictions: Map<string, Prediction>
   pointsExact: number
-  /** Código de convite, só quando o dono compartilha o marco. */
   inviteCode?: string | null
-  /** Identificador público do grupo para o link de pedido de entrada. */
   publicId?: string | null
-  /** Dono usa o link de convite; demais membros usam o link público. */
   isOwner?: boolean
 }
 
@@ -58,12 +51,6 @@ function asExactMilestones(values: number[] | undefined): ExactMilestone[] {
   return values.filter((v): v is ExactMilestone => allowed.has(v))
 }
 
-/**
- * Palpites do grupo para a classificação da rodada. É a mesma chamada da aba Grupo, sem
- * rota nova. Nos dois modos de visibilidade, a API só entrega palpite alheio de jogo
- * travado, e o resumo só usa jogo encerrado. Falha de rede deixa `null`, e o resumo
- * segue só com os dados do próprio usuário.
- */
 function useGroupRoundData(groupId: string, enabled: boolean, finishedKey: string) {
   const [data, setData] = useState<GroupRoundData | null>(null)
 
@@ -100,7 +87,6 @@ function useGroupRoundData(groupId: string, enabled: boolean, finishedKey: strin
     }
   }, [groupId, enabled, finishedKey])
 
-  // Resposta de outra rodada não vale: mostraria zeros até a nova chegar.
   return data?.key === finishedKey ? data : null
 }
 
@@ -121,7 +107,6 @@ interface RoundStandingRow {
   unlikely_exact?: boolean
 }
 
-/** Marcos e placar improvável na rodada de referência; vazio fora dela. */
 function selfExactCrossing(input: {
   selfUserId: string | undefined
   referenceRound: string | null

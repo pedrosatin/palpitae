@@ -1,10 +1,3 @@
-/**
- * Pages Function de `/grupo/:publicId`: preview do link de pedido de entrada.
- *
- * Mesmo papel da Function de `/convite/:code`, com menos dados: só nome,
- * campeonato e total de membros. Sempre `noindex`.
- */
-
 import { withSecurityHeaders } from '../_securityHeaders'
 import { CLIENT_IP_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
 

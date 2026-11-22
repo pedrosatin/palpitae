@@ -57,7 +57,6 @@ function setup() {
   return { sqlite, db, gate, at, alerts, ae }
 }
 
-/** Uma tentativa: reserva a vaga e registra a resposta com o status dado. */
 async function attempt(
   gate: ReturnType<typeof createEspnGate>,
   status: number,
@@ -71,7 +70,6 @@ describe('controle de acesso da ESPN: 403', () => {
   it('limita e espaça: 15 min, 1 h, 6 h e a coleta suspensa no quarto 403 seguido', async () => {
     const { db, gate, at, alerts } = setup()
 
-    // 1º 403: bloqueia por 15 min.
     expect(await attempt(gate, 403)).toEqual({ reason: 'blocked', retryAt: T0 + 15 * MIN })
     expect(await readProviderState(db, 'espn')).toMatchObject({ forbiddenStreak: 1 })
     await expect(gate.reserve()).rejects.toMatchObject({
@@ -79,15 +77,12 @@ describe('controle de acesso da ESPN: 403', () => {
       retryAt: T0 + 15 * MIN,
     })
 
-    // 2º 403, depois do bloqueio: 1 h.
     at(15 * MIN)
     expect(await attempt(gate, 403)).toEqual({ reason: 'blocked', retryAt: T0 + 75 * MIN })
 
-    // 3º 403: 6 h.
     at(75 * MIN)
     expect(await attempt(gate, 403)).toEqual({ reason: 'blocked', retryAt: T0 + (75 + 360) * MIN })
 
-    // 4º 403: a coleta é suspensa, nenhuma tentativa nova sai.
     at((75 + 360) * MIN)
     const fourth = await attempt(gate, 403)
     expect(fourth?.reason).toBe('suspended')
@@ -98,7 +93,6 @@ describe('controle de acesso da ESPN: 403', () => {
     at(24 * 60 * MIN)
     await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
 
-    // Um alerta por passo, com a sequência e os minutos até a nova tentativa.
     expect(alerts().map((point) => [point.blobs.slice(1, 4), point.doubles])).toEqual([
       [
         ['espn', '403', 'backoff'],
@@ -146,7 +140,6 @@ describe('controle de acesso da ESPN: 403', () => {
       forbiddenStreak: 0,
       suspendedAt: null,
     })
-    // O 403 seguinte recomeça do primeiro passo.
     expect((await attempt(gate, 403))?.retryAt).toBe(T0 + 30 * MIN)
   })
 })
@@ -221,7 +214,6 @@ describe('controle de acesso da ESPN: respostas entrelaçadas de gates independe
 })
 
 describe('controle de acesso da ESPN: a gravação da proibição falha', () => {
-  /** Só a gravação do estado de acesso falha; a reserva da vaga e as leituras seguem. */
   const writesAccessState = (sql: string) =>
     sql.includes('UPDATE provider_rate_state') &&
     !sql.includes('window_calls') &&
@@ -485,7 +477,7 @@ describe('controle de acesso da ESPN: 429', () => {
 
   it('a pausa nunca encurta um bloqueio maior em curso', async () => {
     const { gate, at } = setup()
-    await attempt(gate, 403) // bloqueado até T0 + 15 min
+    await attempt(gate, 403)
     at(MIN)
 
     const outcome = await gate.note(429, new Headers({ 'retry-after': '30' }))
@@ -519,7 +511,6 @@ describe('controle de acesso da ESPN: orçamento e falhas', () => {
     'falha do D1 ao gravar a resposta %i não lança: usa a estimativa local do bloqueio',
     async (status, expected) => {
       const { db } = setup()
-      // A reserva passa; só a gravação da resposta falha.
       const failingDb = {
         ...db,
         prepare: (sql: string) => {
@@ -581,7 +572,6 @@ describe('gate da descoberta e leitura do estado de acesso', () => {
       `UPDATE provider_rate_state SET blocked_until = ${T0 + 5 * MIN} WHERE provider = 'espn'`,
     )
     expect(await readEspnAccessPause(db, T0)).toEqual({ reason: 'blocked', retryAt: T0 + 5 * MIN })
-    // O bloqueio vencido não pausa.
     expect(await readEspnAccessPause(db, T0 + 5 * MIN)).toBeNull()
 
     sqlite.exec(
@@ -622,7 +612,6 @@ describe('gate da descoberta e leitura do estado de acesso', () => {
       blockedUntil: T0 + 15 * MIN,
     })
     expect(writeDataPoint).toHaveBeenCalledTimes(1)
-    // Sem consultar o D1: o bloqueio ficou na memória do gate.
     await expect(gate.reserve()).rejects.toMatchObject({
       reason: 'blocked',
       retryAt: T0 + 15 * MIN,
@@ -642,7 +631,6 @@ describe('gate da descoberta e leitura do estado de acesso', () => {
 
     expect((await gate.note(401, new Headers()))?.reason).toBe('suspended')
 
-    // Outro gate do mesmo isolate (outra execução da descoberta ou o gate completo) não passa.
     await expect(createEspnDiscoveryGate(failing).reserve()).rejects.toMatchObject({
       reason: 'suspended',
     })

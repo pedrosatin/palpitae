@@ -11,16 +11,13 @@
 
 export interface PrivacySection {
   heading: string
-  /** Parágrafos, renderizados como <p>. Texto puro. */
   body: string[]
 }
 
 export interface PrivacyPolicy {
   title: string
-  /** <meta name="description"> e descrição do OG. */
   description: string
   intro: string
-  /** Data ISO (YYYY-MM-DD) da última mudança no texto: <lastmod> do sitemap. */
   updated: string
   sections: PrivacySection[]
 }

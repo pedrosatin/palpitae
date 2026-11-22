@@ -14,7 +14,6 @@ export function useGaPageView(): void {
   useEffect(() => {
     const location = gaPageLocation({ origin: window.location.origin, pathname, search })
     const last = previous.current
-    // O caminho cru entra na comparação porque dois grupos têm a mesma URL normalizada.
     if (last && (last.pathname !== pathname || last.location !== location)) {
       trackPageView(
         { page_location: location, page_title: gaPageTitle(pathname) },

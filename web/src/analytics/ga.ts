@@ -43,18 +43,13 @@ export function getStoredConsent(): Consent | null {
       const parts = value.split(':')
       if (parts.length === 2) {
         const timestamp = parseInt(parts[1], 10)
-        // O banner reaparece a cada 30 dias para quem recusou.
-        // Re-pedir com muita frequência (ex: 3 dias) é considerado "Consent Fatigue" e
-        // pode ir contra o princípio de "consentimento livre" da LGPD/GDPR.
         const EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
         if (Date.now() - timestamp < EXPIRY_MS) {
           return 'denied'
         }
-        // Expirou: limpa o storage para mostrar o banner de novo na próxima montagem
         localStorage.removeItem(CONSENT_KEY)
         return null
       }
-      // Fallback para o valor antigo (apenas 'denied')
       return 'denied'
     }
     return null
@@ -69,7 +64,6 @@ export function setConsent(consent: Consent): void {
   currentConsent = consent
   window[`ga-disable-${config.gaMeasurementId}`] = consent === 'denied'
   try {
-    // Quando o usuário nega, salvamos o timestamp para podermos pedir novamente no futuro
     const valueToStore = consent === 'denied' ? `denied:${Date.now()}` : consent
     localStorage.setItem(CONSENT_KEY, valueToStore)
   } catch {
@@ -79,8 +73,6 @@ export function setConsent(consent: Consent): void {
   if (consent === 'denied') {
     clearGaCookies()
     if (previousConsent === 'granted' && window.google_tag_manager && getStoredConsent() === 'denied') {
-      // A recarga encerra os eventos automáticos do cliente já carregado. A nova
-      // página restaura denied e ga-disable antes de qualquer chamada do gtag.
       window.location.reload()
       return
     }
@@ -109,13 +101,9 @@ export function initGa(): void {
   window[`ga-disable-${config.gaMeasurementId}`] = currentConsent === 'denied'
   window.dataLayer = window.dataLayer || []
   window.gtag = function gtag() {
-    // O GTM exige estritamente o objeto `arguments` nativo. Se usarmos rest parameters
-    // (...args), um Array é criado e o GTM ignora silenciosamente os eventos.
-    // eslint-disable-next-line prefer-rest-params
     window.dataLayer.push(arguments)
   }
 
-  // Consent Mode v2 — nega tudo por padrão até o opt-in explícito (LGPD)
   window.gtag('consent', 'default', {
     ad_storage: 'denied',
     ad_user_data: 'denied',
@@ -123,7 +111,6 @@ export function initGa(): void {
     analytics_storage: 'denied',
   })
 
-  // Restaura o consentimento concedido numa visita anterior
   if (currentConsent === 'granted') {
     window.gtag('consent', 'update', { analytics_storage: 'granted' })
   } else if (currentConsent === 'denied') {
@@ -131,15 +118,9 @@ export function initGa(): void {
   }
 
   window.gtag('js', new Date())
-  // Só `set`: o que vai no `config` tem precedência sobre `set` e prenderia os
-  // eventos seguintes na página do primeiro carregamento.
   window.gtag('set', firstLoadPage())
   window.gtag('config', config.gaMeasurementId)
 
-  // Carrega o gtag.js fora do caminho crítico de renderização: o stub acima já
-  // enfileira os hits em dataLayer, então o script real pode chegar depois do
-  // load/idle sem perder nenhum evento — apenas adia ~165 KiB que não são
-  // necessários para pintar a página (reduz o "JS não utilizado" do PageSpeed).
   loadGtagScript()
 }
 

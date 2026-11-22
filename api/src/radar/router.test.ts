@@ -18,7 +18,6 @@ function makeApp() {
   return app
 }
 
-// Nas contas deste arquivo, o id é o próprio e-mail (ver authHeaders).
 function makeEnv(db: D1Database, overrides: Partial<Env> = {}): Env {
   return {
     JWT_SECRET,
@@ -47,7 +46,6 @@ type Competition = {
 
 type Daily = { radar_id: string; day: string; matches_today: number; pageviews: number | null }
 
-/** D1 fake que despacha por trecho do SQL — mesmo padrão do metricsRouter. */
 function makeD1(rows: {
   competitions?: Competition[]
   daily?: Daily[]
@@ -90,10 +88,6 @@ function competition(over: Partial<Competition> = {}): Competition {
   }
 }
 
-/**
- * Série diária terminando em TODAY (uma linha por dia, como a PK do D1 garante).
- * `matchesOnLastDay` cai no dia de hoje — é o "está rolando agora".
- */
 function series(radarId: string, values: number[], matchesOnLastDay = 0): Daily[] {
   const end = new Date(`${TODAY}T00:00:00Z`)
   return values.map((views, i) => {
@@ -170,9 +164,8 @@ describe('GET /metrics/radar', () => {
 
     expect(body.days).toBe(30)
     const liberta = body.items.find((i) => i.name === 'CONMEBOL Libertadores')
-    expect(liberta?.pageviewsAvg).toBe(1000) // (900 + 1100 + 1000) / 3
+    expect(liberta?.pageviewsAvg).toBe(1000)
     expect(liberta?.matchesToday).toBe(4)
-    // Sem cadastro interno correspondente, a competição continua candidata.
     expect(liberta?.supported).toBe(false)
     expect(liberta?.internalGroups).toBe(0)
 
@@ -233,7 +226,6 @@ describe('GET /metrics/radar', () => {
         supported: true,
         internalGroups: 1,
       })
-      // Um prefixo semelhante não constitui cadastro da competição mapeada.
       sqlite.exec("DELETE FROM competitions WHERE slug = 'conmebol-sudamericana-2026'")
       sqlite.exec(`INSERT INTO competitions (id, name, slug, season, status) VALUES
         ('other', 'Outra', 'conmebol-sudamericanaextra-2027', '2027', 'upcoming')`)
@@ -279,7 +271,6 @@ describe('GET /metrics/radar', () => {
 
     const db = makeD1({
       competitions: [competition()],
-      // 7 dias a 100, depois 7 dias a 150 → +50%.
       daily: series('api-football:13:2026', [...Array(7).fill(100), ...Array(7).fill(150)]),
     })
 
@@ -361,7 +352,6 @@ describe('GET /metrics/radar', () => {
 
     const db = makeD1({
       competitions: [competition({ ends_on: '2026-08-10' })],
-      // Pageviews continuam chegando, mas sem nenhum jogo na janela.
       daily: series('api-football:13:2026', [900, 1100, 1000]),
     })
 

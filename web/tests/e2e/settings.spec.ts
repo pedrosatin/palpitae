@@ -20,7 +20,6 @@ test.describe('Settings Flow', () => {
 
     let patchCalled = false
 
-    // 2 & 5. Interceptar GET e PATCH das preferências
     await page.route('**/api/notifications/preferences**', async (route) => {
       const method = route.request().method()
       if (method === 'OPTIONS') {
@@ -39,20 +38,15 @@ test.describe('Settings Flow', () => {
       }
     })
 
-    // 1. Acessar `/configuracoes` logado
     await page.goto('/configuracoes')
 
-    // 3. Alterar o checkbox de "Lembretes de palpite" (antes "de rodada", #643)
     const reminderLabel = page.getByText(/Lembretes de palpite/i)
     await reminderLabel.click()
 
-    // 4. Confirmar na modal de aviso
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: /Confirmar|Sim|Salvar/i }).click()
 
-    // 5. Checar a mensagem de sucesso e o request. A mensagem só aparece depois
-    // da resposta do PATCH; conferir a flag antes dela corre contra o clique.
     await expect(page.getByText(/Configuração salva com sucesso|Salvo com sucesso/i)).toBeVisible()
     expect(patchCalled).toBe(true)
   })

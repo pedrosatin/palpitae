@@ -10,17 +10,12 @@ export interface GroupMember {
 export type OpenPickers = Record<string, string[]>
 
 export interface RoundReminder {
-  /** Quem não palpitou algum jogo aberto com data, na ordem da lista de membros. */
   missing: GroupMember[]
-  /** Início do primeiro jogo em que falta alguém. `null` quando todo mundo palpitou. */
   deadline: string | null
 }
 
-/** Membros citados na mensagem do WhatsApp. Acima disso vira "e mais N". */
 const MESSAGE_MAX_NAMES = 5
-/** Limite do texto com o link, para caber em uma tela de conversa. */
 const MESSAGE_MAX_CHARS = 280
-/** Membros citados no resumo da rodada, para o texto não empurrar os cards. */
 const SUMMARY_MAX_NAMES = 10
 
 /**
@@ -66,7 +61,6 @@ export function missingLabel(missing: GroupMember[], selfUserId: string): string
   if (others.length === missing.length) {
     return `${others.length === 1 ? 'Falta' : 'Faltam'} palpitar: ${joinNames(others, SUMMARY_MAX_NAMES)}`
   }
-  // A vaga de "você" é reservada, para ele nunca cair dentro do "e mais N".
   const shown = others.slice(0, SUMMARY_MAX_NAMES - 1)
   const rest = others.length - shown.length
   const text =
@@ -90,10 +84,8 @@ export function memberInitials(display: string): string {
   return `${first[0]}${second ?? ''}`.toUpperCase()
 }
 
-/** E-mail mascarado que a API usa quando o membro não tem apelido nem nome, como `pe***@gmail.com`. */
 const MASKED_EMAIL_RE = /^.{1,2}\*\*\*@\S+$/
 
-/** Primeiro nome de cada membro. Quem divide o primeiro nome com outro fica com o nome inteiro. */
 function shortNames(rawDisplays: string[]): string[] {
   const displays = rawDisplays.map((display) =>
     MASKED_EMAIL_RE.test(display.trim()) ? 'Palpiteiro' : display,
@@ -117,9 +109,7 @@ export function buildReminderMessage({
 }: {
   roundLabel: string
   groupName: string
-  /** Nomes de exibição de quem falta palpitar. */
   missing: string[]
-  /** Início do primeiro jogo em que falta alguém. */
   deadline: string
   link: string
 }): string {

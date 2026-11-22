@@ -13,7 +13,6 @@ interface CreateGroupModalProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
-  /** Slug da competição que vem escolhida no select, pedido pelo link de um guia. */
   preferredCompetitionSlug?: string
 }
 
@@ -54,8 +53,6 @@ export default function CreateGroupModal({
     handleSubmit,
   } = useCreateGroupForm({ isOpen, onClose, onCreated, preferredCompetitionSlug })
 
-  // Grupos já calculados no hook no carregamento (fonte única de verdade);
-  // sem um dos grupos não há <optgroup> — um título sozinho só adicionaria ruído.
   const { ongoing, upcoming } = competitionGroups
   const hasBothGroups = ongoing.length > 0 && upcoming.length > 0
   const selected = competitions.find((c) => c.id === competitionId)

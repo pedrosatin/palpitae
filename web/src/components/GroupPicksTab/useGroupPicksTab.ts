@@ -15,7 +15,6 @@ import type { Match } from '../MatchCard/types'
 
 const TICK_MS = 30_000
 
-/** Por quanto tempo depois da primeira busca a aba busca de novo até a API revelar os palpites. */
 const REVEAL_RETRY_MS = 5 * 60_000
 
 export interface MemberPrediction {
@@ -36,7 +35,6 @@ export interface GroupPicksResponse {
   self_user_id: string
   members: GroupMember[]
   predictions: MemberPrediction[]
-  /** Ausente na API antiga. Sem o campo, a aba não afirma quem palpitou. */
   open_pickers?: OpenPickers
 }
 
@@ -111,13 +109,6 @@ export function pickersOfMatch(
   return members.filter((m) => picked.has(m.user_id))
 }
 
-/**
- * No início do jogo, a resposta guardada ainda esconde os palpites dos outros. Num
- * grupo de palpites ocultos, a aba busca de novo na primeira virada do relógio depois
- * do início e, se a API ainda não travou, a cada tique por `REVEAL_RETRY_MS` a partir
- * dessa busca. Contar do início deixaria sem busca a aba que volta de segundo plano
- * depois do prazo.
- */
 function useRevealRetry(
   groupId: string,
   predictionsVisibility: string,
@@ -161,9 +152,6 @@ export function useGroupPicksTab(
   const [picksLoading, setPicksLoading] = useState(true)
   const [picksError, setPicksError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
-  // Aplica a rodada padrão uma vez por grupo e competição enquanto a aba está montada.
-  // Um refetch não troca a rodada escolhida. Com o cache velho em atualização, espera
-  // o dado novo para a rodada padrão vir da resposta atual.
   const appliedDefaultRoundKey = useRef<string | null>(null)
 
   useEffect(() => {
@@ -219,7 +207,6 @@ export function useGroupPicksTab(
     next: 'click_group_picks_proxima_rodada',
   })
 
-  // O relógio também vira no início de cada jogo da rodada exibida.
   const now = useNow(
     TICK_MS,
     roundMatches.map((m) => m.start_time),

@@ -39,14 +39,11 @@ export interface RoundShareCardData {
   groupName: string
   roundLabel: string
   points: number
-  /** Colocação do jogador na rodada e quantos membros disputaram. */
   position: number
   total: number
   exact: number
   correct: number
-  /** Top 3 da rodada e, se o jogador ficou fora dele, a linha dele. */
   standings: ShareRow[]
-  /** Quem compartilha está entre os líderes da rodada, pela regra de `roundLeaders`. */
   isRoundLeader: boolean
   notice: string | null
   domain: string
@@ -124,7 +121,6 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
 
   drawEyebrow(ctx, data.groupName)
 
-  // Título do líder, na faixa livre entre o divisor do topo e o nome da rodada.
   ctx.textAlign = 'center'
   if (data.isRoundLeader) {
     ctx.fillStyle = LIME
@@ -132,12 +128,10 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
     ctx.fillText('REI DA RODADA', W / 2, 226)
   }
 
-  // Rodada.
   ctx.fillStyle = ASH
   ctx.font = `700 34px ${FONT}`
   fillTracked(ctx, data.roundLabel.toUpperCase(), W / 2, 280, 8)
 
-  // Herói: pontos da rodada.
   const heroY = 500
   ctx.textBaseline = 'middle'
   ctx.fillStyle = LIME
@@ -162,7 +156,6 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
   ctx.lineWidth = 2
   hline(ctx, PAD, 960, W - PAD)
 
-  // Top 3 da rodada e a sua linha.
   const rows = data.standings.slice(0, 4)
   const rowH = rows.length > 3 ? 64 : 76
   const startY = 1020

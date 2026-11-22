@@ -103,7 +103,7 @@ describe('GroupPicksTab', () => {
     mockFetch(matches, {
       self_user_id: 'user-1',
       members: [{ user_id: 'user-1', display: 'Pedro' }],
-      predictions: [], // user-1 has not predicted m2 → nothing revealed
+      predictions: [],
     })
 
     render(<GroupPicksTab groupId="g1" competitionId="c1" />)
@@ -162,7 +162,6 @@ describe('GroupPicksTab', () => {
     await waitFor(() => {
       expect(screen.getByText('Pedro')).toBeInTheDocument()
     })
-    // Same 1×1 score, told apart only by who each backed in the shootout.
     expect(screen.getByText('Pedro').closest('li')).toHaveTextContent('BRA')
     expect(screen.getByText('Ana').closest('li')).toHaveTextContent('ARG')
   })
@@ -336,7 +335,6 @@ describe('GroupPicksTab member list', () => {
       expect(screen.getAllByRole('listitem')).toHaveLength(4)
     })
     expect(screen.getAllByText('sem palpite')).toHaveLength(3)
-    // O próprio usuário sem palpite continua marcado como "(você)".
     expect(screen.getByText('Pedro').closest('li')).toHaveTextContent('(você)')
     expect(screen.queryByText(/\d+ pt/)).not.toBeInTheDocument()
   })
@@ -422,7 +420,6 @@ describe('GroupPicksTab member list', () => {
 })
 
 describe('GroupPicksTab quem já palpitou', () => {
-  // 14/11/2026 é sábado. Em Brasília o jogo começa às 18:30.
   const NOW = '2026-11-10T12:00:00.000Z'
   const KICKOFF = '2026-11-14T21:30:00.000Z'
 
@@ -483,7 +480,6 @@ describe('GroupPicksTab quem já palpitou', () => {
 
     expect(await screen.findByText('sáb, 14/11 · 18:30')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /2 de 4 palpitaram/ })).toBeInTheDocument()
-    // Só o próprio palpite chega como linha do card.
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
     expect(screen.getByText('Pedro').closest('li')).toHaveTextContent('2 × 1')
   })
@@ -720,10 +716,6 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
     }
   }
 
-  /**
-   * API com o relógio `serverDelayMs` atrás do aparelho. Antes do travamento ela
-   * devolve só o palpite de quem pede, como no grupo de palpites ocultos.
-   */
   function mockServer(serverDelayMs = 0) {
     return vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
       const u = url.toString()
@@ -805,8 +797,6 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
   })
 
   it('busca de novo no tique seguinte quando a API ainda não travou o jogo', async () => {
-    // O relógio da API está 5 s atrás. No início pelo relógio do aparelho, ela ainda
-    // esconde os palpites dos outros.
     const fetchSpy = mockServer(5_000)
     renderHidden()
     expect(await screen.findByText('Pedro')).toBeInTheDocument()
@@ -825,7 +815,6 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
     renderHidden()
     expect(await screen.findByText('Pedro')).toBeInTheDocument()
 
-    // Página congelada. O relógio do sistema anda 6 min, e os timers só disparam na volta.
     vi.setSystemTime(Date.parse(KICKOFF) + 6 * 60_000)
     await act(() => vi.advanceTimersByTimeAsync(10_000))
 
@@ -834,7 +823,6 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
   })
 
   it('no grupo "Sempre visível" não busca de novo no início', async () => {
-    // A API segue tratando o jogo como aberto, mas a aba já mostra todos os palpites.
     const fetchSpy = mockServer(10 * 60_000)
     renderTab('public')
     expect(await screen.findByText('Pedro')).toBeInTheDocument()

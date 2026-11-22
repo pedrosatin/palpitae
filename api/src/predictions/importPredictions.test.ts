@@ -13,7 +13,6 @@ afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
 })
 
-/** `exato` e `exato2` pontuam o placar; `vencedor` e `vencedor2` só o resultado. */
 function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -419,10 +418,8 @@ describe('importPredictions, marcador e atomicidade', () => {
 describe('importPredictions, pênaltis na volta', () => {
   it('com only_missing, descarta o pick da origem quando a ida do destino não empata o agregado', async () => {
     const { run, predict, stored } = setup()
-    // Origem: 1x0 na ida e 1x0 na volta com mando invertido, agregado 1x1, pick "home".
     predict('exato', 'ida', 1, 0)
     predict('exato', 'volta', 1, 0, 'home')
-    // Destino já tem outra ida: com a mesma volta o agregado fica 2x1 e não vai aos pênaltis.
     predict('exato2', 'ida', 2, 0)
 
     const result = await run('exato', 'exato2', { onlyMissing: true })

@@ -4,26 +4,20 @@
   gap: var(--space-6);
 }
 
-/* Reserva a altura da barra fixa "Salvar todos", cerca de 62 px, só quando ela
-   aparece. Sem isso, o último card fica atrás dela. */
 .rootWithSaveBar {
   padding-bottom: calc(3.5rem + var(--space-3));
 }
 
-/* A confirmação de "Aplicar também em" e o aviso de palpite recusado no "Salvar todos"
-   podem ocupar até três linhas na barra fixa. */
 .rootWithSaveBarTall {
   padding-bottom: calc(8rem + var(--space-3));
 }
 
-/* Seletor de rodada e progresso juntos, mais próximos que os blocos da aba. */
 .roundHeading {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-/* Contador e próximo fechamento. Em tela estreita, o fechamento desce de linha. */
 .roundProgress {
   display: flex;
   flex-wrap: wrap;
@@ -42,7 +36,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* Mesmas cores do estado no card: amarelo para o que falta, verde para completo. */
 .progressPending {
   color: var(--color-warning);
 }
@@ -70,7 +63,6 @@
   z-index: 100;
 }
 
-/* Confirmação e aviso de "Aplicar também em". Ocupa o espaço que sobra ao lado do botão. */
 .saveAllStatus {
   display: flex;
   flex-direction: column;
@@ -95,8 +87,6 @@
   cursor: pointer;
 }
 
-/* Compostos com .saveAllBar para vencer a base do Button (2 classes > 1)
-   sem depender da ordem de injeção dos CSS Modules. */
 .saveAllBar .saveAllBtn {
   margin-left: auto;
   padding: var(--space-2) var(--space-4);
@@ -133,10 +123,6 @@
   gap: var(--space-3);
 }
 
-/* Switch to two columns as soon as two cards fit side by side at their minimum
-   no-wrap width (505px each), so cards never disagree in height. Math:
-   2×505 (cards) + 12 (grid gap, --space-3) + 48 (page padding, 2×--space-6)
-   = 1070, +~10px scrollbar buffer. Below this, single column always fits. */
 @media (min-width: 1080px) {
   .matchList {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -161,8 +147,6 @@
   white-space: nowrap;
 }
 
-/* Compostos com .importBar para vencer as bases de Select/Button
-   (2 classes > 1) sem depender da ordem de injeção dos CSS Modules. */
 .importBar .importSelect {
   flex: 1;
   min-width: 0;
@@ -180,8 +164,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* Aviso de importação já feita, sem moldura e com texto menor que o do seletor
-   e o do aviso de rodada adiada. */
 .importBarInfo {
   padding: 0;
   background: none;
@@ -193,7 +175,6 @@
   color: var(--color-text-secondary);
 }
 
-/* Com 24 px de altura, o link atinge a área de toque mínima da WCAG 2.5.8. */
 .importInfoLink {
   min-height: 24px;
   padding: 0;
@@ -220,7 +201,6 @@
   color: var(--color-danger);
 }
 
-/* Opção "Aplicar também em", compacta. Cabe numa linha quando os nomes são curtos. */
 .replicateBar {
   display: flex;
   flex-direction: column;
@@ -253,7 +233,6 @@
   color: var(--color-text-secondary);
 }
 
-/* Aviso de rodada com jogo adiado — mesma cor do badge "adiado" do MatchCard. */
 .postponedHint {
   display: flex;
   flex-wrap: wrap;

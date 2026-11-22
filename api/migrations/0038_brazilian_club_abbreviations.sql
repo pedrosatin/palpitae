@@ -1,10 +1,3 @@
--- Sigla dos clubes do Brasileirão Série A vindos da football-data.org.
--- A tla da API repete "COR" (Coritiba e Corinthians) e traz "PAU", "FBP", "SCI" e "CRE".
--- Passa a valer a abbreviation da ESPN, sem repetição entre os 20 clubes.
--- O upsert de times só atualiza logo_url no conflito, então as linhas já gravadas precisam desta correção.
--- O filtro por provider e external_id deixa de fora os times da ESPN e os europeus da football-data.
--- Nome e slug ficam como estão. Mesmo mapa de src/matches/clubNames.ts.
--- Reverter exige uma migration inversa com as siglas anteriores.
 UPDATE teams SET short_name = 'FLU' WHERE provider = 'football-data' AND external_id = '1765';
 UPDATE teams SET short_name = 'CAM' WHERE provider = 'football-data' AND external_id = '1766';
 UPDATE teams SET short_name = 'GRE' WHERE provider = 'football-data' AND external_id = '1767';

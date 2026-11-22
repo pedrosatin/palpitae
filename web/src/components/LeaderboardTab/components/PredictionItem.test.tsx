@@ -36,7 +36,7 @@ describe('PredictionItem', () => {
     render(<PredictionItem prediction={basePrediction} />)
     expect(screen.getByText('BRA')).toBeInTheDocument()
     expect(screen.getByText('CRO')).toBeInTheDocument()
-    expect(screen.getByText('12/06, 14:00')).toBeInTheDocument() // 17:00 UTC -> 14:00 BRT
+    expect(screen.getByText('12/06, 14:00')).toBeInTheDocument()
     expect(screen.queryByText('Sem palpite')).not.toBeInTheDocument()
   })
 

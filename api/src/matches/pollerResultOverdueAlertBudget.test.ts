@@ -36,7 +36,6 @@ const alertEnv = {
   FRONTEND_URL: 'https://palpitae.com.br',
 }
 
-/** Início atrasado no `NOW` do poller e no `datetime('now')` do D1. */
 function isoHoursBefore(hours: number): string {
   const startMs = Math.min(NOW, Date.now()) - hours * 60 * 60 * 1000
   return new Date(startMs).toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -115,7 +114,6 @@ function expectNoCall51(limited: ReturnType<typeof limitD1Calls>) {
   expect(logged.filter((line) => line.includes('Too many API requests'))).toEqual([])
 }
 
-/** Força o saldo que o poller entrega ao alerta (depois da limpeza do cron). */
 function forceAlertCallsLeft(left: number) {
   vi.spyOn(resultOverdueAlert, 'overdueAlertCallsLeft').mockReturnValue(left)
 }
@@ -221,7 +219,6 @@ describe('poller com alerta de atraso no limite de subrequests', () => {
         const value = Reflect.get(target, prop, receiver)
         if (prop === 'prepare') {
           return (sql: string) => {
-            // Contagem do alerta: COUNT(*) + COUNT(DISTINCT competition_id) + MIN(start_time).
             if (sql.includes('COUNT(DISTINCT competition_id)') && sql.includes('MIN(start_time)')) {
               countSqlHits += 1
             }
@@ -268,7 +265,6 @@ describe('poller com alerta de atraso no limite de subrequests', () => {
       .prepare(`SELECT last_sent_at FROM ops_alert_state WHERE alert_key = ?`)
       .get(RESULT_OVERDUE_ALERT_KEY) as { last_sent_at: number } | undefined
     expect(row?.last_sent_at).toBe(0)
-    // Contagem + reserva + fetch + liberação no passo do alerta; o tick inteiro ≤ 50.
     expect(limited.calls()).toBeGreaterThanOrEqual(RESULT_OVERDUE_ALERT_CALLS)
     expectNoCall51(limited)
   })

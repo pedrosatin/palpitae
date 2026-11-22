@@ -19,7 +19,6 @@ import { syncFixtures } from './sync'
  */
 
 const KICKOFF = '2026-11-08T15:30:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = Date.parse(KICKOFF) + 120 * 60_000
 const TICK_MS = 30 * 60_000
 
@@ -29,7 +28,6 @@ const SMALL: Competition = { code: 'PD', id: 2014, name: 'La Liga' }
 
 type Seed = Competition & { matches: number; groups: number; members: number }
 
-/** Jogos que a football-data devolve para a competição: agendados ou encerrados. */
 function fdMatches(comp: Seed, finished: boolean) {
   return Array.from({ length: comp.matches }, (_, i) => {
     const team = (n: number) => ({
@@ -56,17 +54,12 @@ function fdMatches(comp: Seed, finished: boolean) {
 }
 
 type Provider = {
-  /** Os jogos voltam encerrados, com placar. */
   finished: boolean
-  /** A football-data responde 500. */
   failing: boolean
-  /** Requisições à football-data. */
   requests: number
-  /** Chamado a cada `fetch`, antes da resposta. Lança se a invocação passou do limite. */
   onFetch?: () => void
 }
 
-/** A football-data responde os jogos de cada competição; a ESPN do fallback, nenhum evento. */
 function stubProvider(seeds: Seed[]) {
   const provider: Provider = { finished: false, failing: false, requests: 0 }
   vi.stubGlobal(
@@ -94,7 +87,6 @@ function stubProvider(seeds: Seed[]) {
 const handles: DatabaseSync[] = []
 
 beforeEach(() => {
-  // O poller imprime uma linha `[perf]` por tick.
   vi.spyOn(console, 'info').mockImplementation(() => {})
 })
 
@@ -104,12 +96,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/**
- * Banco com os jogos agendados de cada competição e, em cada uma, `groups`
- * grupos de `members` pessoas com palpite em todos os jogos. Os ids dos
- * palpites saem do id do jogo no provedor, então dois bancos com a mesma
- * semente são comparáveis linha a linha.
- */
 async function seedDatabase(seeds: Seed[]) {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -173,7 +159,6 @@ function makeEnv(db: D1Database) {
     CF_ACCOUNT_ID: 'account',
     AE_SQL_TOKEN: 'token',
   } as unknown as Env
-  /** Eventos do tipo, como `{ blobs, doubles }` sem o tipo em `blobs[0]`. */
   const events = (type: string): AePoint[] =>
     writeDataPoint.mock.calls
       .map(([point]) => point as AePoint)
@@ -182,7 +167,6 @@ function makeEnv(db: D1Database) {
   return { env, events, clearEvents: () => writeDataPoint.mockClear() }
 }
 
-/** Uma invocação do cron de resultados. Devolve as mensagens das rotinas que falharam. */
 async function runCycle(env: Env, now: number): Promise<string[]> {
   const pending: Promise<unknown>[] = []
   const ctx = {
@@ -205,7 +189,6 @@ function unscoredMatches(sqlite: DatabaseSync, competitionId: string): number {
   return row.n
 }
 
-/** `scored_at` de cada jogo já pontuado, pelo id do provedor. */
 function scoredAt(sqlite: DatabaseSync): Record<string, string> {
   const rows = sqlite
     .prepare(`SELECT external_id, scored_at FROM matches WHERE scored_at IS NOT NULL`)
@@ -213,7 +196,6 @@ function scoredAt(sqlite: DatabaseSync): Record<string, string> {
   return Object.fromEntries(rows.map((row) => [row.external_id, row.scored_at]))
 }
 
-/** Jogos pontuados, pontos de cada palpite e ranking, sem horários nem ids gerados. */
 function readScores(sqlite: DatabaseSync) {
   return {
     matches: sqlite
@@ -235,9 +217,7 @@ function readScores(sqlite: DatabaseSync) {
   }
 }
 
-/** A mesma semente em outro banco, pontuada de uma vez, sem limite de chamadas. */
 async function scoreWithoutLimit(seeds: Seed[], provider: Provider) {
-  // O banco de controle fica fora da invocação contada.
   provider.onFetch = undefined
   provider.failing = false
   provider.finished = false
@@ -274,7 +254,6 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
       expect(limited.calls()).toBeLessThanOrEqual(D1_CALLS_PER_INVOCATION)
       pendingAfterCycle.push(unscoredMatches(sqlite, ids.PPL))
       if (cycle === 0) {
-        // A competição pequena não espera a grande.
         expect(unscoredMatches(sqlite, ids.PD)).toBe(0)
         expect(
           sqlite.prepare(`SELECT COUNT(*) AS n FROM leaderboard WHERE group_id = 'g-PD-1'`).get(),
@@ -284,11 +263,9 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
       if (pendingAfterCycle[cycle] === 0) break
     }
 
-    // O primeiro ciclo grava parte dos jogos, e os seguintes terminam o resto.
     expect(pendingAfterCycle[0]).toBeGreaterThan(0)
     expect(pendingAfterCycle[0]).toBeLessThan(40)
     expect(pendingAfterCycle.at(-1)).toBe(0)
-    // Jogo pontuado num ciclo não é refeito no seguinte.
     expect(scoredAt(sqlite)).toMatchObject(scoredInFirstCycle)
 
     const unlimited = await scoreWithoutLimit(seeds, provider)
@@ -326,7 +303,6 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
     const { sqlite, db, ids } = await seedDatabase(seeds)
     provider.finished = true
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    // O D1 falha ao gravar os pontos dos palpites de uma das competições.
     sqlite.exec(`
       CREATE TEMP TRIGGER pontuacao_quebrada BEFORE UPDATE OF points_awarded ON predictions
         WHEN OLD.group_id = 'g-PPL-1'
@@ -336,7 +312,6 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
     provider.onFetch = limited.chargeFetch
     const { env, events, clearEvents } = makeEnv(limited.db)
 
-    // Ciclo 1: os jogos encerram agora. A falha é de uma competição só.
     expect(await runCycle(env, NOW)).toEqual(['D1_ERROR: disco cheio'])
     expect(unscoredMatches(sqlite, ids.PD)).toBe(0)
     expect(unscoredMatches(sqlite, ids.PPL)).toBe(2)
@@ -344,16 +319,13 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
       { blobs: [ids.PPL, 'D1_ERROR: disco cheio'], doubles: [] },
     ])
     expect(events('poller_run').map((point) => point.blobs)).toEqual([['error']])
-    // Ainda não passou um ciclo inteiro desde o resultado.
     expect(events('match_unscored')).toEqual([])
 
-    // Ciclo 2: os dois jogos seguem sem pontuação, 150 minutos depois do início.
     clearEvents()
     limited.startInvocation()
     expect(await runCycle(env, NOW + TICK_MS)).toEqual(['D1_ERROR: disco cheio'])
     expect(events('match_unscored')).toEqual([{ blobs: [ids.PPL], doubles: [2, 150] }])
 
-    // Ciclo 3: o D1 volta, a competição é pontuada e o evento para.
     sqlite.exec(`DROP TRIGGER pontuacao_quebrada`)
     clearEvents()
     limited.startInvocation()
@@ -376,7 +348,6 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
     const pendingAfterFirst = unscoredMatches(sqlite, ids.PPL)
     expect(pendingAfterFirst).toBeGreaterThan(0)
 
-    // 25 h depois do início os jogos saíram do resgate e não há tarefa de sync.
     const later = NOW + 25 * 60 * 60_000
     const requestsBefore = provider.requests
     const pending: number[] = []
@@ -408,7 +379,6 @@ describe('cron de resultados com 50 chamadas por invocação', () => {
     const pendingAfterFirst = unscoredMatches(sqlite, ids.PPL)
     expect(pendingAfterFirst).toBeGreaterThan(0)
 
-    // A football-data passa a responder 500, e o fallback não tem o que atualizar.
     provider.failing = true
     clearEvents()
     limited.startInvocation()
@@ -482,14 +452,11 @@ describe('scoreUnprocessedMatches com teto de chamadas', () => {
     const { sqlite, db } = setupTieAndLeague()
     const counted = limitD1Calls(db, null)
 
-    // Cabe o planejamento e uma gravação: a da ida corrigida, que é o jogo mais
-    // antigo, com a volta e o primeiro jogo de liga (206 palpites).
     const first = await scoreUnprocessedMatches('c1', counted.db, 4)
 
     expect(first).toEqual({ scored: 3, complete: false })
     expect(counted.calls()).toBeLessThanOrEqual(4)
     expect(scoredIds(sqlite)).toEqual(['leg1', 'leg2', 'liga1'])
-    // A volta saiu com o classificado da ida corrigida na mesma gravação.
     expect(classified(sqlite)).toEqual([
       { id: 'a2', classified_points: 0 },
       { id: 'b2', classified_points: 2 },
@@ -499,12 +466,10 @@ describe('scoreUnprocessedMatches com teto de chamadas', () => {
         .prepare(`SELECT user_id, total_points FROM leaderboard ORDER BY user_id LIMIT 2`)
         .all(),
     ).toEqual([
-      // Os dois cravam o 0-0 da volta e o 1-0 da liga; só Beto crava a ida e acerta o classificado.
       { user_id: 'u001', total_points: 3 + 3 },
       { user_id: 'u002', total_points: 3 + 3 + 3 + 2 },
     ])
 
-    // A execução seguinte continua de onde a anterior parou e termina.
     const second = await scoreUnprocessedMatches('c1', db)
 
     expect(second).toEqual({ scored: 2, complete: true })

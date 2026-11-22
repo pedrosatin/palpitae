@@ -9,7 +9,6 @@ import { useConfirm } from '../../components/ConfirmModal'
 import type { User, GroupDetail } from './types'
 import React from 'react'
 
-// Mock dependencies
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return {
@@ -93,7 +92,6 @@ describe('useGroupActions', () => {
     })
 
     it('successfully leaves group and navigates away', async () => {
-      // Create a promise we can control to test the loading state
       let resolveApi: (val: any) => void
       const apiPromise = new Promise((resolve) => {
         resolveApi = resolve
@@ -108,12 +106,10 @@ describe('useGroupActions', () => {
         leavePromise = result.current.leaveGroup()
       })
 
-      // Wait for the confirm promise to resolve and state to update
       await waitFor(() => {
         expect(result.current.leaving).toBe(true)
       })
 
-      // Resolve the API call
       act(() => {
         resolveApi({ ok: true, json: vi.fn() })
       })
@@ -241,7 +237,6 @@ describe('useGroupActions', () => {
     })
 
     it('successfully deletes group and navigates away', async () => {
-      // Create a promise we can control to test the loading state
       let resolveApi: (val: any) => void
       const apiPromise = new Promise((resolve) => {
         resolveApi = resolve
@@ -256,12 +251,10 @@ describe('useGroupActions', () => {
         deletePromise = result.current.deleteGroup()
       })
 
-      // Wait for the confirm promise to resolve and state to update
       await waitFor(() => {
         expect(result.current.deleting).toBe(true)
       })
 
-      // Resolve the API call
       act(() => {
         resolveApi({ ok: true, json: vi.fn() })
       })
@@ -509,7 +502,7 @@ describe('useGroupTabs', () => {
     })
 
     expect(preventDefault).not.toHaveBeenCalled()
-    expect(result.current.activeTab).toBe('predictions') // Hasn't changed
+    expect(result.current.activeTab).toBe('predictions')
   })
 })
 
@@ -643,7 +636,6 @@ describe('useTabsOffset', () => {
 
     expect(addEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
 
-    // Trigger resize
     vi.spyOn(mockHeader, 'clientHeight', 'get').mockReturnValue(200)
     act(() => {
       window.dispatchEvent(new Event('resize'))

@@ -18,9 +18,6 @@ export function calculatePoints({
   pointsExact?: number
   pointsWinner?: number
 }): number {
-  // pointsExact === 0 is the "winner only" / 1X2 mode: there is no exact-score bonus,
-  // so we never short-circuit here — otherwise a 1X2 pick stored as (1,0)/(0,0)/(0,1)
-  // would accidentally score the exact value when the real score happens to match.
   if (pointsExact > 0 && predictedHome === actualHome && predictedAway === actualAway)
     return pointsExact
   const actualWinner = actualHome > actualAway ? 'home' : actualHome < actualAway ? 'away' : 'draw'
@@ -52,8 +49,8 @@ export function calculatePenaltyBonus(
   eligible: boolean,
 ): number {
   if (!eligible || pointsPenalty <= 0) return 0
-  if (penaltyWinner === null) return 0 // não foi a pênaltis
-  if (predictedHome !== predictedAway) return 0 // palpite não foi empate
+  if (penaltyWinner === null) return 0
+  if (predictedHome !== predictedAway) return 0
   if (predictedPenaltyWinner === null) return 0
   return predictedPenaltyWinner === penaltyWinner ? pointsPenalty : 0
 }
@@ -115,9 +112,7 @@ type UnscoredMatchRow = {
   penalty_phases: string
 }
 
-/** Jogo a pontuar com o número de palpites, que só dimensiona as gravações. */
 type PlannedMatch = UnscoredMatchRow & {
-  /** Palpites do jogo, contando os de grupos excluídos. */
   prediction_count: number
 }
 
@@ -135,7 +130,6 @@ type ScoredPredictionRow = {
   points_classified: number
 }
 
-/** Jogo de mata-mata com o placar e o estado de pontuação, para montar os confrontos. */
 type TieMatchRow = TieMatch & {
   status: string
   home_score: number | null
@@ -154,7 +148,6 @@ type Leg1PredictionInfo = {
   predicted_away_score: number
 }
 
-/** Chave de um palpite: o mesmo usuário no mesmo grupo e no mesmo jogo. */
 function predictionKey(matchId: string, groupId: string, userId: string): string {
   return `${matchId}:${groupId}:${userId}`
 }
@@ -202,14 +195,6 @@ function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
     .bind(new Date().toISOString(), JSON.stringify(groupIds))
 }
 
-/**
- * Condição de toda gravação da pontuação de um jogo: ele segue encerrado com o
- * placar, vencedor nos pênaltis e contexto lidos. Na volta, a ida também precisa
- * continuar existindo e manter seus times, fase, perna e horário. Uma correção
- * ou remoção posterior à leitura impede a gravação dos pontos e do marcador do
- * snapshot anterior: se a ida for apagada entre a leitura e o batch, a volta fica
- * pendente e é pontuada de novo sem o bônus de classificado.
- */
 const UNCHANGED_RESULT_SQL = `EXISTS (SELECT 1 FROM matches WHERE id = ? AND status = 'finished'
     AND home_score = ? AND away_score = ? AND penalty_winner IS ?
     AND home_team_id = ? AND away_team_id = ? AND phase IS ? AND leg IS ? AND start_time = ?)
@@ -290,20 +275,12 @@ function findLeg2ToRescore(
       home_score: leg2.home_score,
       away_score: leg2.away_score,
       penalty_phases: m.penalty_phases,
-      // Ida e volta têm os mesmos grupos: a contagem da ida serve de estimativa.
       prediction_count: m.prediction_count,
     })
   }
   return extra
 }
 
-/**
- * Jogo que decide nos pênaltis, terminou empatado (no placar do jogo único ou no
- * agregado da volta) e ainda não tem o vencedor da disputa. Fica sem pontuação até
- * o provedor informar o vencedor: pontuar antes daria zero de classificado e de
- * pênaltis a todos. Usa `decidesOnPenalties`, a mesma regra de `decides_on_penalties`
- * de `GET /matches`.
- */
 function awaitsPenaltyWinner(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | undefined): boolean {
   if (m.penalty_winner !== null) return false
   if (!decidesOnPenalties(tie?.role, parsePenaltyPhases(m.penalty_phases), m.phase)) return false
@@ -382,21 +359,10 @@ function evaluateClassifiedPointsForPrediction(
   return calculateClassifiedBonus(predictedClassified, actualClassified, pointsClassified, eligible)
 }
 
-/**
- * Tamanho de uma gravação. Jogos com poucos palpites dividem a mesma gravação até
- * somar `PREDICTIONS_PER_WRITE` palpites ou `MATCHES_PER_WRITE` jogos. Um jogo com
- * mais palpites que isso vai inteiro numa gravação só dele, com os pontos em
- * instruções de até `PREDICTIONS_PER_STATEMENT` palpites. Cada bind do D1 aceita
- * 2 MB, e os pontos de 1000 palpites ocupam cerca de 50 KB.
- */
 const PREDICTIONS_PER_WRITE = 250
 const MATCHES_PER_WRITE = 25
 const PREDICTIONS_PER_STATEMENT = 1000
 
-/**
- * Chamadas ao D1 do planejamento (jogos sem pontuação e confrontos de mata-mata)
- * e de cada gravação (leitura dos palpites e o `batch`).
- */
 const PLAN_CALLS = 2
 const WRITE_CALLS = 2
 
@@ -404,23 +370,14 @@ const WRITE_CALLS = 2
 export const MIN_SCORING_CALLS = PLAN_CALLS + WRITE_CALLS
 
 export type ScoringOutcome = {
-  /** Jogos cuja gravação rodou. Ela não altera nada se o resultado mudou depois da leitura. */
   scored: number
-  /** `false` quando a execução parou por falta de chamadas, com ou sem jogo pendente. */
   complete: boolean
 }
 
-/** Jogos gravados juntos: um jogo, ou a ida e a volta de um confronto. */
 type ScoringUnit = { matches: PlannedMatch[]; predictions: number }
 
-/** Pontos de um palpite: id, pontos do placar, de pênaltis e de classificado (0 ou 1). */
 type ScoredPoints = [id: string, points: number, penalty: number, classified: number]
 
-/**
- * Agrupa os jogos em unidades de gravação. Ida e volta do mesmo confronto ficam
- * na mesma unidade: gravada sozinha, a ida corrigida sairia dos pendentes e a
- * execução seguinte não repontuaria a volta.
- */
 function buildUnits(
   matches: PlannedMatch[],
   ties: Map<string, TieInfo<TieMatchRow>>,
@@ -441,7 +398,6 @@ function buildUnits(
   return units
 }
 
-/** Junta as unidades em gravações, na ordem, sem dividir nenhuma. */
 function packWrites(units: ScoringUnit[]): ScoringUnit[] {
   const writes: ScoringUnit[] = []
   let current: ScoringUnit | undefined
@@ -460,7 +416,6 @@ function packWrites(units: ScoringUnit[]): ScoringUnit[] {
   return writes
 }
 
-/** Jogo de uma gravação com o confronto e a regra de pênaltis, calculados uma vez por jogo. */
 type MatchToScore = {
   match: UnscoredMatchRow
   tie: TieInfo<TieMatchRow> | undefined
@@ -490,7 +445,6 @@ function scorePrediction(
     tie?.role === 'leg2' && tie.partner
       ? leg1PredByKey.get(predictionKey(tie.partner.id, p.group_id, p.user_id))
       : undefined
-  // Na volta, o bônus de pênaltis exige o palpite da ida, que entra no agregado.
   const penaltyEligible = ctx.decidesOnPenalties && (tie?.role !== 'leg2' || Boolean(p1))
   const penaltyPoints = calculatePenaltyBonus(
     p.predicted_home_score + (p1?.predicted_away_score ?? 0),
@@ -543,7 +497,7 @@ async function scoreWrite(
   const affectedGroups = new Set<string>()
   for (const p of predictions) {
     const ctx = toScore.get(p.match_id)
-    if (!ctx) continue // palpite da ida, lido só para o classificado da volta
+    if (!ctx) continue
 
     const { points, penaltyPoints, classifiedPoints } = scorePrediction(ctx, p, leg1PredByKey)
     const scored = pointsByMatch.get(p.match_id) ?? []
@@ -600,7 +554,6 @@ export async function scoreUnprocessedMatches(
 ): Promise<ScoringOutcome> {
   if (maxCalls < MIN_SCORING_CALLS) return { scored: 0, complete: false }
 
-  // 1. Jogos sem pontuação, com o contexto de pênaltis e quantos palpites cada um tem.
   const unscored = await db
     .prepare(
       `SELECT m.id, m.competition_id, m.home_team_id, m.away_team_id, m.start_time,
@@ -634,7 +587,6 @@ export async function scoreUnprocessedMatches(
     (m) => !awaitsPenaltyWinner(m, ties.get(m.id)),
   )
 
-  // 3. Uma gravação por vez, enquanto houver chamadas.
   let calls = PLAN_CALLS
   let scored = 0
   for (const write of packWrites(buildUnits(matchesToScore, ties))) {
@@ -697,8 +649,6 @@ export async function classifiedRuleChangeStatements(
     )
     updates.push({ id: prediction.id, points })
   }
-  // The guard runs inside the write transaction. A sync or prediction edit between
-  // the reads above and this batch aborts it, so the caller can rebuild the snapshot.
   const matchFields = [
     'id',
     'competition_id',

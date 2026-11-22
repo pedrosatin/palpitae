@@ -163,7 +163,6 @@ describe('Primeira Liga em piloto pelo football-data', () => {
         fakeExecutionCtx,
       )
 
-    // 1. Migration 0028 cadastra Primeira Liga 2026 como league, football-data e pilot.
     const seededRow = sqlite
       .prepare(
         `SELECT id, name, slug, external_id, provider, season, status, type, penalty_phases, visibility
@@ -183,7 +182,6 @@ describe('Primeira Liga em piloto pelo football-data', () => {
       visibility: 'pilot',
     })
 
-    // Usuário comum não vê; admin e convidado piloto veem.
     const ordinaryCompsRes = await request('/competitions', 'ordinary')
     expect(ordinaryCompsRes.status).toBe(200)
     const ordinaryComps = (await ordinaryCompsRes.json()) as {
@@ -206,7 +204,6 @@ describe('Primeira Liga em piloto pelo football-data', () => {
       )
     }
 
-    // 2. Sync duas vezes com PPL e uma com 2017. Sem duplicar jogos. type league permanece.
     stubFootballDataApi(false)
     for (const code of ['PPL', 'PPL', '2017']) {
       const syncRes = await request('/matches/sync', 'admin', {
@@ -270,7 +267,6 @@ describe('Primeira Liga em piloto pelo football-data', () => {
     }
     expect(teamCount.total).toBe(4)
 
-    // 3. Admin cria grupo, palpite e lê de volta; competition_type=league habilita Tabela.
     const createGroupRes = await request('/groups', 'admin', {
       method: 'POST',
       body: JSON.stringify({

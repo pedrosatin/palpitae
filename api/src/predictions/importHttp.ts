@@ -87,7 +87,6 @@ export async function handleImportPost(
   )
 
   if ('error' in result) {
-    // 429: `dailyBudgetExceededResponse` já gravou Retry-After em `c`.
     return c.json({ error: result.error }, result.status)
   }
 

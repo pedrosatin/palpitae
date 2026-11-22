@@ -29,3 +29,7 @@ Interactive dashboard at `.scratch/index.html`.
 
 ### Domain docs
 Single-context convention (`docs/`).
+
+### delete-comment
+Limpeza de comentários com ratchet: `.agents/skills/delete-comment/SKILL.md`.
+Checker: `npm run check:comments` (baseline `comments-baseline.json`).

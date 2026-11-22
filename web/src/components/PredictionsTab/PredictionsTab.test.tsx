@@ -20,9 +20,6 @@ function mockFetch(matches: ReturnType<typeof makeMatch>[], apiDefaultRound?: st
       } as Response)
     }
     if (u.includes('/matches')) {
-      // Sem `apiDefaultRound`, imita a ordem de api/src/matches/defaultRound.ts:
-      // rodada com jogo futuro, com as que ficaram para trás no fim da fila e
-      // desempate pelo último jogo. Empate exato pede `apiDefaultRound`.
       const nowIso = new Date().toISOString()
       const byRound = new Map<string, ReturnType<typeof makeMatch>[]>()
       for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m])
@@ -54,8 +51,6 @@ function mockFetch(matches: ReturnType<typeof makeMatch>[], apiDefaultRound?: st
   })
 }
 
-// ─── defaultRoundIndex behaviour (tested through rendered output) ───────────
-
 describe('PredictionsTab – defaultRoundIndex', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -71,7 +66,6 @@ describe('PredictionsTab – defaultRoundIndex', () => {
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
 
     await waitFor(() => {
-      // The <select> should show Rodada 2 as the selected value
       const select = screen.getByRole('combobox') as HTMLSelectElement
       expect(select.value).toBe('2')
     })
@@ -121,7 +115,6 @@ describe('PredictionsTab – defaultRoundIndex', () => {
     })
     expect(onApplied).toHaveBeenCalledOnce()
 
-    // A página tira o `?rodada=` da URL. A aba fica na rodada e não busca de novo.
     const fetches = vi.mocked(globalThis.fetch).mock.calls.length
     view.rerender(
       <PredictionsTab
@@ -167,8 +160,6 @@ describe('PredictionsTab – defaultRoundIndex', () => {
     })
   })
 })
-
-// ─── groupedRoundMatches behaviour (tested through rendered output) ─────────
 
 describe('PredictionsTab – groupedRoundMatches', () => {
   beforeEach(() => {
@@ -223,7 +214,6 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('creates a new group section when the same group_name appears non-consecutively', async () => {
-    // A, B, A → should produce 3 groups (two "Grupo A" headers)
     const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'B', status: 'scheduled' }),
@@ -238,8 +228,6 @@ describe('PredictionsTab – groupedRoundMatches', () => {
     })
   })
 })
-
-// ─── Round navigation ───────────────────────────────────────────────────────
 
 describe('PredictionsTab – Round navigation', () => {
   beforeEach(() => {
@@ -281,7 +269,6 @@ describe('PredictionsTab – Round navigation', () => {
 
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
 
-    // Default index will be 1 (round '2' is scheduled) — that is the last one
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Próxima rodada/i })).toBeDisabled()
     })
@@ -312,7 +299,6 @@ describe('PredictionsTab – Round navigation', () => {
 
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
 
-    // Wait for loading to finish; default lands on round '1' (first scheduled)
     await waitFor(() => {
       const select = screen.getByRole('combobox') as HTMLSelectElement
       expect(select.value).toBe('1')
@@ -336,15 +322,12 @@ describe('PredictionsTab – Round navigation', () => {
       expect(screen.getByRole('combobox')).toBeInTheDocument()
     })
 
-    // Default is round '2'; switch to round '1'
     await userEvent.selectOptions(screen.getByRole('combobox'), 'Rodada 1')
 
     const select = screen.getByRole('combobox') as HTMLSelectElement
     expect(select.value).toBe('1')
   })
 })
-
-// ─── Initialisation ─────────────────────────────────────────────────────────
 
 describe('PredictionsTab – Initialisation', () => {
   beforeEach(() => {
@@ -408,10 +391,8 @@ describe('PredictionsTab – Initialisation', () => {
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
     await waitFor(() => screen.getByRole('button', { name: /^Salvar todos$/i }))
 
-    // Campos vazios não são empate, então a escolha dos pênaltis não aparece.
     expect(screen.queryByRole('radio', { name: 'BRA' })).not.toBeInTheDocument()
 
-    // O 0×0 só existe quando o usuário escolhe os dois zeros.
     await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
     await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
@@ -448,8 +429,6 @@ describe('PredictionsTab – Initialisation', () => {
     })
   })
 })
-
-// ─── Analytics ──────────────────────────────────────────────────────────────
 
 describe('PredictionsTab – analytics', () => {
   beforeEach(() => {
@@ -493,7 +472,6 @@ describe('PredictionsTab – analytics', () => {
   it('fires click_predictions_rodada_anterior when Anterior is clicked', async () => {
     mockFetch(twoRounds())
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
-    // Default is round '1'; advance to '2' first
     await waitFor(() => {
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
     })
@@ -597,8 +575,6 @@ describe('PredictionsTab – analytics', () => {
   })
 })
 
-// ─── Aviso de rodada com jogo adiado (ADR-013) ─────────────────────────────
-
 describe('PredictionsTab – rodada com jogo adiado', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -606,9 +582,6 @@ describe('PredictionsTab – rodada com jogo adiado', () => {
 
   const past = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
 
-  // Reproduz a rodada 21 do Brasileirão: alguns jogos já foram, os adiados
-  // guardam o horário original (passado). A rodada cai fora do default_round,
-  // então o default vai para a 22 — e o palpite reaberto ficaria invisível.
   function brasileiraoLikeMatches() {
     return [
       makeMatch({ id: 'm21a', round: '21', status: 'finished', start_time: past(48) }),
@@ -690,8 +663,6 @@ describe('PredictionsTab – rodada com jogo adiado', () => {
   })
 })
 
-// ─── Múltiplas rodadas adiadas: só a mais próxima antes da aberta ───────────
-
 describe('PredictionsTab – múltiplas rodadas com jogo adiado', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -699,10 +670,6 @@ describe('PredictionsTab – múltiplas rodadas com jogo adiado', () => {
 
   const past = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
 
-  // Cenário real do Brasileirão 2026: a rodada 4 tem um Flamengo×Mirassol parado
-  // desde fevereiro e a 21 tem 2 adiados de julho. O default é a 22. Avisar da
-  // rodada 4 primeiro fazia o usuário pular 17 rodadas pra trás e só então
-  // descobrir que a 21 também tinha.
   function twoPostponedRounds() {
     return [
       makeMatch({
@@ -771,8 +738,6 @@ describe('PredictionsTab – múltiplas rodadas com jogo adiado', () => {
   })
 })
 
-// ─── Jogo remarcado numa rodada que ficou para trás (ADR-019) ──────────────
-
 describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -780,9 +745,6 @@ describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
 
   const days = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString()
 
-  // Brasileirão em 07/11/2026: a rodada 21 tem 9 jogos encerrados de julho a
-  // outubro e Chapecoense × Vasco remarcado para 14/11, sem flag de adiado. A 35
-  // é toda futura e é o default.
   function rescheduledRound21() {
     return [
       ...Array.from({ length: 9 }, (_, i) =>
@@ -816,8 +778,6 @@ describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
   })
 
   it('no empate de fim de temporada a dica aponta a rodada que a API não escolheu', async () => {
-    // Rodadas 9 e 21 com um remarcado no mesmo horário e a 38 encerrada. A API
-    // devolve a 21 (ADR-019). A 9 fica com a dica e o remarcado continua visível.
     const user = userEvent.setup({ delay: null })
     const rescheduledAt = days(7)
     const leftover = (round: string, from: number) => [

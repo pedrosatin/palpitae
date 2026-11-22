@@ -9,7 +9,6 @@ import {
   quotaThreshold,
 } from './quotaUsage'
 
-// 00:05 UTC de 14/11/2026: o cron mede o dia 13.
 const NOW = new Date('2026-11-14T00:05:00Z')
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -21,7 +20,6 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   } as unknown as Env
 }
 
-/** Eventos gravados no AE de teste: blobs e doubles de cada data point. */
 function events(env: Env) {
   const write = vi.mocked((env.AE as AnalyticsEngineDataset).writeDataPoint)
   return write.mock.calls.map(([point]) => ({ blobs: point?.blobs, doubles: point?.doubles }))
@@ -31,7 +29,6 @@ function alerts(env: Env) {
   return events(env).filter((e) => e.blobs?.[0] === 'cloudflare_quota_alert')
 }
 
-/** Resposta GraphQL com o uso de cada métrica em fração da cota. */
 function usageAt(fraction: { read?: number; written?: number; requests?: number }) {
   return {
     data: {

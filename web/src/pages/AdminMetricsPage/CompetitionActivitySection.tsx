@@ -33,7 +33,6 @@ export interface CompetitionActivityResponse {
   }[]
 }
 
-// Séries nomeadas além do top da paleta agrupam em "outros".
 const MAX_SERIES = SERIES_COLORS.length
 const OTHERS = 'outros'
 const NO_LEAGUE = 'sem-liga'
@@ -109,7 +108,6 @@ export function buildGroupsDailySeries(data: CompetitionActivityResponse) {
     segments: order
       .map((key) => ({
         type: key,
-        // Sob sampling o peso é fracionário: dois decimais bastam pro tooltip.
         value: Math.round((byDay.get(label)?.get(key) ?? 0) * 100) / 100,
         color: colorFor.get(key) ?? OTHER_COLOR,
       }))
@@ -119,7 +117,6 @@ export function buildGroupsDailySeries(data: CompetitionActivityResponse) {
   return { days, legend, outsideAxis: Math.round(outsideAxis * 100) / 100 }
 }
 
-/** Avisa quando a dimensão não cobre o período inteiro (ausência ≠ zero). */
 function DimensionNotice({ data }: { data: CompetitionActivityResponse }) {
   if (!data.predictionsDimensionSince) {
     return (

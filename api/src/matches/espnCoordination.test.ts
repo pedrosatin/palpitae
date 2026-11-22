@@ -28,7 +28,6 @@ import { WORK_MAX_ATTEMPTS, claimProviderWork } from './providerWork'
 
 const MIN = 60_000
 const KICKOFF = '2026-10-14T22:00:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const POLL_AT = Date.parse(KICKOFF) + 130 * MIN
 const MATCH_DATE = '20261014'
 
@@ -66,12 +65,10 @@ function event(id: string, date: string, finished: boolean): EspnScoreboardEvent
 
 type Behavior = (date: string) => Response | Promise<Response>
 
-/** ESPN simulada: responde por data do scoreboard e registra cada request. */
 function createProvider() {
   const calls: { date: string; at: number }[] = []
   const provider = {
     calls,
-    /** Padrão: partida em jogo na data dela; as demais datas sem eventos. */
     behavior: ((date) => scoreboard(date, false)) as Behavior,
     datesCalled: () => calls.map((call) => call.date),
   }
@@ -104,7 +101,6 @@ function fakeAe() {
   }
 }
 
-/** Calendário com a partida agendada e o relógio do teste na hora do tick. */
 async function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -167,19 +163,15 @@ describe('coordenação das chamadas da ESPN: execuções concorrentes', () => {
     setProviderRateLimitForTests('espn', 2)
     const { sqlite, provider, poll, drain, at } = await setup()
 
-    // Dois ticks na mesma janela de um minuto (isolates distintos no D1 compartilhado).
     at(POLL_AT)
     await Promise.all([poll(POLL_AT), poll(POLL_AT)])
 
-    // Nenhuma data é chamada além do orçamento, ainda que as duas execuções as queiram.
     expect(provider.calls).toHaveLength(2)
     const pending = workRows(sqlite)
     expect(pending.length).toBeGreaterThan(0)
-    // Sem vaga não é falha do provedor: nenhuma tentativa foi gasta.
     expect(pending.every((row) => row.status === 'pending' && row.attempts === 0)).toBe(true)
     expect(pending.every((row) => String(row.last_error).includes('window_full'))).toBe(true)
 
-    // Minuto seguinte: o dreno executa o que ficou, cada data uma vez.
     await drain(POLL_AT + 61_000)
 
     expect(workRows(sqlite).every((row) => row.status === 'done')).toBe(true)
@@ -212,7 +204,6 @@ describe('coordenação das chamadas da ESPN: bloqueio prolongado e recuperaçã
     provider.behavior = () => status(403)
     const initial = matchRows(sqlite)
 
-    // 1º 403: bloqueado por 15 min. O tick seguinte, dentro do bloqueio, nem chama a ESPN.
     await poll(POLL_AT)
     expect(provider.calls).toHaveLength(1)
     expect(workRows(sqlite).length).toBeGreaterThan(0)
@@ -220,20 +211,17 @@ describe('coordenação das chamadas da ESPN: bloqueio prolongado e recuperaçã
     await drain(POLL_AT + 10 * MIN)
     expect(provider.calls).toHaveLength(1)
 
-    // 2º 403 depois do bloqueio: 1 h.
     await poll(POLL_AT + 16 * MIN)
     expect(provider.calls).toHaveLength(2)
     await poll(POLL_AT + 60 * MIN)
     await drain(POLL_AT + 70 * MIN)
     expect(provider.calls).toHaveLength(2)
 
-    // 3º 403: 6 h.
     await poll(POLL_AT + 80 * MIN)
     expect(provider.calls).toHaveLength(3)
     await poll(POLL_AT + 5 * 60 * MIN)
     expect(provider.calls).toHaveLength(3)
 
-    // 4º 403: a coleta é suspensa. Daí em diante, nenhum request, por mais ticks que haja.
     await poll(POLL_AT + 80 * MIN + 6 * 60 * MIN + MIN)
     expect(provider.calls).toHaveLength(4)
     expect(await readProviderState(db, 'espn')).toMatchObject({
@@ -246,7 +234,6 @@ describe('coordenação das chamadas da ESPN: bloqueio prolongado e recuperaçã
     }
     expect(provider.calls).toHaveLength(4)
 
-    // O alerta saiu a cada passo, e o dreno informa que não reclamou nada.
     expect(byType('provider_access_blocked').map((point) => point.blobs[3])).toEqual([
       'backoff',
       'backoff',
@@ -258,13 +245,11 @@ describe('coordenação das chamadas da ESPN: bloqueio prolongado e recuperaçã
         (point) => point.blobs.slice(1, 3).join() === 'suspended,espn',
       ),
     ).toBe(true)
-    // O bloqueio não mexe nos dados confirmados: a partida segue como estava.
     expect(matchRows(sqlite)).toEqual(initial)
     expect(workRows(sqlite).every((row) => row.status === 'pending' && row.attempts === 0)).toBe(
       true,
     )
 
-    // O operador confere os termos e retoma; a ESPN responde e o trabalho se recupera.
     const resumeAt = POLL_AT + 15 * 60 * MIN
     provider.behavior = (date) => scoreboard(date, true)
     await resumeProviderAccess(db, 'espn', resumeAt)
@@ -278,7 +263,6 @@ describe('coordenação das chamadas da ESPN: bloqueio prolongado e recuperaçã
     expect(matchRows(sqlite)).toEqual([
       expect.objectContaining({ external_id: 'espn-1', status: 'finished', home_score: 1 }),
     ])
-    // O resultado é pontuado no tick seguinte, que lê as pendências do D1.
     await poll(resumeAt + 5 * MIN)
     expect(matchRows(sqlite)).toEqual([expect.objectContaining({ scored: 1 })])
   })
@@ -320,7 +304,6 @@ describe('coordenação das chamadas da ESPN: 429', () => {
     await poll(POLL_AT)
     const callsAfterFirst = provider.calls.length
     expect(callsAfterFirst).toBe(1)
-    // Dentro dos 90 s, nada sai.
     await poll(POLL_AT + 30_000)
     expect(provider.calls).toHaveLength(callsAfterFirst)
     expect(workRows(sqlite).every((row) => row.attempts === 0)).toBe(true)
@@ -341,14 +324,12 @@ describe('coordenação das chamadas da ESPN: falhas parciais e respostas incomp
   it('falha parcial grava as datas que chegaram e adia a que falhou, sem refazer as outras', async () => {
     const { sqlite, provider, poll, drain } = await setup()
     const initial = matchRows(sqlite)
-    // 13/10 chega com um jogo novo; 14/10 (a data da partida) cai em 5xx.
     const early = event('espn-0', '2026-10-13T20:00:00Z', false)
     provider.behavior = (date) =>
       date === '20261013' ? Response.json({ events: [early] }) : status(503)
 
     await poll(POLL_AT)
 
-    // O que chegou foi gravado; a partida da data que falhou segue como estava.
     expect(provider.datesCalled()).toEqual(['20261013', '20261014', '20261014'])
     expect(matchRows(sqlite).map((row) => (row as { external_id: string }).external_id)).toEqual([
       'espn-0',
@@ -359,7 +340,6 @@ describe('coordenação das chamadas da ESPN: falhas parciais e respostas incomp
       expect.objectContaining({ kind: 'result', round: '20261014', status: 'pending' }),
     ])
 
-    // Recuperação: a ESPN volta e o dreno busca só a data que ficou pendente.
     provider.calls.length = 0
     provider.behavior = (date) => scoreboard(date, true)
     await drain(POLL_AT + 5 * MIN)
@@ -382,7 +362,6 @@ describe('coordenação das chamadas da ESPN: falhas parciais e respostas incomp
     await poll(POLL_AT)
     expect(workRows(sqlite).length).toBeGreaterThan(0)
 
-    // O dreno repete a cada ciclo; cada falha gasta uma tentativa até o teto.
     for (let i = 1; i <= WORK_MAX_ATTEMPTS; i++) {
       await drain(POLL_AT + (5 + i * 10) * MIN)
     }
@@ -393,13 +372,11 @@ describe('coordenação das chamadas da ESPN: falhas parciais e respostas incomp
     ).toBe(true)
     expect(byType('provider_work_run').some((point) => point.blobs[1] === 'error')).toBe(true)
 
-    // O tick seguinte replaneja: se a ESPN ainda falha, o produtor revive o item do zero.
     await poll(POLL_AT + 3 * 60 * MIN)
     expect(workRows(sqlite).every((row) => row.status === 'pending' && row.attempts === 0)).toBe(
       true,
     )
 
-    // O provedor volta: o dreno fecha os itens e o resultado é gravado.
     provider.behavior = (date) => scoreboard(date, true)
     await drain(POLL_AT + 4 * 60 * MIN)
     expect(workRows(sqlite).every((row) => row.status === 'done')).toBe(true)
@@ -429,7 +406,6 @@ describe('coordenação das chamadas da ESPN: falhas parciais e respostas incomp
     await drain(POLL_AT + 5 * MIN)
     await poll(POLL_AT + 30 * MIN)
 
-    // A ESPN respondeu, mas sem o jogo: nada muda, e o jogo não vira "ausente" nem finalizado.
     expect(matchRows(sqlite)).toEqual(initial)
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 1 })
     expect(sqlite.prepare('SELECT status, postponed FROM matches').get()).toEqual({
@@ -461,11 +437,9 @@ describe('coordenação das chamadas da ESPN: reinício do dreno', () => {
     provider.behavior = () => status(500)
     await poll(POLL_AT)
     const now = POLL_AT + 5 * MIN
-    // O dreno A reclama os itens e morre antes de gravar o resultado.
     const claimedByA = await claimProviderWork(db, { provider: 'espn', now })
     expect(claimedByA.length).toBeGreaterThan(0)
 
-    // Com o lease válido ninguém mais o reclama; vencido, o próximo dreno retoma.
     expect(await claimProviderWork(db, { provider: 'espn', now: now + MIN })).toEqual([])
     const claimedByB = await claimProviderWork(db, { provider: 'espn', now: now + 6 * MIN })
     expect(claimedByB.map((item) => item.round).sort()).toEqual(
@@ -485,11 +459,9 @@ describe('coordenação das chamadas da ESPN: descoberta e fallback', () => {
 
     await discoverFixtures(db, '', ae, POLL_AT)
 
-    // O 403 interrompe a coleta, adia as nove datas e preserva o status.
     expect(provider.calls).toHaveLength(1)
     expect(workRows(sqlite)).toHaveLength(9)
     expect(sqlite.prepare('SELECT status FROM competitions').get()).toEqual({ status: 'upcoming' })
-    // Recusa do acesso não é falha do sync: o alerta próprio já saiu.
     expect(byType('football_api_error')).toHaveLength(0)
     expect(byType('provider_access_blocked')).toHaveLength(1)
     expect(await readProviderState(db, 'espn')).toMatchObject({
@@ -497,7 +469,6 @@ describe('coordenação das chamadas da ESPN: descoberta e fallback', () => {
       blockedUntil: POLL_AT + 15 * MIN,
     })
 
-    // Dentro do bloqueio a descoberta seguinte nem chama a ESPN.
     await discoverFixtures(db, '', ae, POLL_AT + 5 * MIN)
     expect(provider.calls).toHaveLength(1)
   })
@@ -520,7 +491,6 @@ describe('coordenação das chamadas da ESPN: descoberta e fallback', () => {
     expect(firstCalls).toBeGreaterThan(0)
     await scoreWindowFromEspn(db, ae, ['fd'], { now: POLL_AT + MIN, coordinate: true })
 
-    // O 403 bloqueou o provedor: o segundo ciclo não chama a ESPN.
     expect(provider.calls).toHaveLength(firstCalls)
     expect(byType('match_results_fallback')).toHaveLength(0)
     expect(sqlite.prepare("SELECT status FROM matches WHERE id = 'm-fd'").get()).toEqual({

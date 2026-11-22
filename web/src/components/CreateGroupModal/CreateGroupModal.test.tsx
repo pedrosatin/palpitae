@@ -76,10 +76,8 @@ describe('CreateGroupModal', () => {
       expect(screen.getByRole('option', { name: /Brasileirão/ })).toBeInTheDocument()
     })
 
-    // Copa do Mundo encerrada não entra no select.
     expect(screen.queryByRole('option', { name: /Copa do Mundo/ })).not.toBeInTheDocument()
 
-    // Com os dois grupos presentes, os <optgroup> separam andamento e futuro.
     expect(screen.getByRole('group', { name: 'Em andamento' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Em breve' })).toBeInTheDocument()
     expect(screen.getByText('Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que faltam.')).toBeInTheDocument()
@@ -127,7 +125,6 @@ describe('CreateGroupModal', () => {
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Zebra Cup/ })).toBeInTheDocument()
     })
-    // Ordem do DOM: "Em andamento" precede "Em breve", mesmo com o nome vindo depois.
     expect(
       screen.getAllByRole('group').map((group) => group.getAttribute('label')),
     ).toEqual(['Em andamento', 'Em breve'])
@@ -251,7 +248,6 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
     } as Response)
   }
 
-  /** Imita o painel: a competição do link vale até o modal fechar. */
   function Host({ initialSlug }: { initialSlug?: string }) {
     const [open, setOpen] = useState(true)
     const [slug, setSlug] = useState(initialSlug)
@@ -460,7 +456,6 @@ describe('CreateGroupModal – scoring config', () => {
       campo: 'winner',
     })
 
-    // tapping again closes it
     await userEvent.click(infoBtn)
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
@@ -516,7 +511,6 @@ describe('CreateGroupModal – scoring config', () => {
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
 
     expect(screen.getByText(/maior ou igual a pontos por vencedor/)).toBeInTheDocument()
-    // only the competitions fetch ran — no POST
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 })
@@ -528,7 +522,6 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
     vi.restoreAllMocks()
   })
 
-  /** Imita o painel: o botão reabre o modal depois de fechado. */
   function Host({ onCreated }: { onCreated: (group: unknown) => void }) {
     const [open, setOpen] = useState(true)
     return (
@@ -541,7 +534,6 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
     )
   }
 
-  /** Lista de competições e um POST /groups que só responde quando o teste mandar. */
   function mockPendingPost() {
     let respond!: (response: Response) => void
     let fail!: (err: Error) => void
@@ -579,7 +571,6 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
       post.respond({ ok: true, json: async () => ({ group: createdGroup }) } as Response)
     })
 
-    // O grupo foi criado: o painel atualiza a lista mesmo com o modal reaberto.
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdGroup))
     expect(screen.queryByText('Grupo criado!')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Nome do grupo')).toHaveValue('Segundo')

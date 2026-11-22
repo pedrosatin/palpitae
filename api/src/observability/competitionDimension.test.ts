@@ -7,12 +7,6 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import type { AppContext } from '../types'
 import { hashUserId } from './events'
 
-/**
- * `prediction_saved` e `group_deleted` carregam o `competition_id` do grupo
- * (docs/observability.md). Roda os routers de verdade contra SQLite para provar
- * que a dimensão sai depois da mutação e que as posições antigas não mudam.
- */
-
 const SECRET = 'secret'
 const COMP_A = '11111111-2222-4333-8444-555555555555'
 const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'

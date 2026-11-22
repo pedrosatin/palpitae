@@ -64,7 +64,6 @@ afterEach(() => {
   setProviderRateLimitForTests('espn', 1000)
 })
 
-/** Calendário da football-data: 10 jogos de uma rodada, dois times cada, já encerrados. */
 function fdCalendar(matchday: number) {
   const team = (n: number) => ({
     id: matchday * 1000 + n,
@@ -88,7 +87,6 @@ function fdCalendar(matchday: number) {
   }
 }
 
-/** Scoreboard da ESPN para uma data: 10 jogos entre 20 times, todos agendados. */
 function espnScoreboard(date: string) {
   const events = Array.from({ length: 10 }, (_, i) => {
     const ev = structuredClone(template.events[0]) as EspnScoreboardEvent
@@ -113,7 +111,6 @@ function espnScoreboard(date: string) {
   return { events }
 }
 
-/** Quem responde cada provedor: `null` é a resposta normal. */
 type Behavior = { fd: null | (() => Response); espn: null | (() => Response) }
 
 /**
@@ -190,7 +187,6 @@ async function setupWorld() {
 
 type World = Awaited<ReturnType<typeof setupWorld>>
 
-/** Um tick de dreno do cron fundido, no minuto dado. Devolve as falhas das rotinas. */
 async function runDrainTick(h: { limited: LimitedD1; env: Env }, at: number): Promise<string[]> {
   vi.setSystemTime(at)
   h.limited.startInvocation()

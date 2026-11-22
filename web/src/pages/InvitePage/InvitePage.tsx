@@ -105,11 +105,6 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   )
 }
 
-/**
- * Código trocado, de grupo excluído ou que nunca existiu. O link de login cobre
- * quem tem acesso a um grupo de campeonato em piloto, que a rota pública trata
- * como inexistente. Depois do login, a entrada segue pelo modal do Dashboard.
- */
 function InvalidInvite({ code }: { code: string | null }) {
   return (
     <InviteShell>

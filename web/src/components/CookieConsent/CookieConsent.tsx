@@ -79,7 +79,6 @@ export default function CookieConsent() {
             }
           }}
         >
-          {/* /privacidade é HTML estático gerado no build, fora das rotas do React. */}
           <p className={styles.text}>
             Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide. Detalhes
             na <a href="/privacidade">política de privacidade</a>.

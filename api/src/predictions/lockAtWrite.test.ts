@@ -113,10 +113,6 @@ function setup() {
 
 type Sqlite = ReturnType<typeof setup>['sqlite']
 
-/**
- * Condições que travam o jogo depois que o handler o leu como aberto. `before` prepara o
- * cenário antes da requisição; `during` roda entre a leitura e a escrita.
- */
 const LOCKS: Record<string, { before?: (sqlite: Sqlite) => void; during?: (sqlite: Sqlite) => void }> = {
   'o sync marca o jogo como ao vivo': {
     during: (sqlite) => {

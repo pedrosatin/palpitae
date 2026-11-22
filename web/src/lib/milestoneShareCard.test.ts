@@ -10,16 +10,10 @@ import {
 } from './milestoneShareCard'
 import { FONT, LIME, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCardParts'
 
-/** Link público completo: domínio + /grupo/ + 32 hex. */
 const PUBLIC_GROUP_LINK =
   'https://palpitae.com.br/grupo/abcdef0123456789abcdef0123456789'
 const PUBLIC_GROUP_LABEL = 'palpitae.com.br/grupo/abcdef0123456789abcdef0123456789'
 
-/**
- * Largura proporcional realista para sans-serif bold: ~0.62 × tamanho por
- * caractere latino típico. O link público de 32 hex mede ~1.020 px em 36 px,
- * acima dos 920 px úteis do rodapé.
- */
 function proportionalWidth(text: string, fontSize: number): number {
   return text.length * fontSize * 0.62
 }

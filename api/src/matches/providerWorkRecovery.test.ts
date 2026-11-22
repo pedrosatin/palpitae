@@ -14,12 +14,6 @@ import {
   type WorkOutcome,
 } from './providerWork'
 
-/**
- * O dreno quando o próprio D1 falha na gravação do estado do ciclo, e a ordem
- * em que os itens reclamados são admitidos no saldo (ADR-027, adendo
- * "subrequests do dreno").
- */
-
 const NOW = Date.parse('2026-11-17T14:05:00Z')
 const handles: DatabaseSync[] = []
 
@@ -96,7 +90,6 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
     expect(run.settleError).toBeUndefined()
     expect(statuses(sqlite)).toEqual(['done', 'done', 'done'])
     expect(rows(sqlite).every((row) => row.attempts === 0)).toBe(true)
-    // Reclamar, o batch que falhou e a nova tentativa.
     expect(budget.used).toBe(3)
   })
 
@@ -121,7 +114,6 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
         lease_owner: null,
       })),
     )
-    // Reclamar, o batch, a nova tentativa e a liberação.
     expect(budget.used).toBe(4)
   })
 
@@ -133,7 +125,6 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
       failBatch: (sqls) => {
         const fails = isStateBatch(sqls)
         if (fails && !stolen) {
-          // O lease da rodada 2 venceu e outro dreno a reclamou antes da liberação mínima.
           stolen = true
           sqlite.exec(`UPDATE provider_work SET lease_owner = 'outro-dreno' WHERE round = '2'`)
         }
@@ -143,7 +134,6 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
 
     const run = await drain(new DrainBudget(db, 45))
 
-    // O filtro por dono preserva o item do outro dreno: ele não foi devolvido por este.
     expect(run).toMatchObject({ claimed: 3, done: 0, released: 2, leaseLost: 1 })
     expect(run.settleError).toMatch(/falha simulada do batch/)
     expect(rows(sqlite).map((row) => [row.round, row.status, row.lease_owner])).toEqual([
@@ -161,7 +151,6 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
 
     const run = await drain(budget, {
       runItem: async (item, span: ItemBudget) => {
-        // O saldo de trabalho acaba muito antes das 100 consultas.
         for (let i = 0; i < 100; i++) await span.db.prepare('SELECT 1').first()
         return { item, status: 'done' }
       },
@@ -195,10 +184,8 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
     // Limite declarado da garantia: sem D1 não há como gravar nada.
     expect(statuses(sqlite)).toEqual(['running', 'running', 'running'])
     expect(rows(sqlite).every((row) => row.attempts === 0)).toBe(true)
-    // Reclamar, o batch, a nova tentativa e a liberação: a recuperação é limitada.
     expect(budget.used).toBe(4)
 
-    // O lease de 5 min vence e o dreno seguinte retoma os itens, sem tentativa gasta.
     down = false
     const later = new DrainBudget(raw, 45)
     const run = await drain(later, { now: NOW + WORK_LEASE_MS + 1 })
@@ -224,7 +211,6 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
 describe('ordem de admissão dos itens reclamados', () => {
   it('o claim devolve os itens por prioridade, e não na ordem em que entraram na fila', async () => {
     const { db } = setup()
-    // A descoberta entrou na fila antes do resultado.
     await enqueueProviderWork(
       db,
       [
@@ -276,7 +262,6 @@ describe('ordem de admissão dos itens reclamados', () => {
       ],
       NOW,
     )
-    // Fatia de 23: cabe a descoberta (17) ou o resultado (8), não os dois.
     const budget = new DrainBudget(db, 23)
     const cost = (item: ProviderWorkItem) => (item.kind === 'discovery' ? 17 : 8)
 
@@ -300,7 +285,6 @@ describe('ordem de admissão dos itens reclamados', () => {
 })
 
 describe('estimativa de custo ajustada pelo custo real', () => {
-  /** Estimativas com que o dreno abriu cada item, na ordem. */
   function estimates(budget: DrainBudget): number[] {
     const seen: number[] = []
     const open = budget.open.bind(budget)
@@ -327,7 +311,6 @@ describe('estimativa de custo ajustada pelo custo real', () => {
       },
     })
 
-    // Os 8 itens custaram 3 cada, e nenhum foi admitido com menos que a estimativa de 10.
     expect(seen.length).toBeGreaterThanOrEqual(8)
     expect(Math.min(...seen)).toBe(10)
   })
@@ -348,7 +331,6 @@ describe('estimativa de custo ajustada pelo custo real', () => {
       },
     })
 
-    // Os primeiros itens entram pela estática (2); depois do primeiro concluído, pelo custo real (6).
     expect(seen[0]).toBe(2)
     expect(seen.at(-1)).toBe(6)
     expect(seen.every((estimate) => estimate >= 2)).toBe(true)

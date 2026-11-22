@@ -115,11 +115,9 @@ async function main() {
   console.log('=== Testando football-data.org ===')
   console.log(`Competição: ${COMPETITION} | Temporada: ${SEASON}`)
 
-  // 1. Todas as partidas
   const all = await fetchMatches()
   summarizeMatches(all)
 
-  // 2. Apenas finalizadas
   console.log('\n\n=== Filtrando status=FINISHED ===')
   const finished = await fetchMatches({ status: 'FINISHED' })
   summarizeMatches(finished)

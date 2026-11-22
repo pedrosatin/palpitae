@@ -1,17 +1,3 @@
--- Papel de dono em `group_members` mantido a partir de `groups.owner_user_id`.
---
--- A autorização das ações de dono lê `groups.owner_user_id`, e a lista de membros
--- mostra o selo e o botão de remover a partir de `group_members.role`. Nada ligava
--- os dois: trocar o dono do grupo à mão, ou na exclusão de conta, deixava a interface
--- mostrando o dono antigo. A partir desta migration `role` é derivado do dono do
--- grupo: 'owner' para `owner_user_id` e 'member' para os demais.
---
--- Os gatilhos corrigem o valor em vez de recusar, então o Worker anterior, que grava
--- 'owner' na criação e 'member' na entrada, segue funcionando (expand). A recursão de
--- gatilhos fica desligada no SQLite e no D1, e o UPDATE interno não dispara de novo.
---
--- Reversão. Reverter o código mantém os gatilhos. Desligá-los exige uma migration
--- com `DROP TRIGGER`; o papel gravado continua coerente com o dono.
 
 UPDATE group_members
    SET role = CASE WHEN user_id = (SELECT owner_user_id FROM groups WHERE id = group_members.group_id)

@@ -5,28 +5,6 @@ import type { DrainBudget, ItemBudget } from './drainBudget'
 import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import type { SyncResult } from './matchUpsert'
 
-/**
- * Fila durável de trabalho pendente dos provedores (ADR-027).
- *
- * Os produtores (poller, descoberta diária, sync administrativo) gravam em
- * `provider_work` o que não coube no orçamento compartilhado ou que falhou,
- * com prioridade, tentativas e prazo de nova execução. O dreno retoma depois —
- * no mesmo tick, no tick seguinte ou no cron drenador — inclusive muito depois
- * da janela de 24 horas do resgate. Uma linha por chave de deduplicação
- * (provedor, tipo, competição, temporada, rodada): concluída ou falha, a linha
- * é reusada pelo próximo planejamento, então a tabela cresce com rodadas, não
- * com execuções.
- *
- * O dreno é genérico: quem executa o item (`runItem`) e o pós-sync
- * (`onSynced`) vêm de fora, porque o poller, a descoberta e o cron drenador
- * fazem o mesmo dreno com callbacks próprios.
- *
- * Subrequests (ADR-027, adendo "subrequests do dreno"): o dreno roda numa
- * fatia do orçamento da invocação (`DrainBudget`), nunca sem ela. Reclama só o
- * que a fatia comporta, admite cada item pela estimativa de custo dele, grava o
- * estado de todos num único `db.batch()` e devolve à fila, sem tentativa nova,
- * o que não coube.
- */
 
 /** Tipos de trabalho. Menor prioridade executa antes. */
 export type ProviderWorkKind = 'result' | 'late' | 'manual' | 'discovery'
@@ -74,11 +52,6 @@ export type ProviderWorkItem = {
   /** Id interno da competição no D1, para a telemetria; vazio quando o produtor não o sabe. */
   competitionId: string
   attempts: number
-  /**
-   * Dono do lease que o reclamou (fencing): o estado do item só é gravado
-   * enquanto o lease ainda é dele. Um dreno lento, cujo lease venceu e foi
-   * reclamado por outro, não fecha nem devolve o item do segundo.
-   */
   leaseOwner: string
 }
 
@@ -392,12 +365,6 @@ export async function countReadyWork(
   return new Map(results.map((row) => [row.provider, { ready: row.ready, paused: row.paused }]))
 }
 
-/**
- * Fencing: o estado de um item só é gravado se ele segue `running` com o dono
- * que o reclamou. O lease de 5 min vence, e um dreno lento que volta depois de
- * outro ter reclamado o item não o fecha nem o devolve: a instrução não altera
- * linha nenhuma, e o chamador vê `changes = 0` no resultado do batch.
- */
 const leaseFence = (param: number) => `status = 'running' AND lease_owner = ?${param}`
 
 function completeStatement(
@@ -480,9 +447,7 @@ export type DrainOptions = {
    * fila sem tentativa nova).
    */
   runItem: (item: ProviderWorkItem, budget: ItemBudget) => Promise<WorkOutcome>
-  /** Pós-sync de um item concluído; falha dele não repete o sync. */
   onSynced?: SyncedHandler
-  /** Estimativa conservadora do custo de um item, em chamadas (D1 e `fetch`). */
   itemCost: (item: ProviderWorkItem) => number
   /**
    * Classe de custo do item (padrão: o tipo). O maior custo real visto num item
@@ -491,22 +456,17 @@ export type DrainOptions = {
    * (poucos jogos) não diz que o próximo também será.
    */
   costClass?: (item: ProviderWorkItem) => string
-  /** O menor `itemCost` possível: dimensiona quantos itens reclamar de uma vez. */
   minItemCost: number
-  /** Itens em execução ao mesmo tempo; padrão `DRAIN_CONCURRENCY`. */
   concurrency?: number
-  /** Não reclama itens enquanto o provedor está bloqueado ou suspenso (ver `claimProviderWork`). */
   respectProviderAccess?: boolean
   maxCycles?: number
   maxItems?: number
 }
 
-/** O que um ciclo reclamou, executou e devolveu, antes da gravação do estado. */
 type CycleResult = {
   outcomes: WorkOutcome[]
   released: ProviderWorkItem[]
   halt?: DrainStop
-  /** Falha da gravação do estado que só a liberação mínima contornou. */
   settleError?: string
   /**
    * Com `settleError`: quantos itens do ciclo a liberação mínima devolveu a
@@ -520,7 +480,6 @@ type CycleResult = {
   lost: ProviderWorkItem[]
 }
 
-/** Maior custo real, por classe de custo, dos itens concluídos neste dreno. Só sobe a estimativa. */
 type ObservedCosts = Map<string, number>
 
 type CycleContext = {
@@ -716,28 +675,12 @@ function releaseCycleStatement(
     .bind(provider, JSON.stringify(keys), now)
 }
 
-/** O lease venceu e outro dreno reclamou o item: o estado dele não foi gravado por este dreno. */
 function logLeaseLost(provider: string, item: ProviderWorkItem): void {
   console.warn(
     `[drain] Lease perdido provider=${provider} item=${item.kind}/${item.competitionCode}/${item.round}: o estado não foi gravado, o dreno que o reclamou o resolve.`,
   )
 }
 
-/**
- * Grava o estado do ciclo num `db.batch()`, com o fencing por dono do lease em
- * cada instrução (`leaseFence`): o item que outro dreno reclamou depois do
- * vencimento do lease não é tocado, e o resultado do batch o aponta
- * (`cycle.lost`). O fencing protege o estado da fila; o que o item já gravou
- * no calendário e o pós-sync que já rodou antes da gravação não se desfazem.
- *
- * Se o D1 falhar, repete uma vez; se falhar de novo, tenta a liberação mínima,
- * que devolve os itens do ciclo a `pending` sem tentativa e sem lease (também
- * com o fencing). As três chamadas estão reservadas na fatia
- * (`STATE_RESERVE_CALLS`). Registra em `cycle.settleError` a mensagem da falha
- * quando só a liberação funcionou. Se nem ela funcionar, o D1 está indisponível
- * de forma persistente e o erro sobe: os itens ficam `running` até o lease de
- * 5 min vencer, e o dreno seguinte os reclama, sem tentativa gasta a mais.
- */
 async function settleCycle(
   budget: DrainBudget,
   provider: string,
@@ -765,7 +708,6 @@ async function settleCycle(
       return
     }
   }
-  // Instrução que não alterou linha: o lease já era de outro dreno.
   cycle.lost = settled.filter((_, i) => (results[i]?.meta?.changes ?? 0) === 0)
   for (const item of cycle.lost) logLeaseLost(provider, item)
 }

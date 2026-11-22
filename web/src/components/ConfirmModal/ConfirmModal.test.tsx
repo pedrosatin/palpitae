@@ -22,7 +22,7 @@ describe('ConfirmModal', () => {
     render(<ConfirmModal {...defaultProps} />)
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Confirmar' })).toBeInTheDocument() // Default title
+    expect(screen.getByRole('heading', { name: 'Confirmar' })).toBeInTheDocument()
     expect(screen.getByText('Are you sure?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
@@ -75,14 +75,10 @@ describe('ConfirmModal', () => {
   })
 
   it('applies danger styling when danger is true', () => {
-    // This mostly tests that it doesn't crash since we can't easily test the exact CSS module class name
-    // without more complex setup, but we verify it renders correctly.
     render(<ConfirmModal {...defaultProps} danger={true} />)
 
     const confirmButton = screen.getByRole('button', { name: 'Confirmar' })
     expect(confirmButton).toBeInTheDocument()
-    // It should have some class applied from styles.danger, but since non-scoped CSS Modules are used in tests,
-    // it will have class "danger". Let's verify that.
     expect(confirmButton).toHaveClass('danger')
   })
 })

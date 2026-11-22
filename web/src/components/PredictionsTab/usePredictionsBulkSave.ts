@@ -61,12 +61,6 @@ function applyPredictionUpdate(
 
 type BulkSaveResponse = { saved: string[]; locked?: string[]; not_found?: string[] }
 
-/**
- * Aviso de um "Salvar todos" em que algum jogo enviado não voltou entre os salvos:
- * quantos foram salvos, o motivo de cada recusa e o que fazer. Jogo travado ou
- * fora do campeonato só sai da tela depois de recarregar a lista de jogos. Sem
- * motivo na resposta, vale tentar de novo. `null` quando todos foram salvos.
- */
 function bulkRejectionMessage(sent: string[], data: BulkSaveResponse): string | null {
   const saved = new Set(data.saved)
   const rejected = sent.filter((id) => !saved.has(id))
@@ -106,14 +100,8 @@ function useBulkSaveStatus(selectedRound: string | undefined) {
     }
   }
 
-  // Cada rodada exibida ganha um número. O envio guarda o número da rodada em que
-  // começou, e a resposta que volta depois da troca não mostra aviso na rodada nova.
   const roundViewRef = useRef(0)
 
-  // Cancel the savedAll feedback timer and reset savedAll when the round changes,
-  // and on unmount — otherwise a stale timeout can fire after a second save,
-  // flipping savedAll back off (or on) at the wrong time. O aviso de erro ou de
-  // palpite recusado também é da rodada anterior e sai junto.
   useEffect(() => {
     roundViewRef.current += 1
     clearSavedAllTimer()
@@ -153,7 +141,6 @@ type BulkSaveInput = {
   selectedRound: string | undefined
   allMatches: Match[]
   unsavedDrafts: UnsavedDrafts
-  /** Chamado com os jogos gravados depois de um "Salvar todos". */
   onBulkSaved?: (matchIds: string[]) => void
 }
 
@@ -244,13 +231,9 @@ export function usePredictionsBulkSave({
         )
       }
 
-      // Home cards leem pending_predictions via fetchCachedJson (TTL 30s).
-      // Sem invalidar, voltar à dashboard dentro do TTL mostra N antigo.
       invalidateApiCache('groups:')
       if (data.saved.length > 0) onBulkSaved?.(data.saved)
 
-      // O aceito fica gravado em qualquer rodada. O convite de avaliação, como o
-      // aviso, abre só na rodada em que o envio começou.
       if (roundViewRef.current !== roundView) return
       if (accepted.length > 0) setHasSavedPredictions(true)
       const rejected = bulkRejectionMessage(toSave.map((p) => p.match_id), data)

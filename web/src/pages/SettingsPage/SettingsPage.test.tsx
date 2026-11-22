@@ -127,8 +127,8 @@ describe('SettingsPage', () => {
   it('PATCHes the new preference and tracks confirm after confirmation', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockResponse({ round_reminders: true })) // initial GET
-      .mockResolvedValueOnce(mockResponse({ round_reminders: false })) // PATCH
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+      .mockResolvedValueOnce(mockResponse({ round_reminders: false }))
 
     renderPage()
 
@@ -168,14 +168,13 @@ describe('SettingsPage', () => {
     const msg = await screen.findByText(/configuração salva/i)
     expect(msg).toBeInTheDocument()
 
-    // success message must appear after the toggle in the DOM (no layout shift above)
     expect(toggle.compareDocumentPosition(msg) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('shows a retry button after initial load failure and recovers on retry', async () => {
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockResponse(null, false)) // initial GET fails
-      .mockResolvedValueOnce(mockResponse({ round_reminders: true })) // retry succeeds
+      .mockResolvedValueOnce(mockResponse(null, false))
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
 
     renderPage()
 
@@ -195,8 +194,8 @@ describe('SettingsPage', () => {
 
   it('rolls back the toggle when the PATCH fails', async () => {
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockResponse({ round_reminders: true })) // GET
-      .mockResolvedValueOnce(mockResponse(null, false)) // PATCH fails
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+      .mockResolvedValueOnce(mockResponse(null, false))
 
     renderPage()
 

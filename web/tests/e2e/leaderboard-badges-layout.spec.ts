@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// A página de grupo só aceita id no formato de UUID (#726).
 const GROUP_ID = '00000000-0000-4000-8000-0000000000b1'
 
 const headers = {

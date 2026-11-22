@@ -26,16 +26,13 @@ interface GroupDetailPageProps {
   onLogout: () => void
 }
 
-/** Tempo na tela da confirmação de entrada no grupo. */
 const JOINED_NOTICE_MS = 6000
 
 interface GroupPageFrameProps extends GroupDetailPageProps {
-  /** Modais próprios da tela, renderizados depois dos de criar e entrar. */
   modals?: ReactNode
   children: ReactNode
 }
 
-/** Cabeçalho, área principal e modais de criar e entrar, comuns a todos os estados da tela. */
 function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProps) {
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
@@ -66,7 +63,6 @@ function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProp
   )
 }
 
-/** Tela do id com formato inválido. Volta o título da aba para o padrão do app. */
 function GroupNotFound() {
   useDocumentTitle(undefined)
   return (
@@ -134,7 +130,6 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
     () => (location.state as { joinedGroupName?: string } | null)?.joinedGroupName ?? null,
   )
 
-  // Tira a confirmação do histórico, para o recarregamento não repetir o aviso.
   useEffect(() => {
     if (!joinedGroupName) return
     navigate({ pathname: location.pathname, search: location.search }, { replace: true })
@@ -236,7 +231,6 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           leaving={leaving}
         />
 
-        {/* Convite do admin. Fica escondido quando a competição acabou. */}
         {isAdmin && group.invite_code && !isFinished && (
           <GroupInviteSection
             inviteCode={group.invite_code}
@@ -247,7 +241,6 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           />
         )}
 
-        {/* Link de pedido: membros só veem com pedidos ligados; o dono religa em Configurar. */}
         {group.public_id && !isFinished && (isAdmin || group.join_requests_enabled !== false) && (
           <GroupLinkSection publicId={group.public_id} groupName={group.name} />
         )}
@@ -262,7 +255,6 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           onTabClick={handleTabClick}
         />
 
-        {/* Aba que quebra no render mostra o erro no lugar dela; trocar de aba sai dele. */}
         <ErrorBoundary
           resetKey={`${groupId}:${activeTab}`}
           fallback={(reset) => <TabError onRetry={reset} />}

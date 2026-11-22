@@ -5,11 +5,8 @@ import styles from './InfoHint.module.css'
 interface InfoHintProps {
   label: string
   text: string
-  /** Which side the label text appears relative to the icon. Default: 'right'. */
   labelSide?: 'left' | 'right'
-  /** When set, the label text renders as a <label> element associated with this input id. */
   htmlFor?: string
-  /** Called once when the tooltip opens — use for analytics. */
   onOpen?: () => void
 }
 

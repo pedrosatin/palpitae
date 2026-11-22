@@ -8,9 +8,6 @@ import { bucketKey, DAILY_BUCKET_ROWS_WRITTEN_PER_ROW } from './limits'
 import { reportD1Rows, type ReportedRows } from '../testing/d1RowsReported'
 import { createSqliteD1 } from '../testing/sqliteD1'
 
-// Orçamento diário de linhas do D1 por usuário (ADR-022), pela API inteira. O D1 de
-// teste informa em cada consulta as linhas que `rows` mandar.
-
 const handles: DatabaseSync[] = []
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
@@ -46,8 +43,6 @@ async function fixture(vars: Partial<Env> = {}) {
     INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
       VALUES ('future','competition','1','football-data','home','away','2099-01-01T00:00:00Z','scheduled','1');
   `)
-  // Linhas que cada consulta informa. O teste troca no meio do caminho. Com
-  // `limiter`, as consultas a `request_limits` informam esse valor.
   const rows = {
     read: 1,
     written: 1,
@@ -63,7 +58,6 @@ async function fixture(vars: Partial<Env> = {}) {
         rows_written: WRITE_SQL.test(sql) ? rows.written : 0,
       },
   )
-  // Consultas que casam com `rows.failOn` falham como um D1 fora do ar.
   const DB = new Proxy(reported, {
     get(target, prop) {
       if (prop === 'prepare') {
@@ -83,7 +77,6 @@ async function fixture(vars: Partial<Env> = {}) {
     FOOTBALL_API_KEY: 'test-key',
     ...vars,
   } as Env
-  // Validade de 3 dias: o teste avança o relógio até o dia seguinte.
   const tokens = Object.fromEntries(
     await Promise.all(
       ['heavy', 'light'].map(async (id) => [
@@ -115,7 +108,6 @@ async function fixture(vars: Partial<Env> = {}) {
       env,
       ctx,
     )
-  // Repete a requisição até a primeira recusa, com teto para não girar à toa.
   const untilRefused = async (
     path: string,
     user: string,
@@ -130,7 +122,6 @@ async function fixture(vars: Partial<Env> = {}) {
     }
     return { response: null, attempts: max }
   }
-  // Valor gravado hoje no balde diário do usuário, ou undefined sem linha.
   const dailyHits = async (user: string, kind: 'read' | 'written') => {
     const key = await bucketKey(env.JWT_SECRET, `d1_${kind}:user:${user}`)
     const row = sqlite.prepare('SELECT hits FROM request_limits WHERE bucket_key = ?').get(key) as
@@ -160,16 +151,13 @@ describe('orçamento diário de linhas do D1 por usuário', () => {
 
     const refused = await untilRefused('/auth/me', 'heavy')
     expect(refused.response?.status).toBe(429)
-    // Cada requisição faz várias consultas, então o corte vem em poucas requisições.
     expect(refused.attempts).toBeGreaterThan(1)
     expect(refused.response?.headers.get('Retry-After')).toBe(String(10 * 60))
     const body = (await refused.response?.json()) as { error: string }
     expect(body.error).toMatch(/limite diário/i)
 
-    // Outro usuário segue normal.
     expect((await request('/auth/me', 'light')).status).toBe(200)
 
-    // A recusa continua até a virada e some à 00:00 UTC.
     vi.setSystemTime(new Date('2026-11-13T23:59:59Z'))
     expect((await request('/auth/me', 'heavy')).status).toBe(429)
     vi.setSystemTime(new Date('2026-11-14T00:00:00Z'))
@@ -183,7 +171,6 @@ describe('orçamento diário de linhas do D1 por usuário', () => {
     rows.read = 40_000
     expect((await untilRefused('/auth/me', 'heavy')).response?.status).toBe(429)
 
-    // O relógio cruza a meia-noite enquanto o limitador lê o balde do dia.
     vi.setSystemTime(new Date('2026-11-13T23:59:59Z'))
     rows.beforePrepare = (sql) => {
       if (/^\s*SELECT bucket_key, hits FROM request_limits/.test(sql)) {
@@ -215,7 +202,6 @@ describe('orçamento diário de linhas do D1 por usuário', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const invalid = await fixture({ D1_DAILY_ROWS_READ_PER_USER: '50mil' } as Partial<Env>)
     invalid.rows.read = 10
-    // Com o padrão de 250 mil, dez requisições de poucas dezenas de linhas passam.
     expect((await invalid.untilRefused('/auth/me', 'heavy', 10)).response).toBeNull()
     expect(error).toHaveBeenCalledWith(expect.stringContaining('D1_DAILY_ROWS_READ_PER_USER'))
   })
@@ -263,7 +249,6 @@ describe('linhas que o balde diário grava', () => {
     expect((await request('/auth/me', 'heavy')).status).toBe(200)
     expect((await request('/auth/me', 'heavy')).status).toBe(200)
 
-    // A sessão e o handler informam 1 linha por consulta, bem menos que 10 mil.
     expect(await dailyHits('heavy', 'read')).toBeLessThan(10_000)
     expect(await dailyHits('heavy', 'written')).toBeUndefined()
   })

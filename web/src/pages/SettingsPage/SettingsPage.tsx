@@ -12,7 +12,6 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import type { User } from '../../types'
 import styles from './SettingsPage.module.css'
 
-// Descreve o cron de api/src/notifications/roundReminder.ts. Mudou a regra, muda o texto.
 const REMINDER_RULE =
   'Nos dias em que você tem jogo sem palpite, enviamos um e-mail às 7h, horário de Brasília, com os jogos daquele dia e o horário em que cada um fecha. Se já palpitou todos, você não recebe nada.'
 
@@ -101,12 +100,6 @@ function useNotificationPreferences() {
 
 const LOGOUT_ALL_ERROR = 'Não foi possível sair de todos os dispositivos. Tente de novo.'
 
-/**
- * "Sair de todos os dispositivos": confirma, chama `POST /auth/logout-all` e,
- * com sucesso, avisa o App para voltar ao estado deslogado. Em erro a sessão
- * continua válida no servidor, então a página mostra o erro e o usuário pode
- * tentar de novo.
- */
 function useLogoutAll(onLoggedOut: () => void) {
   const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -127,7 +120,6 @@ function useLogoutAll(onLoggedOut: () => void) {
     setError(null)
     try {
       const res = await apiFetch(buildApiUrl('/auth/logout-all'), { method: 'POST' })
-      // 401: o apiFetch já avisou o App, que leva ao login.
       if (res.status === 401) return
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       trackEvent('settings_sair_todos_concluido')
@@ -145,7 +137,6 @@ function useLogoutAll(onLoggedOut: () => void) {
 interface SettingsPageProps {
   user: User
   onLogout: () => void
-  /** Chamado depois que `POST /auth/logout-all` encerrou todas as sessões. */
   onLogoutAll: () => void
 }
 

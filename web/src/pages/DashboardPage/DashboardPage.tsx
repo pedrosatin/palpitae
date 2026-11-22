@@ -25,11 +25,6 @@ interface DashboardPageProps {
 
 const COMPETITION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-/**
- * Slug pedido em `?competicao=` pelo CTA de um guia. Vale só um parâmetro, com
- * até 100 caracteres, em minúsculas, números e hífens. Fora disso, o pedido é
- * ignorado.
- */
 function competitionSlugFromLink(searchParams: URLSearchParams): string | undefined {
   const values = searchParams.getAll('competicao')
   if (values.length !== 1) return undefined
@@ -99,11 +94,6 @@ function GroupsGrid({ groups }: { groups: GroupWithStats[] }) {
   )
 }
 
-/**
- * Grupos de campeonatos encerrados. Ficam numa seção própria, abaixo dos ativos,
- * colapsável — o resultado ainda é a parte mais empolgante logo após o fim, então
- * abre por padrão, mas o usuário pode recolher para tirar do caminho.
- */
 function FinishedGroupsSection({ groups }: { groups: GroupWithStats[] }) {
   const [open, setOpen] = useState(true)
 
@@ -132,14 +122,11 @@ function FinishedGroupsSection({ groups }: { groups: GroupWithStats[] }) {
 }
 
 function GroupsList({ groups, nowMs }: { groups: GroupWithStats[]; nowMs: number }) {
-  // Os grupos em andamento seguem a ordem de urgência, com o jogo sem palpite que
-  // fecha antes no topo. Encerrados mantêm a ordem da API.
   const ongoing = sortByUrgency(groups.filter((g) => g.competition_status !== 'finished'))
   const finished = groups.filter((g) => g.competition_status === 'finished')
   const banner = deadlineBanner(ongoing)
   const bannerNode = banner && <NextDeadlineBanner banner={banner} nowMs={nowMs} />
 
-  // Sem grupos encerrados: mantém a visão simples de sempre, sem seções extras.
   if (finished.length === 0) {
     return (
       <>
@@ -248,16 +235,12 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     userId: user.id,
     normalizedPendingInvite,
   })
-  // Pendências, prazo e jogo ao vivo mudam com o relógio, sem nova edição.
   const nowMs = useStatusClock(groups, refreshGroups)
 
-  // O CTA do guia pede uma competição em `?competicao=`. Na montagem, o painel
-  // abre a criação com ela escolhida. Convite na URL tem prioridade.
   const [competitionFromLink] = useState(() =>
     canCreateGroup && !pendingInvite ? competitionSlugFromLink(searchParams) : undefined,
   )
   const [createOpen, setCreateOpen] = useState(competitionFromLink !== undefined)
-  // A preferência vale só para essa abertura. Fechar o modal a descarta.
   const [createCompetitionSlug, setCreateCompetitionSlug] = useState(competitionFromLink)
 
   function closeCreateGroup() {
@@ -265,27 +248,19 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     setCreateCompetitionSlug(undefined)
   }
 
-  // Tira só o `competicao` da entrada atual do histórico, para recarregar não
-  // reabrir o modal. A volta até `/entrar` fica a cargo do redirect do App.
   useEffect(() => {
     if (!competitionFromLink || !searchParams.has('competicao')) return
     setSearchParams((prev) => withoutParam(prev, 'competicao'), { replace: true })
   }, [competitionFromLink, searchParams, setSearchParams])
 
-  // Só quem tocou em "Entrar com Google e participar" nesta aba entra sem
-  // confirmar. Um link `?convite=` aberto sozinho continua pedindo o toque.
-  // Fechar o modal descarta essa entrada: seguir o mesmo link de novo pede o toque.
   const [autoJoin, setAutoJoin] = useState(
     () => !!normalizedPendingInvite && consumeAcceptedInvite(normalizedPendingInvite),
   )
 
   function handleGroupCreated() {
     fetchGroups(true)
-    // Deixamos o modal aberto com a tela de sucesso ("Pronto"). O `CreateGroupModal`
-    // cuida do próprio estado de finalização.
   }
 
-  /** Abre o grupo. Com `?convite=` na URL, substitui essa entrada do histórico. */
   const openGroupFromInvite = useCallback(
     (groupId: string, state?: { joinedGroupName: string }) => {
       navigate(`/grupos/${groupId}`, { replace: Boolean(pendingInvite), state })
@@ -293,8 +268,6 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     [navigate, pendingInvite],
   )
 
-  // Fechar o modal do convite consome o `?convite=`: recarregar a lista ou a página
-  // não o reabre. Um novo link de convite volta a abrir o modal.
   function closeJoinGroup() {
     setJoinOpen(false)
     setAutoJoin(false)
@@ -307,8 +280,6 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     openGroupFromInvite(group.id, { joinedGroupName: group.name })
   }
 
-  // Se o convite é de um grupo em que o usuário já está, navega para o grupo em
-  // vez de deixar o painel parado com `?convite=` na URL.
   useEffect(() => {
     if (matchedInviteGroupId) openGroupFromInvite(matchedInviteGroupId)
   }, [matchedInviteGroupId, openGroupFromInvite])
@@ -342,8 +313,6 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
         preferredCompetitionSlug={createCompetitionSlug}
       />
 
-      {/* A chave recria o modal quando o convite sai da URL: o código dispensado não
-          fica no campo nem é reenviado ao abrir a entrada pela tela. */}
       <JoinGroupModal
         key={pendingInvite ?? ''}
         isOpen={joinOpen}

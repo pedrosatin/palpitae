@@ -70,7 +70,7 @@ describe('useMemberPredictions', () => {
 
     expect(result.current.modalError).toBeNull()
     expect(result.current.modalPredictions).toEqual([mockPrediction])
-    expect(result.current.modalRoundIndex).toBe(0) // applyDefaultRound finds '1' at index 0 of ['1']
+    expect(result.current.modalRoundIndex).toBe(0)
   })
 
   it('handles API error (!ok)', async () => {
@@ -113,23 +113,15 @@ describe('useMemberPredictions', () => {
 
     expect(result.current.modalLoading).toBe(true)
 
-    // Unmount before the fetch resolves
     unmount()
 
-    // Now resolve the fetch
     resolveFetch!({
       ok: true,
       json: () => Promise.resolve({ predictions: [mockPrediction], default_round: '1' }),
     } as Response)
 
-    // We can't wait for state change easily since we expect NO change,
-    // so we wait a tick to ensure promises resolve.
     await new Promise((r) => setTimeout(r, 0))
 
-    // State should not have changed because unmount set mounted = false
-    // Note: React might still return the last known state from result.current,
-    // but what we really want to ensure is no "act" warnings about updating unmounted components.
-    // We can just verify the values haven't updated to the success ones.
     expect(result.current.modalPredictions).toEqual([])
   })
 })

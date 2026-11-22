@@ -1,11 +1,3 @@
-/**
- * Guarda no navegador a escolha de "Aplicar também nos outros grupos", por usuário
- * e campeonato. Sem escolha anterior, a opção começa desmarcada, e nada vai para
- * outro grupo sem a pessoa marcar.
- *
- * Todo acesso ao `localStorage` fica em try/catch. Em modo restrito, com a cota
- * cheia ou no SSR, a opção funciona na visita atual e só não é lembrada depois.
- */
 const KEY_PREFIX = 'palpitae:aplicar-outros-grupos'
 
 export function replicatePreferenceKey(userId: string, competitionId: string): string {

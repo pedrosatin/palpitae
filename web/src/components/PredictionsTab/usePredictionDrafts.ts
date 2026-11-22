@@ -12,12 +12,6 @@ import {
 import { emptyDrafts, readStoredDrafts, writeStoredDrafts } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 
-/**
- * Início mais recente até `now`, ou 0. O travamento por horário só muda nesses
- * instantes, e com este valor a poda dos rascunhos recalcula só quando um jogo
- * começa. Gravar o storage a cada tique do relógio sobrescreveria o rascunho de
- * outra aba aberta no mesmo grupo.
- */
 function lastStartUpTo(matches: Match[], now: number): number {
   let last = 0
   for (const match of matches) {
@@ -47,11 +41,8 @@ export function usePredictionDrafts(
   const [entries, setEntries] = useState<DraftEntries>(() =>
     storageKey ? readStoredDrafts(storageKey) : emptyDrafts(),
   )
-  // Antes de os jogos chegarem, tudo pareceria desconhecido e o storage seria apagado.
   const matchesLoaded = matches.length > 0
 
-  // Sem esta limpeza, o rascunho velho voltaria se o salvo retornasse ao valor
-  // da base, por exemplo numa segunda importação.
   useEffect(() => {
     if (matchesLoaded) setEntries((prev) => dropStaleDrafts(prev, predictions))
   }, [matchesLoaded, predictions])

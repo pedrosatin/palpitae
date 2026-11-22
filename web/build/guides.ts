@@ -18,21 +18,9 @@ import { analyticsHead, consentBanner, CONSENT_CSS, normalizeGaId } from './anal
 import { PRIVACY_PATH, privacyPolicy } from './privacy'
 
 const SITE_URL = 'https://palpitae.com.br'
-/** Shared 1200x630 social image: og:image and the Article `image`. */
 const OG_IMAGE_URL = `${SITE_URL}/og-image-brasileirao-2026.png`
-/** Where the CTAs send visitors: the login page (Google sign-in → create pool). */
 const LOGIN_PATH = '/entrar'
 
-/**
- * Login URL carrying a `from` token. The guide pages are JS-less static HTML, so
- * the CTA click itself can't be tracked — instead the SPA reads `?from=` when the
- * login page mounts and fires a GA event (see pages/LoginPage). This is how we
- * attribute "which guide drove someone to sign in".
- *
- * `competicao` leva o slug da competição que vem escolhida no formulário de
- * criação. O campo no guia é `competitionSlug`. A URL sai crua, e quem a põe
- * num atributo HTML escapa o `&`.
- */
 function loginHref(from: string, competitionSlug?: string): string {
   const params = new URLSearchParams({ from })
   if (competitionSlug) params.set('competicao', competitionSlug)
@@ -40,9 +28,7 @@ function loginHref(from: string, competitionSlug?: string): string {
 }
 
 interface GuideFigure {
-  /** Path under /public, e.g. /screenshots/guias/foo.png */
   src: string
-  /** Matching .webp next to the PNG, when it exists in /public. */
   webp?: string
   alt: string
   caption?: string
@@ -52,22 +38,18 @@ interface GuideFigure {
 
 interface GuideSection {
   heading: string
-  /** Paragraphs, rendered as <p>. Plain text — authored by us. */
   body: string[]
-  /** Optional product screenshot after the paragraphs. */
   figure?: GuideFigure
 }
 
 interface GuideFaq {
   question: string
-  /** Plain-text answer; rendered on the page and in the FAQPage JSON-LD. */
   answer: string
 }
 
 interface GuideCta {
   heading: string
   text: string
-  /** Button label. Must not name a competition the sign-up flow can't select. */
   label: string
 }
 
@@ -78,46 +60,16 @@ const DEFAULT_CTA: GuideCta = {
 }
 
 interface Guide {
-  /** URL slug; page is served at /guias/<slug>/. */
   slug: string
-  /** Used for <title>, OG title and the <h1>. */
   title: string
-  /** Inviting blurb shown on the /guias/ index cards (NOT the meta description). */
   teaser: string
-  /** <meta name="description"> and OG description — kept SEO-clean. */
   description: string
-  /** Lead paragraph shown under the <h1>. */
   intro: string
   sections: GuideSection[]
-  /**
-   * Optional FAQ block rendered after the sections, mirrored in a FAQPage
-   * JSON-LD so search engines and answer engines can quote it.
-   */
   faq?: GuideFaq[]
-  /**
-   * Replaces the default CTA copy and repeats the CTA right after the intro, for
-   * guides whose reader arrives wanting to create a pool.
-   */
   cta?: GuideCta
-  /**
-   * Slug em `competitions.slug`, no formato `<nome>-<temporada>`. O CTA
-   * principal e o "Criar bolão" do topo pedem esse slug para vir escolhido no
-   * formulário de criação. Sem essa competição na lista, o formulário fica na
-   * primeira e mostra um aviso.
-   */
   competitionSlug?: string
-  /**
-   * ISO date (YYYY-MM-DD) the guide first went live: Article `datePublished`.
-   * Fixed forever. Taken from the commit on main that introduced the slug
-   * (`git log --reverse --format=%as -S "slug: '<slug>'" -- web/build/guides.ts`).
-   * A new guide uses the date of the commit that adds it.
-   */
   published: string
-  /**
-   * ISO date (YYYY-MM-DD) of the last content edit: sitemap <lastmod> and
-   * Article `dateModified`. Bump it whenever the guide's text changes; never
-   * earlier than `published`.
-   */
   updated: string
 }
 
@@ -717,7 +669,6 @@ export const guides: Guide[] = [
   },
 ]
 
-/** Public path for a guide (with trailing slash, as served). */
 function guidePath(slug: string): string {
   return `/guias/${slug}/`
 }
@@ -730,7 +681,6 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Product screenshot for a guide section: WebP when present, PNG fallback. */
 function renderFigure(figure: GuideFigure): string {
   const img = `<img src="${escapeHtml(figure.src)}" alt="${escapeHtml(figure.alt)}" width="${figure.width}" height="${figure.height}" loading="lazy" decoding="async" />`
   const picture = figure.webp
@@ -742,7 +692,6 @@ function renderFigure(figure: GuideFigure): string {
   return `<figure class="shot">\n  ${picture}${caption}\n</figure>`
 }
 
-/** Shared <style> for every guide page — mirrors the app's dark design tokens. */
 const PAGE_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{background:#0d0d0d;font-size:16px;-webkit-text-size-adjust:100%}
@@ -785,7 +734,6 @@ figure.shot figcaption{margin-top:10px;color:#a3a3a3;font-size:.875rem;line-heig
 ${CONSENT_CSS}
 `.trim()
 
-/** Shared <head> tags for a page given its canonical path, title, description. */
 function head(
   path: string,
   title: string,
@@ -826,7 +774,6 @@ function head(
     ${ld}`
 }
 
-/** Shared top bar; `from` flows into the "Criar bolão" CTA for attribution. */
 function siteHeader(from: string, competitionSlug?: string): string {
   return `<header class="site"><a class="brand" href="/" aria-label="Ir para a página inicial"><img src="/logo-text.svg" alt="Palpitae" width="94" height="24" /></a><a class="navcta" href="${escapeHtml(loginHref(from, competitionSlug))}">Criar bolão</a></header>`
 }
@@ -847,7 +794,6 @@ const breadcrumb = (path: string, name: string) => ({
   ],
 })
 
-/** FAQPage JSON-LD for a guide's FAQ block. */
 function faqJsonLd(faq: GuideFaq[]) {
   return {
     '@context': 'https://schema.org',
@@ -897,8 +843,6 @@ export function renderGuide(g: Guide, gaId = ''): string {
     : ''
   const jsonLd: object[] = [breadcrumb(path, g.title), article]
   if (g.faq?.length) jsonLd.push(faqJsonLd(g.faq))
-  // Contextual internal links to the sibling guides — strengthens the topic
-  // cluster for SEO and keeps the other pages from being orphaned.
   const related = guides.filter((o) => o.slug !== g.slug)
   const relatedHtml = related.length
     ? `<nav class="related" aria-label="Guias relacionados"><h2>Continue lendo</h2><ul>${related
@@ -987,7 +931,6 @@ ${head(path, 'Guias de bolão de futebol', 'Guias para organizar bolão de futeb
 `
 }
 
-/** Data ISO (YYYY-MM-DD) por extenso, como "14 de novembro de 2026". */
 function longDate(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('pt-BR', {
     day: 'numeric',
@@ -1099,11 +1042,6 @@ ${guideLines}
 `
 }
 
-/**
- * Render the static 404 page. Cloudflare Pages serves /404.html (with a real 404
- * status) for any URL not matched by a static asset or a _redirects rule. It's
- * `noindex` so a crawler that lands on a stale link doesn't index an error page.
- */
 function render404(): string {
   return `<!doctype html>
 <html lang="pt-BR">
@@ -1133,9 +1071,8 @@ function render404(): string {
 `
 }
 
-/** Resolve a request path to a guide page's HTML (or /privacidade), or null otherwise. */
 function guideHtmlFor(reqUrl: string, gaId: string): string | null {
-  const path = (reqUrl.split('?')[0] || '').replace(/\/+$/, '') // strip query + trailing /
+  const path = (reqUrl.split('?')[0] || '').replace(/\/+$/, '')
   if (path === '/guias') return renderIndex(gaId)
   if (path === PRIVACY_PATH) return renderPrivacy(gaId)
   const g = guides.find((g) => `/guias/${g.slug}` === path)
@@ -1152,8 +1089,6 @@ function guideHtmlFor(reqUrl: string, gaId: string): string | null {
  * (Cloudflare Pages serves the static /guias/<slug>/index.html files directly).
  */
 export function guidesPlugin(): Plugin {
-  // Same env var the SPA reads (src/config.ts). Vite loads .env.<mode> into
-  // config.env, so production builds get the id and local dev stays GA-free.
   let gaId = ''
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
     if ((req.originalUrl ?? '').split('?')[0] === '/llms.txt') {
@@ -1192,19 +1127,16 @@ export function guidesPlugin(): Plugin {
           source: renderGuide(g, gaId),
         })
       }
-      // privacidade.html: o Cloudflare Pages serve em /privacidade, sem barra final.
       this.emitFile({
         type: 'asset',
         fileName: `${PRIVACY_PATH.slice(1)}.html`,
         source: renderPrivacy(gaId),
       })
-      // /llms.txt lists every guide, so it is generated from the same catalog.
       this.emitFile({
         type: 'asset',
         fileName: 'llms.txt',
         source: renderLlmsTxt(),
       })
-      // Static 404 page served by Cloudflare Pages for unmatched URLs.
       this.emitFile({
         type: 'asset',
         fileName: '404.html',
@@ -1214,12 +1146,6 @@ export function guidesPlugin(): Plugin {
   }
 }
 
-/**
- * Last commit date (YYYY-MM-DD) touching any of `paths`, for a truthful sitemap
- * <lastmod>. Uses git so it reflects real content changes instead of the build
- * date. Falls back to `fallback` when git history is unavailable (e.g. a shallow
- * CI checkout or an untracked path), so the build never breaks.
- */
 function gitLastModified(paths: string[], fallback: string): string {
   let latest = ''
   for (const p of paths) {
@@ -1229,7 +1155,7 @@ function gitLastModified(paths: string[], fallback: string): string {
       })
         .toString()
         .trim()
-      if (out && out > latest) latest = out // ISO dates sort lexicographically
+      if (out && out > latest) latest = out
     } catch {
       // git missing or path untracked — skip; fallback applies below
     }
@@ -1243,24 +1169,19 @@ export function sitemapUrls(): { loc: string; lastmod: string; priority: string 
   return [
     {
       loc: `${SITE_URL}/`,
-      // Landing markup lives in index.html + the LandingPage component.
       lastmod: gitLastModified(['index.html', 'src/pages/LandingPage'], fallback),
       priority: '1.0',
     },
     {
       loc: `${SITE_URL}/guias/`,
-      // The index is generated from the guide catalog in this file.
       lastmod: gitLastModified(['build/guides.ts'], fallback),
       priority: '0.6',
     },
-    // Per-guide dates stay manual (`updated`): granular and truthful — bump it
-    // when you edit a guide's content.
     ...guides.map((g) => ({
       loc: `${SITE_URL}${guidePath(g.slug)}`,
       lastmod: g.updated,
       priority: '0.7',
     })),
-    // Data manual, como a dos guias: mude `updated` em build/privacy.ts junto com o texto.
     {
       loc: `${SITE_URL}${PRIVACY_PATH}`,
       lastmod: privacyPolicy.updated,

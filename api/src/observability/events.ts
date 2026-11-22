@@ -18,55 +18,34 @@
 import { hexEncode } from '../auth/encoding'
 
 export type EventType =
-  // Saúde do cron / API Football
   | 'poller_run'
   | 'fixture_discovery_run'
   | 'football_api_error'
-  // Rotina agendada: cron sem ramo no handler e configuração opcional ausente
   | 'scheduled_unknown_cron'
   | 'scheduled_config_missing'
-  // Uso diário das cotas do plano Free (ADR-022): medição, alerta de 50%/80% e falha da consulta
   | 'cloudflare_usage'
   | 'cloudflare_quota_alert'
   | 'cloudflare_usage_error'
-  // Fallback de resultados via ESPN (ADR-016)
   | 'match_results_fallback'
-  // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos
   | 'provider_http_attempt'
-  // Execução do cron drenador da fila durável de sync (ADR-027)
   | 'provider_work_run'
-  // Acesso a um provedor bloqueado (403 espaçado) ou suspenso porque a resposta o proibiu
   | 'provider_access_blocked'
-  // Provedor trocou os times de um jogo já gravado (mando invertido ou time substituído)
   | 'match_teams_changed'
-  // Sync achou competição nova sem configuração cadastrada e não a criou
   | 'competition_unconfigured'
-  // Sync não importou eventos do provedor (fase desconhecida, outra edição, time ausente)
   | 'sync_event_discarded'
-  // Jogo pendente que o calendário completo da football-data deixou de trazer
   | 'match_missing_from_feed'
-  // Descoberta não conseguiu gravar o status da competição depois do sync
   | 'competition_status_error'
-  // Pontuação de uma competição falhou no poller (as outras seguem)
   | 'match_scoring_error'
-  // Competição com jogo encerrado que segue sem pontuação depois de mais de um ciclo do poller
   | 'match_unscored'
-  // Alerta de resultado atrasado (kickoff + limiar): enviado, silenciado, limpo ou pulado
   | 'result_overdue_alert'
-  // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'
-  // Performance / latência de request
   | 'request_perf'
-  // Falha de D1 nos controles de acesso (contador de requisições, revogação, limpeza)
   | 'security_storage_error'
-  // Negócio (server-side, nos routers)
   | 'prediction_saved'
   | 'group_created'
   | 'group_joined'
-  // Pedido de entrada pelo link público do grupo (antes da aprovação)
   | 'join_request'
-  // Abertura de /convite/:code por uma pessoa, sem nenhum dado do convite ou de quem abriu
   | 'invite_opened'
   | 'member_removed'
   | 'group_renamed'
@@ -74,12 +53,10 @@ export type EventType =
   | 'group_deleted'
   | 'login_success'
   | 'login_failure'
-  // Conta nova: origem em categoria fechada, sem identificar a pessoa
   | 'account_created'
   | 'logout_all'
   | 'oauth_error'
   | 'matches_cache'
-  // Notificações por e-mail
   | 'email_reminder_sent'
   | 'email_reminder_failed'
   | 'cron_round_reminder'
@@ -88,9 +65,7 @@ export type EventType =
   | 'email_resubscribed'
 
 export type EventDims = {
-  /** Dimensões string. Viram blob2, blob3, ... (blob1 é sempre o event_type). */
   blobs?: (string | null | undefined)[]
-  /** Medidas numéricas. Viram double1, double2, ... */
   doubles?: number[]
 }
 

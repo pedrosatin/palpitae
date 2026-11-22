@@ -12,7 +12,6 @@ interface AdminPillsProps<T extends string | number> {
   value: T | null
   onChange: (value: T) => void
   className?: string
-  /** Nome do grupo para leitor de tela. */
   ariaLabel?: string
 }
 

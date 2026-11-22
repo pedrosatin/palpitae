@@ -33,8 +33,6 @@ export default function LandingPage() {
   )
 }
 
-/* ─── Page Sections ────────────────────────────────────────────────────── */
-
 function Header() {
   return (
     <header className={styles.nav}>
@@ -259,10 +257,6 @@ function Faq() {
   )
 }
 
-/**
- * Links para os guias estáticos (/guias/*), páginas fora da SPA.
- * Usa <a> nativo porque o react-router não tem as rotas /guias/*.
- */
 function Guides() {
   return (
     <section id="guias" className={styles.guides} aria-labelledby="guias-titulo">
@@ -319,8 +313,6 @@ function Footer() {
         className={styles.footerLogo}
       />
       <span className={styles.footerNote}>Palpitae — Bolões de futebol com seus amigos</span>
-      {/* Static content pages live outside the SPA (built to /guias/*), so use
-          a native <a> for a full navigation — react-router has no such route. */}
       <a
         href="/guias/"
         className={styles.footerLink}
@@ -347,15 +339,6 @@ function Footer() {
   )
 }
 
-/* ─── Local presentational helpers ─────────────────────────────────────── */
-
-/**
- * Srcset da captura de palpites. No celular a captura ocupa a largura da tela
- * menos o padding da seção (100vw - 3rem), e no desktop fica na coluna de 1fr
- * do grid (456px com a seção no máximo de 1100px). A variante de 640w cobre as
- * duas larguras de exibição em DPR 1; com o DPR 2,6 do celular o navegador
- * escolhe a de 1100w.
- */
 const PALPITES_SRCSET = '/screenshots/palpites-640.webp 640w, /screenshots/palpites.webp 1100w'
 const PALPITES_SIZES = '(max-width: 860px) calc(100vw - 3rem), 456px'
 
@@ -462,10 +445,6 @@ function Shot({
   )
 }
 
-/**
- * Decorative browser-window chrome wrapped around a screenshot, so the preview
- * reads as a real product shot rather than a bare image.
- */
 function BrowserFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`${styles.frame} ${className ?? ''}`}>

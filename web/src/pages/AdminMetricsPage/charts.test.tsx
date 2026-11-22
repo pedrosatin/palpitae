@@ -22,13 +22,11 @@ describe('charts', () => {
 
       expect(screen.getByRole('img', { name: 'Test Stacked Chart' })).toBeInTheDocument()
 
-      // 2 days * (2 + 1) segments = 3 rects
       const rects = document.querySelectorAll('rect')
       expect(rects.length).toBe(3)
       expect(rects[0]).toHaveAttribute('width')
       expect(rects[0].getAttribute('width')).not.toBe('0')
 
-      // Check partial text in tooltips
       const titles = document.querySelectorAll('title')
       expect(titles[0].textContent).toContain('2023-10-01')
       expect(titles[0].textContent).toContain('10')
@@ -51,8 +49,8 @@ describe('charts', () => {
       render(<StackedBarChart days={days} ariaLabel="Many Days" />)
 
       const texts = document.querySelectorAll('text')
-      expect(texts.length).toBeLessThan(15) // ticks should be skipped
-      expect(texts[texts.length - 1].textContent).toContain('15') // last is always there
+      expect(texts.length).toBeLessThan(15)
+      expect(texts[texts.length - 1].textContent).toContain('15')
     })
   })
 

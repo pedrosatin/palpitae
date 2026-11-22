@@ -1,9 +1,3 @@
--- Marcos de placares exatos (5, 15, 30) por membro e grupo.
--- O marco é gravado na primeira leitura de round-standings em que o total o
--- alcança. `round` guarda a rodada de referência dessa leitura; NULL marca
--- backfill na primeira leitura do grupo (já atingido antes do deploy, sem
--- destaque). A exclusão de conta ou de grupo remove as linhas em cascata
--- (ADR-026).
 
 CREATE TABLE IF NOT EXISTS exact_milestones (
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -21,9 +15,6 @@ CREATE INDEX IF NOT EXISTS idx_exact_milestones_group
 CREATE INDEX IF NOT EXISTS idx_exact_milestones_user
   ON exact_milestones(user_id);
 
--- Grupo já passou pela primeira leitura com rodada de referência após o deploy.
--- Sem esta marca, um grupo novo lido com 0 exatos e depois com 5 seria tratado
--- como backfill e perderia o destaque do primeiro cruzamento.
 CREATE TABLE IF NOT EXISTS exact_milestones_initialized (
   group_id TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
   initialized_at TEXT NOT NULL DEFAULT (datetime('now'))

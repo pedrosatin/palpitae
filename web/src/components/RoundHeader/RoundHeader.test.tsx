@@ -142,7 +142,6 @@ describe('RoundHeader – rodada com jogo adiado', () => {
     render(<RoundHeader {...baseProps} postponedByRound={new Map([['21', 4]])} />)
 
     expect(screen.getByRole('option', { name: 'Rodada 21 · 4 adiados' })).toBeInTheDocument()
-    // As demais ficam intactas.
     expect(screen.getByRole('option', { name: 'Rodada 22' })).toBeInTheDocument()
   })
 

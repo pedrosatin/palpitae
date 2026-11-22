@@ -32,7 +32,7 @@ describe('overdueResultHours', () => {
 
 describe('isResultOverdue', () => {
   const now = Date.parse('2026-11-19T18:00:00Z')
-  const kickoff = '2026-11-19T14:00:00Z' // 4 h atrás
+  const kickoff = '2026-11-19T14:00:00Z'
 
   it('marca scheduled/live sem placar depois do limiar', () => {
     expect(

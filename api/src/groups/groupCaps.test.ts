@@ -6,9 +6,6 @@ import { signJwt } from '../auth/jwt'
 import type { Env } from '../types'
 import { createSqliteD1 } from '../testing/sqliteD1'
 
-// Tetos por usuário pela API inteira, com o SQL de produção no SQLite em memória.
-// Os números ficam literais aqui porque refletem a decisão do operador, e o teste
-// precisa quebrar se a constante mudar sem querer.
 const OWNED_CAP_ERROR = 'Você já tem 20 grupos criados. Exclua um para criar outro.'
 const JOIN_CAP_ERROR = 'Você já participa de 50 grupos. Saia de um para entrar em outro.'
 const CREATE_MEMBERSHIP_CAP_ERROR = 'Você já participa de 50 grupos. Saia de um para criar outro.'
@@ -116,7 +113,6 @@ async function fixture() {
     'INSERT INTO group_members (id,group_id,user_id,role) VALUES (?,?,?,?)',
   )
   let seeded = 0
-  /** Grava `count` grupos de `owner`, cada um com a linha do dono, e devolve os ids. */
   function seedGroups(owner: string, count: number): string[] {
     return Array.from({ length: count }, () => {
       const id = `g${++seeded}`
@@ -125,7 +121,6 @@ async function fixture() {
       return id
     })
   }
-  /** Põe `user` como membro comum de cada grupo. */
   function seedMemberships(user: string, groupIds: string[]) {
     for (const id of groupIds) insertMember.run(`${id}-${user}`, id, user, 'member')
   }
@@ -137,10 +132,8 @@ async function fixture() {
     request('/groups/join', user, 'POST', { invite_code: inviteCode(groupId) })
 
   const count = (sql: string) => (sqlite.prepare(sql).get() as { n: number }).n
-  /** Grupos não excluídos em que `ana` é a dona. */
   const ownedActive = () =>
     count("SELECT COUNT(*) AS n FROM groups WHERE owner_user_id = 'ana' AND deleted_at IS NULL")
-  /** Participações de `ana` em grupos não excluídos. */
   const membershipsActive = () =>
     count(
       `SELECT COUNT(*) AS n FROM group_members gm JOIN groups g ON g.id = gm.group_id
@@ -151,7 +144,6 @@ async function fixture() {
     members: count('SELECT COUNT(*) AS n FROM group_members'),
   })
 
-  /** Dispara os dois pedidos com as gravações seguradas e devolve os status em ordem. */
   async function raceStatuses(first: () => Promise<Response>, second: () => Promise<Response>) {
     const gate = holdWritesUntilBothArrive(db)
     env.DB = gate.db
@@ -185,7 +177,6 @@ describe('teto de 20 grupos criados por usuário', () => {
     const refused = await create()
     expect(refused.status).toBe(409)
     expect(await refused.json()).toEqual({ error: OWNED_CAP_ERROR })
-    // A recusa não deixa grupo nem participação pela metade.
     expect(totals()).toEqual(before)
   })
 

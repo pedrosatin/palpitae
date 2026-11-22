@@ -29,7 +29,6 @@ export type JoinGroupEntryMethod = 'convite_link' | 'convite_antigo' | 'codigo'
 
 /** Entrada no grupo confirmada pela API (caminho por convite/código). */
 export function trackJoinGroup(entryMethod: JoinGroupEntryMethod): void {
-  // Não usar `source`: o GA4 trata esse parâmetro como origem da sessão.
   trackEvent('join_group', { entry_method: entryMethod })
 }
 
@@ -46,10 +45,6 @@ export function trackApproveJoinRequest(): void {
   trackEvent('approve_join_request')
 }
 
-// O OAuth sai do app (Google → API → volta para o front) e o retorno não traz
-// nenhum sinal de "acabou de logar". O clique no botão marca a aba; quando o
-// /auth/me responde, o App consome a marca e, se a sessão existir, conta o login.
-// sessionStorage porque a marca só faz sentido nesta aba e nesta ida ao Google.
 const LOGIN_PENDING_KEY = 'palpitae:login-pendente'
 
 /** Chamado no clique de "Entrar com Google", antes de sair para o OAuth. */

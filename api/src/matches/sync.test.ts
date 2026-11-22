@@ -62,7 +62,6 @@ function buildFakeDb() {
               }))
               return { results } as { results: T[] }
             } else {
-              // bound = [...extIds, PROVIDER]
               const ids = bound.slice(0, bound.length - 1) as string[]
               const results = ids.map((extId) => ({
                 external_id: extId,
@@ -81,7 +80,6 @@ function buildFakeDb() {
   return { db: db as never, captured, sqls }
 }
 
-// Minimal football-data team/match factories.
 function team(id: number, name: string, tla: string) {
   return { id, name, shortName: name, tla, crest: `https://x/${id}.png` }
 }
@@ -194,8 +192,8 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
 
     const row = captured.matches[0]
-    expect(row[HOME]).toBe(2) // 5 - 3
-    expect(row[AWAY]).toBe(2) // 6 - 4
+    expect(row[HOME]).toBe(2)
+    expect(row[AWAY]).toBe(2)
     expect(row[PEN_WINNER]).toBe('away')
     expect(row[PEN_HOME]).toBe(3)
     expect(row[PEN_AWAY]).toBe(4)
@@ -206,15 +204,15 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
       match(110, {
         winner: 'HOME_TEAM',
         duration: 'PENALTY_SHOOTOUT',
-        fullTime: { home: 5, away: 4 }, // Includes penalties (2-2 + 3-2 penalties)
-        regularTime: { home: null, away: null }, // Missing from upstream
-        extraTime: { home: null, away: null }, // Missing from upstream
+        fullTime: { home: 5, away: 4 },
+        regularTime: { home: null, away: null },
+        extraTime: { home: null, away: null },
         penalties: { home: 3, away: 2 },
       }),
       match(111, {
         winner: 'HOME_TEAM',
         duration: 'PENALTY_SHOOTOUT',
-        fullTime: { home: 2, away: 2 }, // Does NOT include penalties
+        fullTime: { home: 2, away: 2 },
         regularTime: { home: null, away: null },
         extraTime: { home: null, away: null },
         penalties: { home: 3, away: 2 },
@@ -223,36 +221,30 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     const { db, captured } = buildFakeDb()
     await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
 
-    // Match 110: fullTime includes penalties
-    expect(captured.matches[0][HOME]).toBe(2) // 5 - 3
-    expect(captured.matches[0][AWAY]).toBe(2) // 4 - 2
+    expect(captured.matches[0][HOME]).toBe(2)
+    expect(captured.matches[0][AWAY]).toBe(2)
 
-    // Match 111: fullTime does NOT include penalties
-    expect(captured.matches[1][HOME]).toBe(2) // Kept as 2
-    expect(captured.matches[1][AWAY]).toBe(2) // Kept as 2
+    expect(captured.matches[1][HOME]).toBe(2)
+    expect(captured.matches[1][AWAY]).toBe(2)
   })
 
   it('PENALTY_SHOOTOUT: regularTime wins over fullTime heuristic when fullTime is inconsistent (AUS -1 / EGI 1 anomaly)', async () => {
-    // Handling: football-data sent fullTime={home:1,away:2} for an actual 1-1 draw
-    // that went to penalties (e.g. AUS vs EGY). The old heuristic subtracted the
-    // penalty goals from fullTime and produced canonicalHome=-1. The fix: when
-    // regularTime is available it is the authoritative canonical score.
     mockFetch([
       match(112, {
         winner: 'AWAY_TEAM',
         duration: 'PENALTY_SHOOTOUT',
-        fullTime: { home: 1, away: 2 }, // inconsistent from provider
-        regularTime: { home: 1, away: 1 }, // authoritative: the actual draw
-        extraTime: { home: 0, away: 0 }, // no extra time
-        penalties: { home: 2, away: 1 }, // shootout (does not affect canonical)
+        fullTime: { home: 1, away: 2 },
+        regularTime: { home: 1, away: 1 },
+        extraTime: { home: 0, away: 0 },
+        penalties: { home: 2, away: 1 },
       }),
     ])
     const { db, captured } = buildFakeDb()
     await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
 
     const row = captured.matches[0]
-    expect(row[HOME]).toBe(1) // must be 1, not -1
-    expect(row[AWAY]).toBe(1) // must be 1, not  2
+    expect(row[HOME]).toBe(1)
+    expect(row[AWAY]).toBe(1)
     expect(row[PEN_WINNER]).toBe('away')
   })
   it('PENALTY_SHOOTOUT: prevents negative canonical score when regularTime is missing and fullTime is inconsistent', async () => {
@@ -260,7 +252,7 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
       match(113, {
         winner: 'AWAY_TEAM',
         duration: 'PENALTY_SHOOTOUT',
-        fullTime: { home: 1, away: 2 }, // inconsistent
+        fullTime: { home: 1, away: 2 },
         regularTime: { home: null, away: null },
         extraTime: { home: null, away: null },
         penalties: { home: 2, away: 1 },
@@ -295,7 +287,7 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     const row = captured.matches[0]
     expect(row[HOME]).toBe(1)
     expect(row[AWAY]).toBe(1)
-    expect(row[PEN_WINNER]).toBe('away') // Derived away from penalties home=2 < away=4
+    expect(row[PEN_WINNER]).toBe('away')
   })
 
   it('EXTRA_TIME (no shootout): canonical = fullTime, penalty fields null', async () => {
@@ -485,7 +477,6 @@ describe('syncFixtures — jogos adiados (POSTPONED)', () => {
     await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
 
     expect(sqls.match).toContain('postponed          = excluded.postponed')
-    // sanity: o placeholder é mesmo o que chega da API
     expect(sqls.match).toContain('INSERT INTO matches')
   })
 
@@ -656,7 +647,6 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
     clearFootballDataPause()
   })
 
-  /** Resposta da football-data com cabeçalhos reais (`Headers` do runtime). */
   const fdResponse = (status: number, headers: Record<string, string> = {}) => ({
     ok: status >= 200 && status < 300,
     status,
@@ -688,7 +678,6 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     await expect(promise).resolves.toMatchObject({ matches: 0 })
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    // O corpo do 429 é descartado antes do retry, sem segurar a conexão.
     expect(limited.body.cancel).toHaveBeenCalledTimes(1)
   })
 
@@ -717,12 +706,10 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
     await expect(sync()).rejects.toBeInstanceOf(FootballDataQuotaError)
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // Outro sync no mesmo isolate, com o reset ainda longe: nenhuma request sai.
     await vi.advanceTimersByTimeAsync(500_000)
     await expect(sync()).rejects.toThrow('cota esgotada')
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // Perto do reset, o sync espera em vez de falhar, e a request só sai nele.
     await vi.advanceTimersByTimeAsync(60_000)
     const waiting = sync()
     await vi.advanceTimersByTimeAsync(39_000)
@@ -733,9 +720,7 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
   })
 
   it.each([
-    // Inválido: pausa padrão de 60 s, cabe na espera, então o retry sai e volta 429.
     ['inválido', { 'X-RequestCounter-Reset': 'abc', 'Retry-After': '-5' }, 60_000, 2],
-    // Absurdo: limitado a 1 h, além da espera, então falha sem retry.
     ['absurdo', { 'X-RequestCounter-Reset': '999999999' }, 60 * 60_000, 1],
   ])('reset %s não bloqueia o serviço para sempre', async (_label, headers, pauseMs, tries) => {
     const fetchMock = vi.fn()
@@ -748,7 +733,6 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
     await vi.advanceTimersByTimeAsync(Math.min(pauseMs, FD_QUOTA_MAX_WAIT_MS))
     await assertion
     expect(fetchMock).toHaveBeenCalledTimes(tries)
-    // Pausado, mas por um tempo finito: no máximo `pauseMs` depois do último 429.
     expect(footballDataPausedUntil()).toBeGreaterThan(Date.now())
     expect(footballDataPausedUntil()).toBeLessThanOrEqual(Date.now() + pauseMs)
 
@@ -798,7 +782,6 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
     await expect(sync()).rejects.toBeInstanceOf(FootballDataQuotaError)
     expect(footballDataPausedUntil()).toBe(Date.now() + 600_000)
 
-    // Módulos recarregados = isolate novo: a pausa não é coordenação global.
     vi.resetModules()
     const fresh = await import('./sync')
     const { db } = buildFakeDb()
@@ -806,7 +789,6 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
       fresh.syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db }),
     ).resolves.toMatchObject({ matches: 0 })
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    // Este isolate continua pausado.
     expect(footballDataPausedUntil()).toBe(Date.now() + 600_000)
   })
 
@@ -875,7 +857,6 @@ describe('syncFixtures — telemetria por tentativa HTTP', () => {
       await vi.advanceTimersByTimeAsync(30_000)
       await promise
 
-      // A cota restante e o reset informados seguem junto de cada tentativa.
       expect(
         onHttpAttempt.mock.calls.map(([a]) => [
           a.provider,
@@ -978,7 +959,6 @@ describe('runInBatches', () => {
     const batchMock = vi.fn().mockResolvedValue(undefined)
     const db = { batch: batchMock } as any
 
-    // Create 250 dummy statements
     const statements = Array.from({ length: 250 }).map((_, i) => ({ id: i })) as any[]
 
     await runInBatches(db, statements)

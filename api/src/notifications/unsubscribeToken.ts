@@ -1,22 +1,3 @@
-/**
- * Token próprio e sem estado para o link de descadastro de um clique nos e-mails.
- *
- * De propósito, não é um JWT: o middleware de autenticação (`requireAuth`) aceita
- * qualquer JWT HS256 assinado com o JWT_SECRET, então reaproveitar o token de
- * sessão aqui transformaria a URL de descadastro, que viaja dentro de todo e-mail,
- * em credencial de sessão. Este token leva só o id do usuário e um HMAC separado:
- * serve para agir sobre o usuário certo e não vale como credencial.
- *
- * Sem expiração: o link de um e-mail antigo precisa continuar funcionando. O HMAC
- * leva um prefixo fixo de domínio, para que um token gerado aqui nunca coincida com
- * outro uso de HMAC do mesmo segredo.
- *
- * Segredos: o token novo é assinado com `UNSUBSCRIBE_SECRET`, que não muda quando o
- * `JWT_SECRET` é rotacionado. Sem ele configurado, a assinatura usa o `JWT_SECRET`,
- * como antes. A verificação aceita os dois, para que links de e-mails enviados antes
- * do segredo próprio continuem valendo. O passo a passo da rotação está em
- * `docs/security.md`.
- */
 
 import { base64UrlDecode, base64UrlEncode } from '../auth/encoding'
 import { HMAC_SHA256, importHmacKey } from '../auth/crypto'

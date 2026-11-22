@@ -1,8 +1,3 @@
-// Status de cada grupo no painel, ordem por urgência e faixa "Próximo prazo".
-// Os números vêm prontos do `GET /groups`, calculados em
-// api/src/groups/pendingPredictions.ts pela mesma regra de rodada padrão da aba
-// Palpitar. Aqui fica só a escolha da mensagem, a ordem e o texto, com horários
-// no fuso de Brasília como no resto do app.
 
 /**
  * Gênero e número do rótulo da rodada, que a API manda junto do rótulo:
@@ -15,13 +10,8 @@ export type RoundAgreement = 'fs' | 'fp' | 'ms' | 'mp'
 export interface DeadlineMatch {
   match_id: string
   start_time: string
-  /** Rodada crua, para abrir a aba Palpitar nela. */
   round: string
   round_label: string
-  /**
-   * Concordância de `round_label`. Null quando a rodada é desconhecida e o rótulo
-   * vem cru do provedor; ausente na API antiga. Nos dois casos o painel não mostra o rótulo.
-   */
   round_agreement?: RoundAgreement | null
   home_team: string
   away_team: string
@@ -38,7 +28,6 @@ export interface RoundStatusFields {
   next_deadline?: DeadlineMatch | null
   next_match_at?: string | null
   current_round_label?: string | null
-  /** Concordância de `current_round_label`. Sem ela, o resumo diz "Tudo palpitado". */
   current_round_agreement?: RoundAgreement | null
   round_ends_at?: string | null
   live_matches?: number
@@ -124,10 +113,6 @@ export function pendingCountText(count: number, groups = 1): string {
   return groups > 1 ? `${count} sem palpite em ${groups} grupos` : `${count} sem palpite`
 }
 
-/**
- * Partes da linha de status. A primeira leva o "✓" no texto visível quando a
- * rodada está toda palpitada.
- */
 function statusParts(
   status: GroupRoundStatus,
   nowMs: number,
@@ -232,7 +217,6 @@ export type DeadlineBanner =
       kind: 'pending'
       groupId: string
       groupName: string
-      /** Null quando o grupo mais urgente só tem adiado sem data nova. */
       match: DeadlineMatch | null
       totalPending: number
       groupsWithPending: number
@@ -276,8 +260,6 @@ export function deadlineBanner(groups: RoundStatusFields[]): DeadlineBanner | nu
     .sort((a, b) => a.endsAt - b.endsAt)
   return rounds.length > 0 ? { kind: 'clear', round: rounds[0].round } : null
 }
-
-// ─── Datas no fuso de Brasília ──────────────────────────────────────────────
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']

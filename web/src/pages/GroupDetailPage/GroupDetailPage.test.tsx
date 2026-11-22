@@ -8,8 +8,6 @@ import GroupDetailPage from './GroupDetailPage'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-// ─── Mock heavy child components ───────────────────────────────────────────
-
 vi.mock('../../components/PredictionsTab', () => ({
   default: ({
     groupId,
@@ -96,8 +94,6 @@ vi.mock('../../components/MembersTab', () => ({
   ),
 }))
 
-// ─── Fixtures ──────────────────────────────────────────────────────────────
-
 const baseUser = {
   id: 'user-1',
   email: 'user@example.com',
@@ -147,8 +143,6 @@ function mockGroupFetchSequence(...responses: Array<{ ok?: boolean; body?: unkno
   })
 }
 
-// ─── Render helper ─────────────────────────────────────────────────────────
-
 function LocationProbe() {
   const location = useLocation()
   return <output data-testid="location">{location.pathname + location.search}</output>
@@ -168,8 +162,6 @@ function renderPage(path = '/groups/00000000-0000-4000-8000-000000000001', route
     </MemoryRouter>,
   )
 }
-
-// ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('GroupDetailPage, confirmação de entrada', () => {
   beforeEach(() => {
@@ -254,18 +246,15 @@ describe('GroupDetailPage – routing & fetch', () => {
   })
 
   it('redirects to "/" when groupId is not present in the route', () => {
-    // Render on a route that does NOT capture :groupId
     render(
       <MemoryRouter initialEntries={['/groups/']}>
         <Routes>
-          {/* This route has no :groupId param */}
           <Route path="/groups/" element={<GroupDetailPage user={baseUser} onLogout={vi.fn()} />} />
           <Route path="/" element={<div>Home</div>} />
         </Routes>
       </MemoryRouter>,
     )
 
-    // Component renders <Navigate to="/" replace /> → should show Home
     expect(screen.getByText('Home')).toBeInTheDocument()
   })
 })
@@ -390,7 +379,6 @@ describe('GroupDetailPage – leave group', () => {
 
     renderPage()
 
-    // The leave action lives inside the kebab menu and is hidden until opened.
     expect(screen.queryByRole('menuitem', { name: /sair do grupo/i })).not.toBeInTheDocument()
 
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
@@ -418,7 +406,6 @@ describe('GroupDetailPage – leave group', () => {
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
     await userEvent.click(screen.getByRole('menuitem', { name: /sair do grupo/i }))
 
-    // Confirmation dialog appears instead of window.confirm.
     expect(await screen.findByText('Tem certeza que deseja sair deste grupo?')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
 
@@ -747,7 +734,6 @@ describe('GroupDetailPage – standings tab gate (competition_type)', () => {
     renderPage('/groups/00000000-0000-4000-8000-000000000001?tab=standings')
     await screen.findByRole('link', { name: /Ranking/i })
     expect(screen.queryByTestId('standings-tab')).not.toBeInTheDocument()
-    // painel default (Palpitar) ativo no lugar de um painel vazio
     expect(screen.getByRole('link', { name: /Palpitar/i })).toHaveClass(/tabActive/i)
   })
 })

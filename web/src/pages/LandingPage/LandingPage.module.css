@@ -1,19 +1,9 @@
-/**
- * LandingPage styles.
- *
- * Public marketing page for unauthenticated visitors. Dark theme with the
- * brand green accent. All colors/spacing reference tokens from
- * src/styles/variables.css.
- */
-
 .root {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
 }
-
-/* ─── Nav ─────────────────────────────────────────────────────────────── */
 
 .nav {
   position: sticky;
@@ -72,8 +62,6 @@
   background-color: var(--color-primary-hover);
   text-decoration: none;
 }
-
-/* ─── Hero ────────────────────────────────────────────────────────────── */
 
 .hero {
   display: grid;
@@ -145,8 +133,6 @@
   width: 100%;
 }
 
-/* ─── Browser frame ───────────────────────────────────────────────────── */
-
 .frame {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -180,8 +166,6 @@
   width: 100%;
   height: auto;
 }
-
-/* ─── Features ────────────────────────────────────────────────────────── */
 
 .features {
   display: flex;
@@ -237,8 +221,6 @@
 .featureShot {
   width: 100%;
 }
-
-/* ─── Scoring ─────────────────────────────────────────────────────────── */
 
 .sectionTitle {
   font-size: var(--font-size-3xl);
@@ -306,8 +288,6 @@
   line-height: var(--line-height-relaxed, 1.6);
 }
 
-/* ─── Campeonatos ─────────────────────────────────────────────────────── */
-
 .competitions {
   max-width: 1100px;
   width: 100%;
@@ -353,8 +333,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* ─── FAQ ─────────────────────────────────────────────────────────────── */
-
 .faq {
   max-width: 760px;
   width: 100%;
@@ -387,8 +365,6 @@
   color: var(--color-text-secondary);
   line-height: var(--line-height-relaxed, 1.6);
 }
-
-/* ─── Guias ───────────────────────────────────────────────────────────── */
 
 .guides {
   max-width: 760px;
@@ -454,8 +430,6 @@
   outline-offset: 2px;
 }
 
-/* ─── Final CTA ───────────────────────────────────────────────────────── */
-
 .cta {
   max-width: 640px;
   width: 100%;
@@ -482,8 +456,6 @@
   margin-top: var(--space-4);
 }
 
-/* ─── Footer ──────────────────────────────────────────────────────────── */
-
 .footer {
   margin-top: auto;
   display: flex;
@@ -502,7 +474,6 @@
 }
 
 .footerNote {
-  /* text-secondary em vez de text-muted: segue o texto principal do rodapé. */
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
 }
@@ -515,8 +486,6 @@
 .footerLink:hover {
   color: var(--color-primary);
 }
-
-/* ─── Responsive ──────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
   .hero {

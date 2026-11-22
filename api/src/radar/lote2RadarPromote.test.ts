@@ -11,7 +11,6 @@ const JWT_SECRET = 'test-secret-lote2-radar'
 const ADMIN = 'admin@palpitae.com.br'
 const ORDINARY = 'comum@example.com'
 
-/** As cinco do lote 2: radar (país/nome do provider) → slug seedado nas migrations. */
 const LOTE2 = [
   { id: 'pd', name: 'La Liga', country: 'Spain', slug: 'la-liga-2026' },
   { id: 'sa', name: 'Serie A', country: 'Italy', slug: 'serie-a-2026' },

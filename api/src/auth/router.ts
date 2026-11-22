@@ -25,10 +25,8 @@ const VERIFIER_COOKIE = 'oauth_verifier'
 const REDIRECT_COOKIE = 'oauth_redirect'
 const ORIGIN_COOKIE = 'oauth_origin'
 const OAUTH_COOKIES = [STATE_COOKIE, NONCE_COOKIE, VERIFIER_COOKIE, REDIRECT_COOKIE, ORIGIN_COOKIE]
-const SESSION_TTL = 30 * 24 * 60 * 60 // 30 days (1 month)
+const SESSION_TTL = 30 * 24 * 60 * 60
 
-// Conjunto conhecido de códigos de erro do Google OAuth. Limita a cardinalidade
-// do evento oauth_error — o parâmetro `error` do callback é público e arbitrário.
 const KNOWN_OAUTH_ERRORS = new Set([
   'access_denied',
   'invalid_request',
@@ -109,7 +107,6 @@ function failLogin(c: Context<AppContext>, reason: LoginFailure) {
 
 export const authRouter = new Hono<AppContext>()
 
-// GET /auth/google — initiate OAuth flow
 authRouter.get('/google', async (c) => {
   const state = generateState()
   const nonce = generateNonce()
@@ -124,19 +121,15 @@ authRouter.get('/google', async (c) => {
     codeChallenge: challenge,
   })
 
-  const tempOpts = cookieOptions(c.env.BASE_URL, 300) // 5 min TTL for temp cookies
+  const tempOpts = cookieOptions(c.env.BASE_URL, 300)
   setCookie(c, STATE_COOKIE, state, tempOpts)
   setCookie(c, NONCE_COOKIE, nonce, tempOpts)
   setCookie(c, VERIFIER_COOKIE, verifier, tempOpts)
 
-  // Sempre grava, mesmo vazio: sem isso, a origem de uma tentativa anterior valeria
-  // nesta. Só token reconhecido entra no cookie; o callback valida de novo.
   const origin = c.req.query('origem') ?? ''
   const originIsKnown = parseSignupOrigin(origin).category !== 'desconhecida'
   setCookie(c, ORIGIN_COOKIE, originIsKnown ? origin : '', tempOpts)
 
-  // Também sempre grava: login sem destino, ou com destino recusado, não pode
-  // levar ao destino de uma tentativa anterior que não chegou ao callback.
   const destination = sameOriginDestination(c.req.query('redirect') ?? '', c.env.FRONTEND_URL)
   const redirectPath = destination
     ? destination.pathname + destination.search + destination.hash
@@ -146,7 +139,6 @@ authRouter.get('/google', async (c) => {
   return c.redirect(url)
 })
 
-// GET /auth/callback — handle Google redirect
 authRouter.get('/callback', async (c) => {
   const { code, state, error } = c.req.query()
   const oauth = takeOAuthContext(c)
@@ -219,7 +211,6 @@ authRouter.get('/callback', async (c) => {
   }
 })
 
-// POST /auth/logout
 authRouter.post('/logout', async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
   // O cookie sai do navegador mesmo se a revogação no D1 falhar.
@@ -237,11 +228,6 @@ authRouter.post('/logout', async (c) => {
   return c.json({ ok: true })
 })
 
-// POST /auth/logout-all — encerra todas as sessões do usuário, inclusive esta.
-//
-// Grava o corte em `users.sessions_valid_after`; a verificação de sessão rejeita
-// tokens emitidos até esse instante. Se o D1 falhar, o cookie fica no navegador
-// para o usuário tentar de novo, porque as outras sessões continuam válidas.
 authRouter.post('/logout-all', requireAuth, async (c) => {
   const userId = c.get('userId')
   try {
@@ -263,14 +249,6 @@ authRouter.post('/logout-all', requireAuth, async (c) => {
   return c.json({ ok: true })
 })
 
-// GET /auth/me — return authenticated user
-//
-// Não usa `requireAuth`: essa rota é chamada em toda visita (inclusive
-// anônima) só para checar se há sessão. Um 401 aqui é o estado normal de
-// "deslogado" — não um erro — mas o Chrome loga qualquer resposta 4xx/5xx de
-// fetch/XHR como erro no console, o que reprovava a auditoria de Best
-// Practices do Lighthouse. Retornar 200 com `{ authenticated: false }`
-// resolve isso sem mudar o comportamento percebido pelo usuário.
 authRouter.get('/me', async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return c.json({ authenticated: false }, 200)

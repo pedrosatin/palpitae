@@ -1,19 +1,3 @@
-/**
- * Regra única de travamento de palpite (ADR-004: derivado em runtime).
- * Centralizado aqui porque a mesma condição aparece em vários
- * lugares — leitura dos palpites, revelação dos palpites alheios (anti-cópia) e
- * validação de escrita. Divergir entre eles abre brecha: se a leitura revela o
- * palpite dos outros mas a escrita ainda aceita edição, dá pra copiar.
- *
- * Travado = o sync já persistiu a trava em `locked_at`, OU está ao vivo /
- * encerrado, OU o horário passou e o jogo não está adiado.
- *
- * `locked_at` também registra a trava por horário da linha anterior no sync.
- * Depois da revelação, adiamento, cancelamento e remarcação preservam a trava
- * permanente, conforme o ADR-023. Um adiamento que o sync vê antes do kickoff
- * mantém a edição aberta até a nova data. Enquanto adiado, o jogo conserva o último
- * horário conhecido e `postponed = 1` impede a trava por esse horário antigo.
- */
 
 /**
  * Relógio do banco no formato de `Date.prototype.toISOString()`, o mesmo do `now`

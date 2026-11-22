@@ -1,17 +1,8 @@
-/**
- * Google OAuth 2.0 Authorization Code flow with PKCE.
- * Handles URL generation, code exchange, ID token verification, and user upsert.
- */
-
 import { base64UrlEncode, base64UrlDecode } from './encoding'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs'
-
-// ---------------------------------------------------------------------------
-// PKCE + state/nonce generators
-// ---------------------------------------------------------------------------
 
 export function generateState(): string {
   return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)).buffer as ArrayBuffer)
@@ -30,10 +21,6 @@ export async function generatePkce(): Promise<{
   const challenge = base64UrlEncode(hash)
   return { verifier, challenge }
 }
-
-// ---------------------------------------------------------------------------
-// Auth URL builder
-// ---------------------------------------------------------------------------
 
 export function buildAuthUrl(params: {
   clientId: string
@@ -55,10 +42,6 @@ export function buildAuthUrl(params: {
   url.searchParams.set('prompt', 'select_account')
   return url.toString()
 }
-
-// ---------------------------------------------------------------------------
-// Token exchange
-// ---------------------------------------------------------------------------
 
 export async function exchangeCode(params: {
   code: string
@@ -87,10 +70,6 @@ export async function exchangeCode(params: {
 
   return res.json() as Promise<{ id_token: string; access_token: string }>
 }
-
-// ---------------------------------------------------------------------------
-// ID token verification
-// ---------------------------------------------------------------------------
 
 interface JwksKey {
   kid: string
@@ -159,7 +138,6 @@ export async function verifyGoogleIdToken(
     new TextDecoder().decode(base64UrlDecode(rawPayload)),
   ) as GoogleIdTokenClaims
 
-  // Validate standard claims
   const now = Math.floor(Date.now() / 1000)
   if (claims.exp < now) throw new Error('ID token expired')
 
@@ -172,7 +150,6 @@ export async function verifyGoogleIdToken(
   if (claims.nonce !== expectedNonce) throw new Error('Nonce mismatch')
   if (!claims.email_verified) throw new Error('Google email not verified')
 
-  // Verify signature against Google's JWKS
   const jwks = await getGoogleJwks()
 
   const jwk = jwks.keys.find((k) => k.kid === header.kid)
@@ -204,10 +181,6 @@ export async function verifyGoogleIdToken(
     picture: claims.picture,
   }
 }
-
-// ---------------------------------------------------------------------------
-// User upsert
-// ---------------------------------------------------------------------------
 
 /** A conta Google tem o e-mail de outra conta do Palpitaê. */
 export class EmailConflictError extends Error {

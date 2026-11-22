@@ -1,7 +1,3 @@
-/**
- * CreateGroupModal styles
- */
-
 .loadingText,
 .emptyText {
   font-size: var(--font-size-sm);
@@ -14,8 +10,6 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
-
-/* ─── Scoring presets ─────────────────────────────────────────────────── */
 
 .presetGrid {
   display: grid;
@@ -98,8 +92,6 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
-
-/* ─── Visibility ──────────────────────────────────────────────────────── */
 
 .visibilityGroup {
   display: flex;

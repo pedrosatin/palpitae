@@ -193,7 +193,6 @@ describe('groups competition_code JOIN (HTTP + SQLite)', () => {
     expect(byId['g-null']?.competition_code).toBeNull()
     expect(byId['g-null']?.competition_id).toBe(NULL_EXT_ID)
 
-    // Pilot cup is hidden from ordinary list.
     expect(byId['g-pilot']).toBeUndefined()
 
     for (const groupId of ['g-gaucho', 'g-bsa', 'g-null'] as const) {

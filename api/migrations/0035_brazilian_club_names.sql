@@ -1,9 +1,3 @@
--- Nome popular dos clubes do Brasileirão Série A vindos da football-data.org.
--- O upsert de times só atualiza logo_url no conflito, então as linhas já gravadas
--- com o nome oficial ("CR Flamengo", "CA Mineiro") precisam desta correção.
--- O filtro por provider e external_id deixa de fora os times da ESPN, que vêm da Série B,
--- da Copa do Brasil, da Libertadores e da Sul-Americana.
--- Sigla (short_name) e slug ficam como estão. Mesmo mapa de src/matches/clubNames.ts.
 UPDATE teams SET name = 'Fluminense' WHERE provider = 'football-data' AND external_id = '1765';
 UPDATE teams SET name = 'Atlético-MG' WHERE provider = 'football-data' AND external_id = '1766';
 UPDATE teams SET name = 'Grêmio' WHERE provider = 'football-data' AND external_id = '1767';

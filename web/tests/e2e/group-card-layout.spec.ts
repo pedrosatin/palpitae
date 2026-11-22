@@ -50,11 +50,6 @@ async function mockDashboard(page: Page) {
   })
 }
 
-/**
- * Mede cada linha do texto com Range, não a caixa do h3: o título pode encolher
- * (min-width: 0) e deixar o texto vazar para fora da própria caixa. Os limites são
- * os da caixa de conteúdo do link, sem o padding.
- */
 function measureHeaders(page: Page) {
   return page.locator('a[href^="/grupos/"] h3').evaluateAll((titles) =>
     titles.map((title) => {
@@ -77,7 +72,6 @@ function measureHeaders(page: Page) {
       const right = linkBox.right - parseFloat(linkStyle.paddingRight)
       const isInside = (rect: DOMRect) => rect.left >= left - 0.5 && rect.right <= right + 0.5
       const titleBottom = Math.max(...textRects.map((rect) => rect.bottom))
-      // A badge de campeonato é a última da linha, depois da de Admin.
       const competition = title.nextElementSibling!.lastElementChild as HTMLElement
 
       return {
@@ -95,9 +89,7 @@ function measureHeaders(page: Page) {
         ),
         textInsideCard: textRects.every(isInside),
         badgesInsideCard: badgeRects.every(isInside),
-        // Badges sempre na linha de baixo, com nome curto ou longo.
         badgesBelowTitle: badgeRects.every((badge) => badge.top >= titleBottom - 0.5),
-        // Campeonato inteiro, sem reticências. O texto não excede a caixa da badge.
         competitionTruncated: competition.scrollWidth > competition.clientWidth + 0.5,
         competitionLines: countLines(lineRects(competition)),
       }
@@ -127,11 +119,8 @@ test.describe('Cabeçalho do card de grupo', () => {
         })
       }
 
-      // Uma palavra que cabe no card não se parte.
       expect(headers.find((header) => header.name === 'Champions')?.lines).toBe(1)
 
-      // Com o card largo, o campeonato cabe numa linha. Um max-width estreito na
-      // badge voltaria a quebrar o nome.
       if (width >= 1024) {
         for (const header of headers) {
           expect(header.competitionLines, header.name ?? '').toBe(1)

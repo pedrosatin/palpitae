@@ -15,13 +15,11 @@ import { draftStorageKey } from './lib/predictionDraftStorage'
 vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn(), trackPageView: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-/** Mostra a URL atual, para conferir redirecionamentos client-side. */
 function LocationProbe() {
   const location = useLocation()
   return <span data-testid="location">{location.pathname + location.search}</span>
 }
 
-// Mock page components
 vi.mock('./pages/LandingPage', () => ({
   default: () => <div data-testid="landing-page">LandingPage</div>,
 }))
@@ -55,7 +53,6 @@ vi.mock('./pages/SettingsPage', () => ({
 vi.mock('./pages/AdminMetricsPage', () => ({
   default: () => <div data-testid="admin-metrics-page">AdminMetricsPage</div>,
 }))
-// Página que quebra no render, para a fronteira de erro da rota.
 vi.mock('./pages/AdminRadarPage', () => ({
   default: () => {
     const rows = undefined as unknown as string[]
@@ -123,7 +120,6 @@ describe('App', () => {
     ['back_forward', '/?from=guia_bolao-do-brasileirao'],
     ['navigate', '/?from=guia_bolao-do-brasileirao&competicao=campeonato-brasileiro-serie-a-2027'],
   ])('com sessão, a carga %s de /entrar leva ao painel em %s', async (type, expected) => {
-    // jsdom não expõe a Navigation Timing API; a propriedade própria some no fim.
     Object.defineProperty(performance, 'getEntriesByType', {
       configurable: true,
       writable: true,
@@ -359,7 +355,6 @@ describe('App', () => {
   })
 
   it('renders nothing on private routes while authentication state is loading', () => {
-    // Make fetch return a promise that doesn't resolve immediately
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     const { container } = render(
@@ -368,13 +363,10 @@ describe('App', () => {
       </MemoryRouter>,
     )
 
-    // Ensure the container is empty (returns null)
     expect(container).toBeEmptyDOMElement()
   })
 
   it('keeps the pre-rendered landing at "/" while auth loads', () => {
-    // LCP: a landing já está pintada no HTML do build e não depende da sessão,
-    // então o primeiro render precisa reproduzi-la — senão a hidratação diverge.
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     render(
@@ -387,8 +379,6 @@ describe('App', () => {
   })
 
   it('waits for auth at "/" when the pre-rendered landing was discarded', () => {
-    // Quem já logou aqui vai para o dashboard: o script inline do index.html
-    // descarta a landing, o App recebe false e não pisca a página de marketing.
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     const { container } = render(
@@ -463,7 +453,6 @@ describe('App', () => {
       </MemoryRouter>,
     )
 
-    // Wait for the LandingPage mock to render
     await waitFor(() => {
       expect(screen.getByTestId('landing-page')).toBeInTheDocument()
     })
@@ -554,7 +543,6 @@ describe('App', () => {
 
       expect(await screen.findByTestId(page)).toBeInTheDocument()
       await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-      // Dá tempo de a resposta 503 chegar ao estado antes de conferir que o aviso não entrou.
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(screen.getByTestId(page)).toBeInTheDocument()
       expect(screen.queryByText(/indisponível no momento/)).not.toBeInTheDocument()
@@ -590,7 +578,6 @@ describe('App', () => {
     const button = await screen.findByRole('button', { name: 'Tentar novamente' })
     await userEvent.click(button)
 
-    // Durante a consulta o aviso continua montado, com o mesmo botão ocupado.
     expect(button).toBeInTheDocument()
     expect(button).toHaveAttribute('aria-busy', 'true')
     await userEvent.click(button)
@@ -632,8 +619,6 @@ describe('App', () => {
   })
 
   it('falls back to unauthenticated route when /auth/me returns 200 with authenticated: false', async () => {
-    // Visita anônima: o endpoint responde 200 (não 401) para não aparecer como
-    // erro no console do navegador — ver PAGESPEED_REPORT.md item 3.
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ authenticated: false }),
@@ -683,7 +668,6 @@ describe('App', () => {
       expect(screen.getByTestId('dashboard-page')).toBeInTheDocument()
     })
 
-    // Dispatch the custom event
     await waitFor(() => {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
     })
@@ -765,7 +749,6 @@ describe('App', () => {
   })
 
   it('um novo login descarta o aviso de expiração da sessão anterior', async () => {
-    // A sessão anterior expirou em "/", onde a landing não consome o aviso.
     sessionStorage.setItem('palpitae:session-expired', '1')
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -796,7 +779,6 @@ describe('App', () => {
       </MemoryRouter>,
     )
     await screen.findByTestId('dashboard-page')
-    // Um 401 de outra requisição chegou durante a saída.
     sessionStorage.setItem('palpitae:session-expired', '1')
     await userEvent.setup({ delay: null }).click(screen.getByTestId('logout-button'))
 
@@ -841,13 +823,11 @@ describe('App', () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')
     const user = userEvent.setup({ delay: null })
 
-    // First, authenticate
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
     })
 
-    // Setup fetch mock for logout call
     fetchMock.mockResolvedValueOnce({ ok: true })
 
     render(
@@ -860,17 +840,14 @@ describe('App', () => {
       expect(screen.getByTestId('dashboard-page')).toBeInTheDocument()
     })
 
-    // Trigger logout
     const logoutButton = screen.getByTestId('logout-button')
     await user.click(logoutButton)
 
-    // Check if logout API was called
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
     })
 
-    // Wait for the state to transition back to unauthenticated
     await waitFor(() => {
       expect(screen.getByTestId('landing-page')).toBeInTheDocument()
     })

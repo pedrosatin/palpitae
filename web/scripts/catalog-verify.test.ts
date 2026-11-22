@@ -36,7 +36,6 @@ describe('catalog-verify', () => {
   })
 
   it('reprova o PR que muda o catálogo e anuncia competição fora da lista pública', async () => {
-    // A Copa B virou piloto ou terminou: a API deixa de listá-la.
     const fetchImpl = apiReturning({ competitions: [{ slug: 'liga-a-2026', name: 'Liga A' }] })
 
     const result = await verifyCatalog({
@@ -156,7 +155,6 @@ describe('catalog-verify', () => {
         'https://api.test',
       ),
     ).toEqual([{ stream: 'warn', text: 'catalog:verify: fora do ar' }])
-    // Comparou, mas com aviso: a confirmação não aparece para não esconder o aviso.
     expect(
       reportLines(
         { code: 0, checked: true, errors: [], warnings: ['z é pública'] },

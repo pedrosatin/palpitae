@@ -13,7 +13,6 @@ function makeData(overrides: Partial<HeatmapResponse> = {}): HeatmapResponse {
   return {
     days: 30,
     avgSampleInterval: 1,
-    // Muito no passado: a coleta cobre o período inteiro, sem aviso.
     firstSeenAt: { prediction_saved: '2020-01-01 00:00:00', login_success: '2020-01-01 00:00:00' },
     hourly: [],
     ...overrides,
@@ -26,19 +25,15 @@ afterEach(() => {
 
 describe('toBrt', () => {
   it('converte UTC para BRT (UTC−3) na mesma data', () => {
-    // Quinta 29/10 14h UTC = 11h em Brasília.
     expect(toBrt('2026-10-29T14:00:00Z')).toEqual({ weekday: 4, hour: 11 })
   })
 
   it('vira o dia: 01h UTC é 22h do dia anterior em BRT', () => {
-    // Quinta 29/10 01h UTC = quarta 28/10 22h.
     expect(toBrt('2026-10-29T01:00:00Z')).toEqual({ weekday: 3, hour: 22 })
   })
 
   it('vira a semana: segunda de madrugada UTC cai no domingo, e domingo cai no sábado', () => {
-    // Segunda 02/11 02h UTC = domingo 01/11 23h.
     expect(toBrt('2026-11-02T02:00:00Z')).toEqual({ weekday: 0, hour: 23 })
-    // Domingo 01/11 02h UTC = sábado 31/10 23h.
     expect(toBrt('2026-11-01T02:00:00Z')).toEqual({ weekday: 6, hour: 23 })
   })
 
@@ -48,7 +43,6 @@ describe('toBrt', () => {
   })
 
   it('vira mês e ano', () => {
-    // 1º/jan/2027 (sexta) 01h UTC = quinta 31/dez/2026 22h.
     expect(toBrt('2027-01-01T01:00:00Z')).toEqual({ weekday: 4, hour: 22 })
   })
 
@@ -76,10 +70,8 @@ describe('buildHeatmapGrid', () => {
   it('posiciona cada hora UTC na célula de BRT e soma horas que caem na mesma célula', () => {
     const grid = buildHeatmapGrid(
       [
-        // Duas quintas diferentes às 11h BRT somam na mesma célula.
         hour({ hour: '2026-10-29T14:00:00Z', predictions: 10 }),
         hour({ hour: '2026-10-22T14:00:00Z', predictions: 5 }),
-        // Segunda 02h UTC → domingo 23h BRT.
         hour({ hour: '2026-11-02T02:00:00Z', predictions: 7 }),
       ],
       'predictions',
@@ -116,8 +108,8 @@ describe('buildHeatmapGrid', () => {
   it('empate de pico fica com a primeira célula na ordem dom→sáb, 0h→23h', () => {
     const grid = buildHeatmapGrid(
       [
-        hour({ hour: '2026-10-30T14:00:00Z', logins: 5 }), // sexta 11h
-        hour({ hour: '2026-10-29T14:00:00Z', logins: 5 }), // quinta 11h
+        hour({ hour: '2026-10-30T14:00:00Z', logins: 5 }),
+        hour({ hour: '2026-10-29T14:00:00Z', logins: 5 }),
       ],
       'logins',
     )
@@ -150,14 +142,12 @@ describe('HeatmapSection', () => {
     const table = screen.getByRole('table', {
       name: 'Mapa de calor de palpites salvos por dia da semana e hora (BRT)',
     })
-    // cabeçalho + 7 dias
     expect(within(table).getAllByRole('row')).toHaveLength(8)
     expect(
       within(table)
         .getAllByRole('rowheader')
         .map((h) => h.textContent),
     ).toEqual(['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'])
-    // 24 horas + a coluna dos dias.
     expect(within(table).getAllByRole('columnheader')).toHaveLength(25)
     expect(within(table).getAllByRole('cell')).toHaveLength(7 * 24)
   })
@@ -171,7 +161,6 @@ describe('HeatmapSection', () => {
 
     const cell = screen.getByTitle('quinta-feira, 11h a 12h BRT: 1.234 palpites salvos')
     expect(cell).toHaveTextContent('1,2k')
-    // A informação não depende só da cor: as outras células dizem 0.
     expect(screen.getByTitle('quinta-feira, 12h a 13h BRT: 0 palpites salvos')).toHaveTextContent(
       '0',
     )
@@ -235,7 +224,6 @@ describe('HeatmapSection', () => {
     ).toBeInTheDocument()
     const loginCell = screen.getByTitle('quinta-feira, 15h a 16h BRT: 6 logins')
     expect(loginCell).toHaveTextContent('6')
-    // Série diferente, cor diferente.
     expect((loginCell as HTMLElement).style.backgroundColor).not.toBe(palpiteBg)
     expect(screen.queryByTitle(/palpites salvos/)).not.toBeInTheDocument()
   })
@@ -316,7 +304,6 @@ describe('HeatmapSection', () => {
       <HeatmapSection
         data={makeData({
           days: 30,
-          // 02h UTC de 20/10 = 23h BRT de 19/10.
           firstSeenAt: {
             prediction_saved: '2026-10-20 02:00:00',
             login_success: '2020-01-01 00:00:00',
@@ -339,7 +326,6 @@ describe('HeatmapSection', () => {
       <HeatmapSection
         data={makeData({
           days: 90,
-          // ~12h depois do início da janela: é a retenção, não coleta recente.
           firstSeenAt: {
             prediction_saved: '2026-07-31 03:00:00',
             login_success: '2020-01-01 00:00:00',

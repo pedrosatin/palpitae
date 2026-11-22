@@ -1,21 +1,6 @@
--- Radar de competições — inteligência de produto para decidir QUAIS campeonatos
--- vale a pena incorporar ao Palpitae. Nada aqui alimenta o produto: é insumo do
--- dashboard admin (/admin/oportunidades).
---
--- Duas perguntas, duas fontes (ver api/src/radar/):
---   1. "o que está acontecendo agora?" → API-Football (api-sports.io), catálogo
---      de ligas com temporada corrente + jogos do dia. Cobertura ~1.200 ligas,
---      contra as 12 do football-data.org que já usamos pro produto.
---   2. "o que o brasileiro acompanha?" → pageviews diários da pt.wikipedia
---      (Wikimedia Pageviews API). Proxy grátis e comparável de interesse do
---      público BR — o Google Trends não tem API pública utilizável.
---
--- Snapshot diário via cron: a dashboard lê só o D1, nunca as APIs externas.
 
 CREATE TABLE IF NOT EXISTS competition_radar (
   id TEXT PRIMARY KEY,
-  -- Genérico desde já: hoje só 'football', mas o desenho não muda quando
-  -- entrarem NBA/NFL/F1 (outro provider, mesma tabela).
   sport TEXT NOT NULL DEFAULT 'football',
   provider TEXT NOT NULL,
   external_id TEXT NOT NULL,
@@ -28,7 +13,6 @@ CREATE TABLE IF NOT EXISTS competition_radar (
   season TEXT NOT NULL,
   starts_on TEXT,
   ends_on TEXT,
-  -- 1 = provider marcou a temporada como corrente no último sync.
   is_current INTEGER NOT NULL DEFAULT 0,
   -- Artigo da pt.wikipedia que mede o interesse (curadoria manual em
   -- radar/articles.ts). NULL = sem sinal de interesse coletado.

@@ -20,7 +20,7 @@ describe('parsePenaltyPhases', () => {
   })
 
   it('should return empty array for malformed JSON, caught by catch block', () => {
-    expect(parsePenaltyPhases('["LAST_16", "FINAL"')).toEqual([]) // missing closing bracket
+    expect(parsePenaltyPhases('["LAST_16", "FINAL"')).toEqual([])
     expect(parsePenaltyPhases('invalid-json')).toEqual([])
     expect(parsePenaltyPhases('   ')).toEqual([])
   })

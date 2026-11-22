@@ -1,4 +1,3 @@
-/* Visual único dos tooltips. O posicionamento fica com cada componente. */
 .tooltip {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -14,7 +13,6 @@
   font-weight: var(--font-weight-regular);
   line-height: 1.5;
   text-align: left;
-  /* Evita uma palavra sozinha na última linha. */
   text-wrap: pretty;
   color: var(--color-text-secondary);
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);

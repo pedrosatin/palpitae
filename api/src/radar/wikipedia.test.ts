@@ -59,7 +59,6 @@ describe('fetchPageviews', () => {
   })
 
   it('aborta a requisição pendurada pelo timeout', async () => {
-    // O timeout de produção é de segundos. Aqui `AbortSignal.timeout` vence em 20 ms.
     const realTimeout = AbortSignal.timeout.bind(AbortSignal)
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => realTimeout(20))
     vi.stubGlobal(

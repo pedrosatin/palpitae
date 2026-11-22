@@ -1,9 +1,7 @@
 import type { Competition } from './types'
 
 export type CompetitionSelectGroups = {
-  /** Competições com jogos já em disputa (pode palpitar as rodadas que faltam). */
   ongoing: Competition[]
-  /** Competições que ainda não começaram (todos os jogos ainda por vir). */
   upcoming: Competition[]
 }
 

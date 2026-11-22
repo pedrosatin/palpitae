@@ -14,8 +14,6 @@ export function useTooltip(onOpen?: () => void) {
   useAutoClose(open, () => setOpen(false), TOOLTIP_TIMEOUT_MS)
   useOutsideClick(containerRef, open, () => setOpen(false))
 
-  // Escape na fase de captura: fecha só o tooltip e não chega ao modal que o
-  // contém. O Escape seguinte, já com o tooltip fechado, fecha o modal.
   useEffect(() => {
     if (!open) return
     function handleKeyDown(event: KeyboardEvent) {
@@ -32,7 +30,6 @@ export function useTooltip(onOpen?: () => void) {
     setOpen((v) => !v)
   }
 
-  /** Atributos ARIA do botão que abre o tooltip. */
   const triggerProps = {
     'aria-expanded': open,
     'aria-controls': open ? tooltipId : undefined,

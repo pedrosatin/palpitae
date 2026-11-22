@@ -240,7 +240,6 @@ describe('query de partidas da competição', () => {
     })
     expect(result.current.selectedRound).toBe('2')
 
-    // O refetch traz outro status para o m2, então o dado muda de referência.
     matches = [matches[0], { ...matches[1], status: 'live' }]
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })

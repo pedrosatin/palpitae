@@ -56,7 +56,6 @@ afterEach(() => {
   setFootballDataRateLimitForTests(1000)
 })
 
-/** Calendário da football-data: `matches` jogos de uma rodada, dois times cada, no mesmo status. */
 function calendar(matches: number, matchday: number, status = 'FINISHED') {
   const team = (n: number) => ({
     id: matchday * 1000 + n,
@@ -127,11 +126,9 @@ function armLimit({ db, state }: World, wrap: (db: D1Database) => D1Database = (
 }
 
 type SetupOptions = {
-  /** Envolve o D1 do Worker (depois da semente) com uma falha simulada. */
   wrap?: (db: D1Database) => D1Database
 }
 
-/** Competição criada e 16 itens `result` na fila, um por rodada. */
 async function setupResultItems({ wrap }: SetupOptions = {}) {
   // Resposta do provedor, trocável depois da semente: `null` é o calendário normal.
   const provider = { override: null as null | ((url: URL) => unknown) }
@@ -159,7 +156,6 @@ async function setupResultItems({ wrap }: SetupOptions = {}) {
   return { ...world, ...armLimit(world, wrap), provider }
 }
 
-/** Um tick de dreno do cron fundido, no minuto dado. Devolve as falhas das rotinas. */
 async function runDrainTick(h: { limited: LimitedD1; env: Env }, at: number): Promise<string[]> {
   vi.setSystemTime(at)
   h.limited.startInvocation()
@@ -185,7 +181,6 @@ function expectWithinBudget(limited: LimitedD1) {
   expect(limited.calls() - CLEANUP_CALLS).toBeLessThanOrEqual(DRAIN_CALL_BUDGET)
 }
 
-/** Esgota a janela de um minuto do orçamento compartilhado da football-data. */
 function fillMinuteWindow(sqlite: DatabaseSync) {
   setFootballDataRateLimitForTests(8)
   sqlite.exec(

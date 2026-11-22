@@ -1,4 +1,3 @@
--- Seed do Brasileirão Série B 2026 com a ESPN como provider primário e visibilidade de piloto.
 INSERT INTO competitions (
   id,
   name,

@@ -370,7 +370,6 @@ describe('auth router', () => {
   })
 
   it('treats a session of a missing user as signed out on the me endpoint', async () => {
-    // Override fakeEnv specifically for this test
     function fakeEnvNotFound(): AppContext['Bindings'] {
       return {
         ...fakeEnv(''),
@@ -410,9 +409,6 @@ describe('auth router', () => {
     expect(body).toEqual({ authenticated: false })
   })
 
-  // Visita anônima é o caso comum (toda visita chama /auth/me). Responder 200
-  // em vez de 401 evita que o navegador logue essa checagem de rotina como
-  // erro no console (reprovava Best Practices no Lighthouse).
   it('returns 200 with authenticated: false from me endpoint when there is no session cookie', async () => {
     const res = await app.fetch(
       new Request('http://localhost/auth/me'),
@@ -440,7 +436,6 @@ describe('auth router', () => {
       fakeEnv('user@example.com'),
     )
     const setCookies = res.headers.getSetCookie()
-    // By default the base url is http://localhost:8787 which does not start with https
     expect(setCookies.some((c) => c.includes('Secure'))).toBe(false)
     expect(setCookies.some((c) => c.includes('Domain='))).toBe(false)
   })

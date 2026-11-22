@@ -46,7 +46,6 @@ function calendar(count = 10) {
   }
 }
 
-/** Porteiro que registra a ordem em que cobra, deixa cobrar `allowed` vezes e informa o saldo. */
 function makeGate(log: string[], opts: { allowed?: number; left?: number } = {}) {
   let charged = 0
   const gate: CallGate = {
@@ -70,7 +69,6 @@ function setup(responses: Response[]) {
     return queue.shift() ?? Response.json(calendar())
   })
   vi.stubGlobal('fetch', fetchMock)
-  // O que o sync grava de uma vez: a competição do provedor, os times e os jogos dela.
   const written = {
     competitions: `SELECT COUNT(*) AS n FROM competitions WHERE external_id = '2017'`,
     teams: `SELECT COUNT(*) AS n FROM teams WHERE provider = 'football-data'`,
@@ -150,7 +148,6 @@ describe('syncFixtures com porteiro de subrequests', () => {
     const { db, log, count } = setup([])
     const before = [count('competitions'), count('teams'), count('matches')]
 
-    // 10 jogos entre 20 times custam 6 chamadas de gravação; sobram 5.
     await expect(sync(db, makeGate(log, { left: 5 }))).rejects.toBeInstanceOf(
       CallBudgetExhaustedError,
     )
@@ -188,7 +185,6 @@ describe('syncFixtures com porteiro de subrequests', () => {
 
 describe('syncWriteCalls', () => {
   it.each([
-    // [jogos, times, descoberta, chamadas]
     [10, 20, false, 6],
     [380, 20, false, 9],
     [380, 20, true, 10],

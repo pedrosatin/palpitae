@@ -2,11 +2,8 @@ import type { ReactNode } from 'react'
 import styles from './ErrorState.module.css'
 
 interface ErrorStateProps {
-  /** Message to show. Defaults to a generic load failure. Ignored if children given. */
   message?: string
-  /** Rich content (e.g. a retry button alongside the text). Overrides `message`. */
   children?: ReactNode
-  /** Extra class on the wrapper (e.g. spacing tweaks per tab). */
   className?: string
 }
 

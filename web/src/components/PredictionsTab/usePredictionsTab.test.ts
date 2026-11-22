@@ -112,7 +112,7 @@ describe('usePredictionsTab', () => {
     expect(result.current.predictions.size).toBe(1)
     expect(result.current.predictions.get('m1')?.predicted_home_score).toBe(1)
     expect(result.current.roundKeys).toEqual(['1', '2'])
-    expect(result.current.selectedRound).toBe('1') // explicitly set default_round
+    expect(result.current.selectedRound).toBe('1')
   })
 
   it('navigates between rounds', async () => {
@@ -252,7 +252,6 @@ describe('usePredictionsTab', () => {
         }),
       }),
     )
-    // O aviso com o grupo de origem confirma o sucesso, sem uma segunda mensagem.
     expect(result.current.importCompleted).toBe(true)
     expect(result.current.importedFromName).toBe('Other Group')
     expect(result.current.importFeedback).toBeNull()
@@ -354,7 +353,6 @@ describe('usePredictionsTab', () => {
     })
     expect(result.current.selectedRound).toBe('2')
 
-    // O refetch traz outro status para o m2, então o dado muda de referência.
     mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '1')
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })
@@ -370,13 +368,11 @@ describe('usePredictionsTab', () => {
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
     ]
     const queryClient = createTestQueryClient()
-    // Dado da visita anterior, com mais de 30 s: a montagem busca de novo.
     queryClient.setQueryData(
       ['matches', 'c1'],
       { matches, default_round: '1' },
       { updatedAt: Date.now() - 60_000 },
     )
-    // A resposta nova traz outra rodada padrão e outro status para o m2.
     mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '2')
     const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
 

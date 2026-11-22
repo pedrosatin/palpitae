@@ -38,7 +38,6 @@ const OPERATOR_DOCS = [
     .map((file) => `docs/operations/${file}`),
 ]
 
-/** Subcomandos que leem a configuração do Worker. `pages` e `login` não leem. */
 const WORKER_COMMAND = /\bwrangler\s+(secret|d1|r2|kv|deploy|dev|tail|versions|rollback|types)\b/
 const API_CONFIG = /--config[ =]\S*wrangler\.toml/
 
@@ -171,7 +170,6 @@ describe('wrangler api config', () => {
   })
 
   it('desliga o workers.dev e as previews, para a API ter um único host público', () => {
-    // Impede que um [env.*] futuro sobrescreva workers_dev ou preview_urls.
     expect(wranglerToml).not.toMatch(/^\[env\./m)
     expect(wranglerToml).toMatch(/^workers_dev = false$/m)
     expect(wranglerToml).toMatch(/^preview_urls = false$/m)
@@ -200,11 +198,6 @@ describe('wrangler api config', () => {
   })
 
   it('não passa do limite de cron triggers do plano Free da Cloudflare (erro 10072)', () => {
-    // O plano Free permite 5 triggers por CONTA e a conta já usa 1 em outro Worker:
-    // sobram 4 para esta API. Com 5 o Deploy API falha com
-    // "This account has reached the Workers Free limit of 5 cron triggers per
-    // account [code: 10072]" (PR #769, run 44009052934). Para agendar algo novo,
-    // use um minuto novo do trigger fundido em vez de um cron novo.
     expect(CLOUDFLARE_FREE_CRON_LIMIT).toBe(5)
     expect(CRONS_USED_BY_OTHER_WORKERS).toBe(1)
     expect(MAX_API_CRON_TRIGGERS).toBe(4)

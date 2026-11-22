@@ -25,18 +25,14 @@ describe('crypto', () => {
       expect(key.usages).toContain('sign')
       expect(key.usages).toContain('verify')
 
-      // Validate the key actually works for HMAC operations
       const data = new TextEncoder().encode('test message payload')
       const signature = await crypto.subtle.sign('HMAC', key, data)
 
-      // Signature should be a 32-byte ArrayBuffer (256 bits) for SHA-256
       expect(signature.byteLength).toBe(32)
 
-      // Verify the signature
       const isValid = await crypto.subtle.verify('HMAC', key, signature, data)
       expect(isValid).toBe(true)
 
-      // Should fail to verify modified data
       const forgedData = new TextEncoder().encode('forged message payload')
       const isForgedValid = await crypto.subtle.verify('HMAC', key, signature, forgedData)
       expect(isForgedValid).toBe(false)

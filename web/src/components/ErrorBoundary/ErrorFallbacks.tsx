@@ -5,11 +5,6 @@ import ErrorState from '../ErrorState'
 import ErrorBoundary from './ErrorBoundary'
 import styles from './ErrorBoundary.module.css'
 
-/**
- * Tela de uma página que quebrou no render. Como o cabeçalho também caiu, a tela
- * oferece o caminho de volta. O clique em "Voltar para o início" também tira o
- * erro, porque na própria `/` o caminho não muda.
- */
 function PageError({ onBack }: { onBack: () => void }) {
   return (
     <main className={styles.page}>

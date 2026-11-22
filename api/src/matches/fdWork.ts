@@ -354,7 +354,6 @@ async function drainFootballDataWork(
   const failed = run.failed > 0 || postFailures > 0 || run.settleError !== undefined
   tryLogEvent(ae, 'provider_work_run', {
     blobs: [failed ? 'error' : 'ok', 'football-data'],
-    // claimed, done, requeued, failed, duration_ms, released, calls_used
     doubles: [
       run.claimed,
       run.done,

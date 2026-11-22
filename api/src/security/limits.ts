@@ -14,7 +14,6 @@ const WINDOW_SECONDS = 60
 type AnonymousCategory = 'read' | 'write' | 'oauth'
 type Category = AnonymousCategory | 'revocation'
 
-// Limites por minuto por usuário, IP ou hash de sessão, conforme a categoria.
 export const LIMITS: Record<Category, number> = {
   read: 300,
   write: 60,
@@ -22,35 +21,23 @@ export const LIMITS: Record<Category, number> = {
   revocation: 10,
 }
 
-// Teto do balde anônimo compartilhado: tráfego que chega por um Worker sem o
-// segredo válido, quando não há como saber o IP do visitante. Há um balde para o
-// próprio front e outro para os demais Workers, para que um Worker de terceiros não
-// esgote a quota de quem usa o site. O front é o CF-Worker igual ao host do
-// FRONTEND_URL, a um domínio pai dele ou ao FRONTEND_WORKER_ZONE.
 export const SHARED_PROXY_LIMITS: Record<AnonymousCategory, number> = {
   read: 3000,
   write: 600,
   oauth: 300,
 }
 
-// Headers que o proxy do Pages (web/functions/api/[[path]].ts) envia.
 export const CLIENT_IP_HEADER = 'X-Palpitae-Client-IP'
 export const PROXY_SECRET_HEADER = 'X-Palpitae-Proxy-Secret'
 /** Só a Function de convite envia; o proxy público remove (web/functions/api/[[path]].ts). */
 export const INVITE_OPEN_HEADER = 'X-Palpitae-Invite-Open'
 
-// Em subrequests de Worker entre zonas diferentes, a Cloudflare troca o
-// CF-Connecting-IP por este endereço fixo e adiciona o header CF-Worker.
-// https://developers.cloudflare.com/fundamentals/reference/http-headers/
 const WORKER_EGRESS_IP = '2a06:98c0:3600::103'
 
 const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/
 
 const DAY_SECONDS = 86_400
 
-// Orçamento diário de linhas do D1 por usuário (ADR-022). O dia vira à 00:00 UTC,
-// junto com as cotas do D1 Free. As variáveis D1_DAILY_ROWS_READ_PER_USER e
-// D1_DAILY_ROWS_WRITTEN_PER_USER substituem os padrões.
 export const DAILY_D1_ROWS = { read: 250_000, written: 5_000 }
 
 // Linhas que a gravação do balde diário escreve para cada linha do balde, com a linha
@@ -58,17 +45,8 @@ export const DAILY_D1_ROWS = { read: 250_000, written: 5_000 }
 // O valor só entra na linha de escrita, quando a requisição escreveu algo.
 export const DAILY_BUCKET_ROWS_WRITTEN_PER_ROW = 2
 
-// Rotas que nunca recusam por orçamento diário. Sair da conta tem de funcionar
-// mesmo depois que um token roubado gastou o dia inteiro.
 const DAILY_BUDGET_EXEMPT = new Set(['/auth/logout', '/auth/logout-all'])
 
-// D1 serializes the upsert, including requests from different Worker instances.
-// `key` should already be an opaque hash (see bucketKey).
-//
-// O WHERE do DO UPDATE impede a escrita quando o balde da janela atual já está
-// cheio: a requisição recusada só lê a linha, não grava nada, e o RETURNING volta
-// vazio. Assim um cliente insistente recebendo 429 não vira uma escrita no D1 por
-// requisição.
 export async function consumeLimit(
   db: D1Database,
   key: string,
@@ -299,7 +277,6 @@ function toHextets(part: string): string[] | null {
   const out: string[] = []
   for (const piece of part.split(':')) {
     if (piece.includes('.')) {
-      // IPv4 embutido no fim: vira dois hextets.
       const octets = piece.split('.').map(Number)
       if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
         return null
@@ -334,7 +311,6 @@ async function hmacHex(secret: string, value: string): Promise<string> {
   return hexEncode(signature)
 }
 
-// HMAC com segredo: um SHA-256 puro de um IPv4 sai por força bruta.
 export function bucketKey(secret: string, identity: string): Promise<string> {
   return hmacHex(secret, identity)
 }
@@ -382,7 +358,6 @@ export async function anonymousIdentity(
       : 'worker'
     return { identity: `proxy:anonymous:${source}`, shared: true }
   }
-  // Local requests share a dev bucket.
   return {
     identity: `ip:${connectingIp ? ipBucketIdentity(connectingIp) : 'local'}`,
     shared: false,
@@ -484,14 +459,12 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
       error,
       { blobs: ['request_limits', category] },
     )
-    // Leitura passa sem contador; escrita e OAuth ficam bloqueadas.
     if (category !== 'read') return c.json({ error: 'Controle de requisições indisponível' }, 503)
   }
 
   await next()
 
   if (!daily) return
-  // A resposta já foi montada, e uma falha aqui só fica no log.
   try {
     await chargeDailyBudget(db, daily, usage)
   } catch (error) {

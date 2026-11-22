@@ -18,7 +18,6 @@
 export type CatalogRegion = 'brasil' | 'europa'
 
 export type CatalogCompetition = {
-  /** Slug da temporada vigente em `competitions.slug`, usado só nas conferências do catálogo. */
   slug: string
   name: string
   region: CatalogRegion

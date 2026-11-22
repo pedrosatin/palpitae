@@ -25,7 +25,6 @@ function jsonLdBlocks(html: string): Record<string, unknown>[] {
   )
 }
 
-/** Same escaping the renderer applies to visible text. */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -34,7 +33,6 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Loads a rendered page into the jsdom document and runs its inline scripts. */
 function loadPage(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   document.head.innerHTML = doc.head.innerHTML
@@ -45,7 +43,6 @@ function loadPage(html: string) {
   }
 }
 
-/** Largura e altura do IHDR de um PNG. */
 function pngSize(path: string): { width: number; height: number } {
   const buf = readFileSync(path)
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
@@ -193,7 +190,6 @@ describe('guia do Brasileirão 2027', () => {
     )
     expect(captureGuideOrigin(hrefs[0]!.split('?')[1])).toBe('guia_bolao-do-brasileirao')
 
-    // No HTML, o `&` sai escapado nos três links.
     const html = renderGuide(guide)
     expect(html.match(/href="\/entrar\?[^"]*"/g)).toEqual([
       `href="/entrar?from=guia_bolao-do-brasileirao_header&amp;${competicao}"`,
@@ -331,15 +327,6 @@ describe('guide social meta', () => {
   })
 })
 
-/**
- * A Copa do Mundo 2026 terminou. Texto público que cita essa edição precisa
- * estar no passado, e nenhum texto pode apresentar a Copa como campeonato
- * disponível no app.
- *
- * A regex `terminou|encerrad` é intencional: toda frase que cita a Copa 2026
- * precisa conter um desses verbos no passado. Ao reescrever esses textos,
- * mantenha um deles na mesma frase ou atualize a regex junto.
- */
 describe('Copa do Mundo 2026 no passado', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
   const catalogText = guides
@@ -377,8 +364,6 @@ describe('Copa do Mundo 2026 no passado', () => {
 describe('IndexNow', () => {
   it('publishes the key file with the key as its only content', () => {
     expect(KEY).toMatch(/^[0-9a-f]{32}$/)
-    // Caminho numa variável: o Vite reescreve `new URL(`...${x}`, import.meta.url)`
-    // literal como import de asset, e a leitura apontaria para outro lugar.
     const keyFile = `../public/${KEY}.txt`
     expect(readFileSync(new URL(keyFile, import.meta.url), 'utf8').trim()).toBe(KEY)
     expect(KEY_LOCATION).toBe(`https://${HOST}/${KEY}.txt`)
@@ -466,8 +451,6 @@ describe('guide analytics (Consent Mode v2)', () => {
   })
 
   it('sublinha o link da política de privacidade no CSS do aviso do app', () => {
-    // O vitest stuba CSS (mesmo com ?raw), então a regra do banner do app
-    // é guardada aqui, onde ler o arquivo é permitido pelo type-check.
     const css = readFileSync(
       join(process.cwd(), 'src/components/CookieConsent/CookieConsent.module.css'),
       'utf8',
@@ -646,7 +629,6 @@ describe('página de privacidade', () => {
 
   it('não publica marcador "A CONFIRMAR"', () => {
     expect(doc.body.textContent).not.toMatch(PENDING_MARKER)
-    // O <head> também publica texto: título, meta tags e dados estruturados.
     const head = [
       doc.title,
       ...[...doc.querySelectorAll('meta[content]')].map((m) => m.getAttribute('content')),

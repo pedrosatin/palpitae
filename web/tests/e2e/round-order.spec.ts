@@ -1,9 +1,7 @@
 import { test, expect } from '@playwright/test'
 
-// A página de grupo só aceita id no formato de UUID (#726).
 const GROUP_ID = '00000000-0000-4000-8000-0000000000f1'
 
-// O teste intercepta a API no navegador com os três jogos do cenário Libertadores de roundOrder.test.ts.
 const matches = [
   {
     id: 'order-0',

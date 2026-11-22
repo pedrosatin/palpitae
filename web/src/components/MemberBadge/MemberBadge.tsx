@@ -2,7 +2,6 @@ import styles from './MemberBadge.module.css'
 
 interface MemberBadgeProps {
   variant: 'owner' | 'self'
-  /** Classe extra do lugar de uso (ajuste de layout ou de largura de tela). */
   className?: string
 }
 

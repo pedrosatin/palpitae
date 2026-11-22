@@ -1,8 +1,3 @@
-/**
- * Descadastra lembretes por e-mail. Mesmo efeito do link de cancelamento e de
- * Configurações: grava a data só na primeira vez e registra o evento.
- */
-
 import { hashUserId, logEvent } from '../observability'
 
 export type UnsubscribeSource = 'link' | 'settings' | 'mailjet'

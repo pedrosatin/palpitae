@@ -4,7 +4,6 @@ import { KNOCKOUT_PHASES } from '../matches/rounds'
 /** Fases de mata-mata como lista SQL. São constantes do código, sem entrada do usuário. */
 const KNOCKOUT_PHASES_SQL = KNOCKOUT_PHASES.map((phase) => `'${phase}'`).join(', ')
 
-/** Chave de prazo `start_time|fora|id`, só para jogo com horário futuro e sem adiamento. */
 const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
                 THEN m.start_time || '|' || (r.position <> 1) || '|' || m.id END`
 
@@ -117,15 +116,12 @@ export function pendingSummaryBinds(nowIso: string, userId: string): string[] {
 export type PenaltyCandidate = {
   match_id: string
   phase: string
-  /** Chave de prazo `start_time|fora|id`. Null para adiado ou horário passado. */
   deadline: string | null
 }
 
 export type PendingSummary = {
   pending: number
-  /** Jogo sem palpite (ou com pênalti faltando) que começa primeiro. */
   deadline: { match_id: string; start_time: string } | null
-  /** Chave crua de `deadline`, para comparar com a dos pênaltis faltando. */
   deadline_key: string | null
   next_match_at: string | null
   round: string | null
@@ -143,7 +139,6 @@ const EMPTY_SUMMARY: PendingSummary = {
   penalty_candidates: [],
 }
 
-/** Separa `start_time|fora|id` em horário e jogo. Chave fora do formato vira null. */
 function parseDeadlineKey(key: string | null): PendingSummary['deadline'] {
   if (!key) return null
   const first = key.indexOf('|')
@@ -181,7 +176,6 @@ function parsePenaltyCandidate(raw: unknown): PenaltyCandidate | null {
   return { match_id, phase, deadline: typeof deadline === 'string' ? deadline : null }
 }
 
-/** Lista de `penalty_candidates`. Item fora do formato é descartado. */
 function parsePenaltyCandidates(raw: unknown): PenaltyCandidate[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item) => parsePenaltyCandidate(item) ?? [])

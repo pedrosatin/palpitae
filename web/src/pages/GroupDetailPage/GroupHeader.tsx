@@ -68,7 +68,6 @@ function GroupMenu({
               role="menuitem"
               onClick={() => {
                 trackEvent('click_group_detail_regras')
-                // O item some ao fechar o menu. O foco vai ao botão do menu para o Modal devolvê-lo ali.
                 kebabRef.current?.focus()
                 setMenuOpen(false)
                 onOpenRules()

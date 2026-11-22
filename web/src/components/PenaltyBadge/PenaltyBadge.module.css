@@ -19,7 +19,6 @@
     border-color var(--transition-fast);
 }
 
-/* Read-only lists (e.g. group picks) — quiet, neutral. */
 .subtle {
   padding: 0.1rem var(--space-2);
   font-size: var(--font-size-xs);
@@ -33,7 +32,6 @@
   border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
-/* Editable pick chip — brand accent. */
 .accent {
   padding: var(--space-1) var(--space-3);
   font-size: var(--font-size-sm);
@@ -52,9 +50,6 @@
 }
 
 .tooltip {
-  /* Anchor to the badge's right edge and grow leftwards. The badge is always at
-     the right of its row, so this keeps the tooltip on-screen — centering it
-     overflowed the viewport and caused horizontal scroll. */
   right: 0;
   width: max-content;
 }

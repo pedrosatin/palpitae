@@ -202,8 +202,6 @@ async function createJoinRequest(
       competition_visibility?: string | null
     }>()
 
-  // Grupo inexistente, piloto sem acesso ou link desligado: mesma resposta.
-  // Banimento também cai na mensagem genérica (não vaza o status de ban).
   if (
     !group ||
     (group.competition_visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
@@ -402,7 +400,6 @@ async function approveJoinRequest(c: AppC) {
     return c.json({ error: JOIN_REQUEST_REFUSED }, 403)
   }
 
-  // Já membro (ex.: entrou por convite): sucesso idempotente, sem group_joined.
   const existing = await getGroupMembership(db, groupId, requesterId)
   if (existing) {
     return c.json({ group: { id: group.id, name: group.name } })

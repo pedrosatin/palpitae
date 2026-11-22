@@ -84,7 +84,6 @@ function pageTitle(state: State): string {
 }
 
 interface GroupJoinPageProps {
-  /** Presente quando a sessão já resolveu como autenticada. */
   user?: User | null
 }
 

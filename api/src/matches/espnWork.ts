@@ -49,7 +49,6 @@ import { syncFixtures } from './sync'
 
 export type EspnWorkBase = {
   kind: ProviderWorkKind
-  /** Slug da ESPN (`competitions.external_id`). */
   competitionCode: string
   season: string
   competitionId: string
@@ -268,15 +267,6 @@ export function espnDrain(deps: { ae?: AnalyticsEngineDataset; now?: number }): 
   }
 }
 
-/**
- * Com o provedor suspenso ou bloqueado o dreno nem reclama os itens: a própria
- * reclamação recusa (`respectProviderAccess`), então eles ficam pendentes, sem
- * escrita no D1, até o bloqueio vencer ou o operador retomar, e a leitura do
- * estado (1 chamada da fatia) só acontece quando a reclamação veio vazia, para
- * dizer ao operador por que. Num tick com trabalho a ESPN não paga essa leitura.
- * Só registra `provider_work_run` quando reclamou itens ou quando saiu
- * bloqueada/suspensa.
- */
 async function drainEspnWork(
   budget: DrainBudget,
   deps: { ae?: AnalyticsEngineDataset; now?: number },
@@ -304,7 +294,6 @@ async function drainEspnWork(
   const failed = run.failed > 0 || postFailures > 0 || run.settleError !== undefined
   tryLogEvent(ae, 'provider_work_run', {
     blobs: [failed ? 'error' : 'ok', 'espn'],
-    // claimed, done, requeued, failed, duration_ms, released, calls_used
     doubles: [
       run.claimed,
       run.done,

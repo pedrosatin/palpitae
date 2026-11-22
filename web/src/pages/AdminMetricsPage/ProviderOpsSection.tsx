@@ -36,15 +36,10 @@ export interface OpsResponse {
     skipped: number
     failures: number
   }[]
-  /** Ausente em API anterior ao registro de descartes. */
   discards?: OpsDiscardRow[]
-  /** Ausente em API anterior ao registro de jogos fora do calendário. */
   missingMatches?: OpsMissingMatchRow[]
-  /** Ausente em API anterior ao registro de jogos encerrados sem pontuação. */
   unscoredMatches?: OpsUnscoredRow[]
-  /** Fila durável `provider_work` (D1): itens abertos ou falhos. Ausente em API antiga. */
   pendingWork?: OpsPendingWorkRow[]
-  /** true quando a consulta D1 da fila falhou (distinto de lista vazia). */
   pendingWorkError?: boolean
 }
 
@@ -52,7 +47,6 @@ interface OpsPendingWorkRow {
   provider: string
   status: string
   items: number
-  /** Minutos desde o `created_at` do item mais antigo do grupo. */
   oldest_age_minutes: number
   max_attempts: number
 }
@@ -78,11 +72,8 @@ interface OpsMissingMatchRow {
 
 interface OpsUnscoredRow {
   competition_id: string
-  /** Pico de jogos encerrados sem pontuação no período. */
   matches: number
-  /** Pico, em minutos, do tempo desde o início do jogo mais antigo. */
   oldest_minutes: number
-  /** Ciclos do poller que registraram a pendência. */
   cycles: number
   last_seen: string
 }
@@ -183,7 +174,6 @@ function Attempts({ totals }: { totals: HttpTotals }) {
   )
 }
 
-/** Colunas de falhas: contagem, % de falha e status das falhas. */
 function FailureCells({ totals }: { totals: HttpTotals }) {
   return (
     <>
@@ -196,7 +186,6 @@ function FailureCells({ totals }: { totals: HttpTotals }) {
   )
 }
 
-/** Mais falhas primeiro; empate decidido pelo total de tentativas. */
 function byFailuresThenAttempts(a: [string, HttpTotals], b: [string, HttpTotals]): number {
   return b[1].failures - a[1].failures || b[1].attempts - a[1].attempts
 }
@@ -205,11 +194,9 @@ function competitionName(id: string, names: CompetitionNames): { text: string; t
   if (!id) return { text: 'sem liga', title: 'Evento sem competição associada' }
   const found = names.get(id)
   if (!found) return { text: competitionLabel(id, undefined, undefined), title: id }
-  // Competição conhecida com nome vazio mostra o texto vazio, como antes da extração.
   return { text: found.season ? `${found.name} ${found.season}` : found.name, title: id }
 }
 
-/** Aviso sobre o que a ausência de linhas significa neste período. */
 function CollectionNotice({ ops }: { ops: OpsResponse }) {
   if (!ops.httpFirstSeenAt) {
     return (
@@ -408,18 +395,15 @@ function SyncAndFallback({ ops, names }: { ops: OpsResponse; names: CompetitionN
   )
 }
 
-/** Campeonato pelo id; sem competição gravada, o código do provedor. */
 function discardCompetition(row: OpsDiscardRow, names: CompetitionNames) {
   if (row.competition_id || !row.competition_code) return competitionName(row.competition_id, names)
   return { text: row.competition_code, title: 'Competição ainda não gravada no banco' }
 }
 
-/** "2026-12-06T16:30:00Z" → "06/12 16:30 UTC". */
 function formatKickoff(iso: string): string {
   return iso ? formatSince(iso.replace('T', ' ').replace('Z', '')) : '—'
 }
 
-/** Média de eventos descartados por execução que registrou o descarte. */
 function perSync(row: OpsDiscardRow): string {
   if (row.syncs <= 0) return '—'
   return (row.events / row.syncs).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
@@ -507,10 +491,6 @@ function MissingMatchesTable({
   )
 }
 
-/**
- * Eventos que o sync não importou. Some quando a API ainda não envia o campo,
- * para não afirmar zero sem dado.
- */
 function Discards({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
   if (!Array.isArray(ops.discards)) return null
   return (
@@ -532,10 +512,6 @@ function Discards({ ops, names }: { ops: OpsResponse; names: CompetitionNames })
   )
 }
 
-/**
- * Jogos pendentes que a descoberta não viu no calendário completo da
- * football-data. Some quando a API ainda não envia o campo.
- */
 function MissingMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
   if (!Array.isArray(ops.missingMatches)) return null
   return (
@@ -554,7 +530,6 @@ function MissingMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNa
   )
 }
 
-/** Minutos como "45 min", "3 h" ou "2 d". */
 function formatAge(minutes: number): string {
   if (minutes < 120) return `${Math.round(minutes)} min`
   const hours = minutes / 60
@@ -585,7 +560,6 @@ function UnscoredMatchesTable({
           {rows.map((r, i) => {
             const name = competitionName(r.competition_id, names)
             return (
-              // O id chega vazio quando a sanitização o descarta; o índice evita a colisão.
               <tr key={`${i}|${r.competition_id}`}>
                 <td title={name.title}>{name.text}</td>
                 <td className={styles.num}>{formatNumber(r.matches)}</td>
@@ -601,10 +575,6 @@ function UnscoredMatchesTable({
   )
 }
 
-/**
- * Competições com jogo encerrado que passou mais de um ciclo do poller sem
- * pontuação. Some quando a API ainda não envia o campo.
- */
 function UnscoredMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
   if (!Array.isArray(ops.unscoredMatches)) return null
   return (
@@ -660,11 +630,6 @@ function PendingWorkTable({ rows }: { rows: OpsPendingWorkRow[] }) {
   )
 }
 
-/**
- * Itens abertos ou falhos em `provider_work` (D1). Idade = agora − created_at
- * do item mais antigo do grupo. Some quando a API ainda não envia o campo.
- * `pendingWorkError` distingue falha de consulta de fila vazia.
- */
 function PendingWork({ ops }: { ops: OpsResponse }) {
   if (ops.pendingWorkError) {
     return (
@@ -692,7 +657,6 @@ function PendingWork({ ops }: { ops: OpsResponse }) {
   )
 }
 
-/** A resposta pode vir de uma API antiga ou truncada: só renderiza o que tem forma. */
 function isUsable(ops: OpsResponse | null): ops is OpsResponse {
   return (
     !!ops &&

@@ -6,7 +6,6 @@ import { buildEnvErrors } from './env'
 
 const valid = { VITE_API_URL: '/api', VITE_AUTH_URL: 'https://api.palpitae.com.br' }
 
-/** Resolve o `vite.config.ts` como o `vite build` de produção faz. */
 function resolveConfig(env: ConfigEnv): UserConfig {
   return typeof viteConfig === 'function' ? (viteConfig(env) as UserConfig) : viteConfig
 }

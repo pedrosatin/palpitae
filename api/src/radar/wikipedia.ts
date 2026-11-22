@@ -24,7 +24,6 @@ type PageviewsResponse = {
   items?: { timestamp?: string; views?: number }[]
 }
 
-/** "YYYY-MM-DD" → "YYYYMMDD" (formato que a API espera nos limites). */
 function compact(day: string): string {
   return day.replaceAll('-', '')
 }
@@ -58,7 +57,6 @@ export async function fetchPageviews(
   const payload = (await res.json()) as PageviewsResponse
   const byDay = new Map<string, number>()
   for (const item of payload.items ?? []) {
-    // timestamp vem como "YYYYMMDD00" (hora sempre 00 no grão diário).
     const ts = item.timestamp
     if (!ts || ts.length < 8) continue
     byDay.set(`${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`, item.views ?? 0)

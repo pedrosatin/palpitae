@@ -198,7 +198,6 @@ describe('sessão de usuário apagado', () => {
   })
 })
 
-/** A listagem de competições mostra o piloto da fixture? */
 async function seesPilot(response: Response): Promise<boolean> {
   const { competitions } = (await response.json()) as { competitions: Array<{ slug: string }> }
   return competitions.some((c) => c.slug === 'piloto')
@@ -231,9 +230,7 @@ describe('ADMIN_EMAIL com espaço ou quebra de linha no fim', () => {
       sqlite.exec("UPDATE users SET email = 'admin@example.com' WHERE id = 'u1'")
       const token = await tokenFor('u1', 'admin@example.com')
 
-      // Métricas: passa do gate de admin e para na configuração ausente da SQL API.
       expect((await request(token, '/metrics/overview')).status).toBe(503)
-      // Sync manual: passa do gate e para na validação do corpo.
       expect((await request(token, '/matches/sync', 'POST', {})).status).toBe(400)
       expect((await request(token, '/competitions/piloto/promote', 'POST')).status).toBe(200)
       expect(await seesPilot(await request(token, '/competitions'))).toBe(true)

@@ -1,12 +1,3 @@
-/**
- * AdminRadarPage styles
- *
- * Radar de competições (admin-only). Segue o design system do Palpitae
- * (CSS custom properties), no mesmo padrão visual do AdminMetricsPage.
- */
-
-/* Page shell, title row and period pills live in ../admin-shared.module.css */
-
 .content {
   max-width: 1080px;
   margin: 0 auto;
@@ -72,7 +63,6 @@
   cursor: pointer;
 }
 
-/* Tabela larga: rola dentro da própria seção em telas estreitas. */
 .table {
   width: 100%;
   border-collapse: collapse;

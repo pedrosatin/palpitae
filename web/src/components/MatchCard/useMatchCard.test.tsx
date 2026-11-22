@@ -190,7 +190,6 @@ describe('useMatchCard', () => {
       updatedValue = v
     }
 
-    // Valid inputs
     act(() => {
       result.current.handleScoreInput('1', updateFn)
     })
@@ -206,7 +205,6 @@ describe('useMatchCard', () => {
     })
     expect(updatedValue).toBe('')
 
-    // Invalid inputs
     updatedValue = 'unchanged'
     act(() => {
       result.current.handleScoreInput('123', updateFn)
@@ -378,7 +376,6 @@ describe('useMatchCard', () => {
     expect(result.current.away).toBe('0')
     expect(result.current.selectedOutcome).toBe('draw')
 
-    // fetch should NOT be called because penalty winner is not decided yet
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
@@ -470,7 +467,6 @@ describe('useMatchCard', () => {
       await result.current.selectOutcome('away')
     })
 
-    // O timer do primeiro envio venceria aqui.
     act(() => {
       vi.advanceTimersByTime(500)
     })
@@ -507,7 +503,6 @@ describe('useMatchCard', () => {
 
   it('envio sem resposta em 10 s vira erro de conexão e libera o card', async () => {
     vi.useFakeTimers()
-    // Como o fetch do navegador, o PUT pendente rejeita quando o sinal aborta.
     mockFetch.mockImplementation(
       (_url, init) =>
         new Promise<Response>((_resolve, reject) => {

@@ -163,7 +163,6 @@ describe('useDashboardGroups', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.joinOpen).toBe(false)
     expect(result.current.groups).toEqual(mockGroups)
-    // A lista já carregada vale sem o convite: tirar o código da URL não refaz a busca.
     expect(mockApiFetch).toHaveBeenCalledTimes(1)
   })
 

@@ -17,10 +17,6 @@ import {
 
 const router = new Hono<AppContext>()
 
-/**
- * Minimal HTML confirmation page returned to the unsubscribe link click. Kept
- * self-contained (no app shell) because it's opened straight from an e-mail.
- */
 function confirmationPage(message: string) {
   return html`<!DOCTYPE html>
     <html lang="pt-BR">
@@ -47,12 +43,6 @@ function confirmationPage(message: string) {
     </html>`
 }
 
-/**
- * Renders an HTML confirmation page with a POST button. Used by GET /unsubscribe
- * so that e-mail scanners and prefetch proxies (Microsoft Safe Links, etc.) that
- * fire GET requests on every link in a delivered e-mail cannot silently unsubscribe
- * the recipient. Only the POST (submitted by an intentional click) mutates state.
- */
 function unsubscribeFormPage(token: string) {
   return html`<!DOCTYPE html>
     <html lang="pt-BR">
@@ -89,13 +79,6 @@ function unsubscribeFormPage(token: string) {
     </html>`
 }
 
-/**
- * GET /notifications/unsubscribe?token=...
- * Public — opened from the e-mail footer link. Renders a confirmation form; does
- * NOT mutate state. E-mail scanners (Microsoft Safe Links, antivirus proxies) fire
- * GET on every link in a delivered e-mail — a mutating GET would unsubscribe users
- * without their knowledge. Only the POST below actually writes to the database.
- */
 router.get('/unsubscribe', async (c) => {
   const token = c.req.query('token')
   if (!token) {
@@ -126,7 +109,6 @@ router.post('/unsubscribe', async (c) => {
     return c.text('invalid token', 400)
   }
 
-  // Só registra o evento quando a linha muda — POST one-click repetido é no-op.
   await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'link')
 
   return c.text('unsubscribed', 200)
@@ -149,8 +131,6 @@ router.post('/mailjet-events', async (c) => {
   if (auth === 'missing_config') return c.text('Not Found', 404)
   if (auth === 'unauthorized') return c.text('Unauthorized', 401)
 
-  // Esta rota não usa o validateJson porque um 400 faria a Mailjet reenviar o
-  // lote; JSON malformado ou payload fora do formato responde 200 com log.
   let payload: unknown
   try {
     payload = await c.req.json()
@@ -170,15 +150,10 @@ router.post('/mailjet-events', async (c) => {
     c.env.AE,
     parsed.output,
   )
-  // Falha interna (D1) num unsub/spam: 500 para a Mailjet reenviar o lote.
   if (failed > 0) return c.text('retry', 500)
   return c.text('ok', 200)
 })
 
-/**
- * GET /notifications/preferences (auth)
- * Returns the current e-mail preferences for the signed-in user.
- */
 router.get('/preferences', requireAuth, async (c) => {
   const userId = c.get('userId')
   const row = await c.env.DB.prepare(`SELECT email_unsubscribed_at FROM users WHERE id = ?`)

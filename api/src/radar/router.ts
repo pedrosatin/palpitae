@@ -38,22 +38,8 @@ type DailyRow = {
   pageviews: number | null
 }
 
-/** Dias de histórico de jogos que ainda sustentam "a competição está viva". */
 const RECENT_MATCH_DAYS = 14
 
-/**
- * Status da temporada. `ends_on` sozinho não serve: em torneio de mata-mata o
- * provider só conhece as datas até onde os confrontos já foram definidos, então
- * `ends_on` é um PISO, não a data real de fim — é o mesmo fenômeno que o
- * ADR-010 trata na descoberta de jogos. A Libertadores 2026, em agosto, vinha
- * com `ends_on` na data do jogo seguinte; confiar nele marcaria como
- * "encerrada" uma competição em plena fase final.
- *
- * Por isso só declaramos `finished` quando a janela passou **e** não há jogo
- * recente registrado. Na dúvida a competição fica como `ongoing`: sumir com uma
- * competição viva da tela é bem pior do que manter uma encerrada por mais alguns
- * dias — a tela existe pra revelar oportunidades, não pra escondê-las.
- */
 function seasonStatus(
   startsOn: string | null,
   endsOn: string | null,
@@ -68,7 +54,6 @@ function seasonStatus(
   return hasRecentMatch ? 'ongoing' : 'finished'
 }
 
-/** Média inteira de uma lista, ou null se não houver amostra. */
 function average(values: number[]): number | null {
   if (values.length === 0) return null
   return Math.round(values.reduce((sum, n) => sum + n, 0) / values.length)
@@ -119,7 +104,6 @@ radarRouter.get('/', async (c) => {
       )
       .bind(since)
       .all<DailyRow>(),
-    // Cadastro determina suporte; grupos não excluídos medem demanda interna.
     db
       .prepare(
         `SELECT c.slug AS slug, COUNT(g.id) AS groups
@@ -148,8 +132,6 @@ radarRouter.get('/', async (c) => {
     const series = seriesByRadar.get(comp.id) ?? []
     const pageviews = series.filter((p) => p.pageviews !== null).map((p) => p.pageviews as number)
 
-    // Suportado = existe competição no Palpitae cujo slug casa com o prefixo
-    // curado (o slug carrega o ano, ex. `...-serie-a-2026`).
     const entry = findEntry(comp.country ?? '', comp.name)
     const supportedSlugs = entry?.palpitaeSlug
       ? groupsBySlug.filter((g) => g.slug.startsWith(`${entry.palpitaeSlug}-`))

@@ -24,7 +24,7 @@ describe('logRequestPerf', () => {
       JSON.stringify({
         route: '/api/test',
         status: 200,
-        total_ms: 123.5, // Check rounding
+        total_ms: 123.5,
       }),
     )
   })
@@ -43,7 +43,7 @@ describe('logRequestPerf', () => {
         route: '/api/test',
         status: 200,
         total_ms: 123.5,
-        db_ms: 45.7, // Check rounding
+        db_ms: 45.7,
       }),
     )
   })

@@ -11,25 +11,12 @@ export const LEAGUE = ''
  */
 export const GENERAL_RANKING = '__general_ranking__'
 
-/** Fases de pontos corridos sem grupos: entram na tabela "Classificação". */
 const LEAGUE_TABLE_PHASES = new Set(['REGULAR_SEASON', 'LEAGUE_PHASE'])
 
-/**
- * Fases de pontos cujo group_name na ESPN é parcial/incompleto: todos os jogos
- * da fase vão para um ranking geral (não inventa A/B nem omite null).
- */
 const GENERAL_RANKING_PHASES = new Set(['TACA_GUANABARA'])
 
-/**
- * Competições cuja fase GROUP_STAGE usa ranking geral (grupos ESPN incompletos).
- * Seleção por código canônico (competitions.external_id); não globaliza GROUP_STAGE.
- */
 const GENERAL_RANKING_GROUP_STAGE_CODES = new Set(['bra.camp.gaucho'])
 
-/**
- * Copas regionais com classificação de pontos implementada na StandingsTab.
- * Identidade por `competitions.external_id`; não abre Tabela para toda cup.
- */
 const STANDINGS_ELIGIBLE_CUP_CODES = new Set([
   'bra.camp.gaucho',
   'bra.camp.carioca',
@@ -89,7 +76,6 @@ export function standingsBucket(
 /** Quantos jogos recentes a coluna "Últimas" mostra. */
 export const FORM_SIZE = 4
 
-/** Resultado do adversário para cada resultado do mandante. */
 const OPPOSITE_RESULT: Record<'v' | 'e' | 'd', 'v' | 'e' | 'd'> = {
   v: 'd',
   e: 'e',
@@ -105,7 +91,6 @@ const RESULT_LABELS: Record<'v' | 'e' | 'd', string> = {
 /** Resultado de um jogo na forma recente do time, mais antigo → mais recente. */
 export interface FormEntry {
   result: 'v' | 'e' | 'd'
-  /** Descrição acessível, ex.: "Vitória 2x1 contra FLA". */
   label: string
 }
 
@@ -114,7 +99,6 @@ export interface TeamStanding {
   team_name: string
   team_short_name: string
   team_logo: string
-  /** Últimos 4 jogos (FORM_SIZE), mais recente por último. */
   form: FormEntry[]
   p: number
   j: number
@@ -205,10 +189,6 @@ function sortStandings(
     for (const team of teams.values()) {
       team.form = team.form.slice(-FORM_SIZE)
     }
-    // Liga (CBF, aproximado): pontos, VITÓRIAS, saldo, gols pró. Critérios
-    // seguintes do regulamento (confronto direto, cartões) não se aplicam —
-    // cartões não são sincronizados; empate residual cai em ordem alfabética.
-    // Copa (FIFA): pontos, saldo, gols pró.
     const isLeague = isLeagueTable(group)
     const sorted = [...teams.values()].sort(
       (a, b) =>
@@ -249,12 +229,6 @@ export function computeStandings(
     return team
   }
 
-  // LEAGUE ('') = tabela única (REGULAR_SEASON / LEAGUE_PHASE). GENERAL_RANKING
-  // = Taça Guanabara / Gaúcho classificatória com grupos ESPN incompletos —
-  // junta todos os jogos da fase. Demais fases: agrupa por group_name e
-  // ignora mata-mata (group_name null fora das fases de pontos acima).
-  // Ordem cronológica: a coluna de forma depende de "mais recente por último";
-  // a ordem do payload de /matches não é garantida.
   const chronological = [...matches].sort((a, b) =>
     a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0,
   )
@@ -263,7 +237,6 @@ export function computeStandings(
     const groupKey = standingsBucket(m, competitionCode)
     if (groupKey === null) continue
 
-    // Ensure both teams appear in the table even before any match is played.
     const home = teamFor(
       groupKey,
       m.home_team_id,

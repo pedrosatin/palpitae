@@ -18,12 +18,10 @@ import { syncFixtures } from './sync'
 
 const KICKOFF = '2026-11-08T15:30:00Z'
 const NEW_KICKOFF = '2026-12-02T20:15:00Z'
-/** Instante de todos os syncs do ciclo, uma hora antes do kickoff, para que adiado e cancelado sejam vistos antes do horário. */
 const SYNC_NOW = '2026-11-08T14:30:00Z'
 
 type Score = [number, number] | null
 
-/** Um estado do jogo, como cada provedor o descreve. */
 type Step = {
   label: string
   fd: { status: string; score: Score; utcDate?: string }
@@ -70,7 +68,6 @@ const ENCERRADO_SEM_PLACAR: Step = {
   fd: { status: 'FINISHED', score: null },
   espn: { type: ESPN_FULL_TIME, score: null },
 }
-/** A football-data manda 0-0 em adiado e cancelado (ver o payload real abaixo). */
 const ADIADO_0_0: Step = {
   label: 'adiado com 0-0',
   fd: { status: 'POSTPONED', score: [0, 0], utcDate: '2026-11-08T00:00:00Z' },
@@ -150,7 +147,6 @@ function fdMatch(step: Step['fd']) {
 
 type Feeds = { fd: unknown[]; espn: EspnScoreboardEvent[]; competition?: unknown }
 
-/** football-data responde `feeds.fd`; a ESPN, os eventos do dia UTC pedido. */
 function stubProviders(feeds: Feeds) {
   vi.stubGlobal(
     'fetch',
@@ -362,7 +358,6 @@ describe('ciclo da partida: payloads reais', () => {
 })
 
 describe('ciclo da partida: fallback de resultados', () => {
-  /** Dentro da janela ativa do poller (115 a 200 min após o início). */
   const inWindow = Date.parse(KICKOFF) + 120 * 60_000
 
   it('a ESPN encerra o jogo que a football-data ainda dá como adiado e tira o adiado', async () => {

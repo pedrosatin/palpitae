@@ -9,16 +9,10 @@ export interface GroupDetail {
   competition_id: string
   competition_name: string | null
   competition_type: CompetitionType | null
-  /** Código canônico (`competitions.external_id`), ex. bra.camp.gaucho. */
   competition_code: string | null
-  /**
-   * O servidor deriva o valor dos jogos. Liga vira 'finished' quando não tem
-   * jogo pendente. Copa precisa também da final encerrada.
-   */
   competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
   is_admin: boolean
   invite_code: string | null
-  /** Identificador público do link de pedido (qualquer membro pode compartilhar). */
   public_id?: string | null
   join_requests_enabled?: boolean
   pending_join_request_count?: number

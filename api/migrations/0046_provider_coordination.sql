@@ -1,21 +1,3 @@
--- Orçamento compartilhado e fila durável de sync dos provedores (ADR-027).
---
--- provider_rate_state: razão de orçamento por provedor. Cada tentativa
--- (poller, descoberta, sync administrativo, retry) reserva uma vaga na janela
--- de um minuto antes do fetch; um 429 (ou cota zerada) grava `blocked_until`
--- com o reset que a resposta informou, e nenhum isolate chama o provedor
--- antes dele. Uma linha só por provedor: escritas são um UPDATE por tentativa.
---
--- provider_work: fila de trabalho pendente. Os produtores (poller, descoberta,
--- sync administrativo) gravam aqui o que não coube no orçamento ou que falhou,
--- com prioridade, tentativas e prazo de nova execução; o tick e o cron drenador
--- retomam depois, inclusive muito depois da janela de 24 horas do resgate.
--- Uma linha por chave de deduplicação (provedor, tipo, competição, temporada,
--- rodada): concluída ou falha, ela é reusada pelo próximo planejamento, então
--- a tabela cresce com o número de rodadas, não com o número de execuções.
---
--- Só cria tabelas: o Worker anterior continua no ar durante o deploy, sem as
--- novas rotinas, e as tabelas vazias não o afetam.
 CREATE TABLE provider_rate_state (
   provider TEXT PRIMARY KEY,
   -- Identificador da credencial (sem o valor do segredo), para quando um

@@ -58,9 +58,7 @@ type ExistingRow = {
 
 export type ReplicateGroupResult = {
   group_id: string
-  /** Jogos que o grupo passou a ter com o placar do grupo de origem. */
   saved: number
-  /** Jogos em que o grupo tinha um palpite diferente, agora substituído. */
   replaced: number
 }
 
@@ -88,7 +86,6 @@ function scoreFor(group: CopyGroup, source: SourceRow): { home: number; away: nu
   return group.points_exact === 0 ? outcomeScore(home, away) : { home, away }
 }
 
-/** Grupos de que o usuário é membro (sem banimento) entre `groupIds`, numa única consulta. */
 async function fetchMemberGroups(
   db: D1Database,
   userId: string,
@@ -109,7 +106,6 @@ async function fetchMemberGroups(
   return new Map(results.map((g) => [g.id, g]))
 }
 
-/** Palpites do usuário na origem. Sem `matchIds`, todos os que ele tem no grupo. */
 async function fetchSourcePredictions(
   db: D1Database,
   userId: string,
@@ -132,7 +128,6 @@ async function fetchSourcePredictions(
   return results
 }
 
-/** Palpites que o usuário já tem nos grupos de destino para os jogos dados, numa única consulta. */
 async function fetchExisting(
   db: D1Database,
   userId: string,
@@ -152,7 +147,6 @@ async function fetchExisting(
   return new Map(results.map((r) => [`${r.group_id}:${r.match_id}`, r]))
 }
 
-/** Confrontos de mata-mata dos jogos a copiar, indexados pelo id do jogo. */
 async function fetchTies(
   db: D1Database,
   competitionId: string,
@@ -168,7 +162,6 @@ function sameOutcome(current: ExistingRow, home: number, away: number): boolean 
   )
 }
 
-/** Classificado que o palpite da origem prevê para a volta, ou null se ela não decide. */
 function derivedClassified(
   sourceGroupId: string,
   source: SourceRow,
@@ -227,7 +220,6 @@ function isSamePrediction(
 
 type Plan = {
   statements: D1PreparedStatement[]
-  /** Jogo de cada instrução de `statements`, na mesma ordem. */
   statementMatches: string[]
   results: ReplicateGroupResult[]
 }
@@ -244,8 +236,6 @@ function planWrites(input: {
   onlyMissing: boolean
 }): Plan {
   const { db, userId, sourceGroupId, now, targets, ties, existing, onlyMissing } = input
-  // O jogo é relido na própria escrita, com o relógio do banco. Se ele travou ou
-  // começou depois das consultas, nada é gravado.
   const insert = prepareGuardedUpsert(db, { onlyMissing })
   const allSourceByMatch = new Map(input.open.map((r) => [r.match_id, r]))
   const statements: D1PreparedStatement[] = []
@@ -254,7 +244,6 @@ function planWrites(input: {
 
   for (const group of targets) {
     const result: ReplicateGroupResult = { group_id: group.id, saved: 0, replaced: 0 }
-    // Com `onlyMissing`, o jogo que o grupo já palpitou sai da cópia, e a volta usa a ida dele.
     const open = onlyMissing
       ? input.open.filter((r) => !existing.has(`${group.id}:${r.match_id}`))
       : input.open
@@ -309,9 +298,7 @@ function planWrites(input: {
 }
 
 export type CopyPlan = Plan & {
-  /** Jogos da origem já travados, que não entram na cópia. */
   lockedMatches: string[]
-  /** Jogos pedidos que a origem não palpitou. */
   missingMatches: string[]
 }
 
@@ -375,10 +362,6 @@ export const replicateJsonValidator = validateJson(
   mapReplicatePredictionError,
 )
 
-/**
- * Separa os destinos que recebem a cópia dos que ficam de fora: outro campeonato,
- * campeonato encerrado ou destino de placar exato com origem "só vencedor".
- */
 function partitionTargets(
   sourceGroup: GroupRow,
   targetGroupIds: string[],

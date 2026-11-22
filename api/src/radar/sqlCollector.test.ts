@@ -3,7 +3,6 @@ import { inlineParams, SqlCollector, sqlLiteral } from './sqlCollector'
 
 describe('sqlLiteral', () => {
   it('escapa apóstrofo duplicando — nomes reais do provider têm', () => {
-    // "King's Cup", "FA Women's Cup" vêm assim da API-Football.
     expect(sqlLiteral("King's Cup")).toBe("'King''s Cup'")
     expect(sqlLiteral("O''Brien")).toBe("'O''''Brien'")
   })

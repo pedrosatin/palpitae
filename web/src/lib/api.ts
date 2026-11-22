@@ -1,22 +1,7 @@
-/**
- * Thin wrapper around `fetch` for calls to the Palpitae API.
- *
- * Two things every authenticated call needs, in one place:
- *  - `credentials: 'include'` so the session cookie rides along;
- *  - a single point that notices a 401 (expired/absent session) and tells
- *    the app to bounce the user back to login instead of leaving each tab
- *    stuck on its own "erro ao carregar" with no data.
- *
- * On 401 we broadcast a global event (see `notifySessionExpired`) rather than
- * redirecting here — the wrapper has no router access, and callers still get
- * the raw Response so their existing `if (!res.ok) throw` paths keep working
- * during the brief moment before App tears the authenticated tree down.
- */
 
 /** Window event dispatched when any API call returns 401. */
 export const SESSION_EXPIRED_EVENT = 'palpitae:session-expired'
 
-/** sessionStorage flag so the login screen can explain *why* the user landed there. */
 const SESSION_EXPIRED_FLAG = 'palpitae:session-expired'
 
 /**
@@ -26,7 +11,6 @@ const SESSION_EXPIRED_FLAG = 'palpitae:session-expired'
  */
 export function notifySessionExpired(): void {
   if (typeof window === 'undefined') return
-  // sessionStorage can throw (private mode / quota) — the event still fires.
   setFlag(SESSION_EXPIRED_FLAG)
   window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
 }
@@ -44,7 +28,6 @@ export function clearSessionExpired(): void {
   consumeFlag(SESSION_EXPIRED_FLAG)
 }
 
-/** Flag de sessionStorage: o `POST /auth/logout` não confirmou a revogação no servidor. */
 const LOGOUT_UNCONFIRMED_FLAG = 'palpitae:logout-unconfirmed'
 
 /** Marca, para a tela de login, que a saída não foi confirmada pelo servidor. */

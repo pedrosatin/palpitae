@@ -6,7 +6,6 @@ interface GroupTabsProps {
   activeTab: Tab
   showStandings: boolean
   isAdmin: boolean
-  /** Contador de pedidos pendentes (só dono). */
   pendingJoinRequestCount?: number
   tabsOffset: number
   tabHref: (tab: Tab) => string

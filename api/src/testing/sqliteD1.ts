@@ -41,7 +41,6 @@ export function createSqliteD1(): { sqlite: DatabaseSync; db: D1Database } {
       // Sem await entre BEGIN e COMMIT. Como no D1, batches simultâneos não se intercalam.
       sqlite.exec('BEGIN')
       try {
-        // Como no D1, cada resultado do lote traz as linhas que a instrução alterou.
         const total = sqlite.prepare('SELECT total_changes() AS n, changes() AS last')
         const results = statements.map((statement) => {
           const before = Number(total.get()?.n)

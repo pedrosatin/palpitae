@@ -8,20 +8,12 @@ import { fetchPageviews } from './wikipedia'
 
 const PROVIDER = 'espn'
 
-/** Provedor anterior do radar (ADR-014) — conta suspensa, linhas órfãs. */
 const LEGACY_PROVIDER = 'api-football'
 
-/**
- * Dias de pageviews recoletados a cada execução. Não basta pegar "ontem": a
- * Wikimedia consolida com 1-2 dias de atraso, então a janela reprocessa os dias
- * que ainda estavam vazios. O upsert por (radar_id, day) torna isso idempotente.
- */
 const PAGEVIEW_WINDOW_DAYS = 8
 
-/** Requisições simultâneas à Wikimedia — educado com uma API pública e grátis. */
 const PAGEVIEW_CONCURRENCY = 4
 
-/** "YYYY-MM-DD" de `date` deslocado em `offsetDays` (UTC). */
 function isoDay(date: Date, offsetDays = 0): string {
   const d = new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + offsetDays),
@@ -29,7 +21,6 @@ function isoDay(date: Date, offsetDays = 0): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Id determinístico — reexecutar o cron atualiza a linha, nunca duplica. */
 function radarId(externalId: string, season: string): string {
   return `${PROVIDER}:${externalId}:${season}`
 }
@@ -44,13 +35,6 @@ function isRelevant(league: ProviderLeague): boolean {
   return RADAR_COUNTRIES.has(league.country) || findEntry(league.country, league.name) !== undefined
 }
 
-/**
- * Zera `is_current` só onde a coleta desta execução responde pelo estado: todas
- * as ligas do provedor, menos as dos slugs que falharam. Liga de slug com falha
- * mantém o estado do último snapshot válido, em vez de sumir do radar porque a
- * ESPN não respondeu hoje. Slug que saiu do recorte não está em `failed` e é
- * rebaixado normalmente.
- */
 function resetCurrent(db: D1Database, failedSlugs: string[]): D1PreparedStatement {
   if (failedSlugs.length === 0) {
     return db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER)
@@ -142,7 +126,6 @@ async function writePageviews(
   today: string,
   now: Date,
 ): Promise<{ pageviewErrors: number; pageviewRows: number }> {
-  // Interesse do público — só para as competições com artigo curado.
   const from = isoDay(now, -PAGEVIEW_WINDOW_DAYS)
   const pageviewStatements: D1PreparedStatement[] = []
   let pageviewErrors = 0
@@ -180,9 +163,7 @@ async function writePageviews(
 /** Resultado de uma execução — o script do Actions usa para sinalizar coleta parcial. */
 export type RadarSyncResult = {
   status: 'ok' | 'partial' | 'error'
-  /** Slugs da ESPN sem resposta; as ligas deles mantêm o snapshot anterior. */
   failedSlugs: string[]
-  /** Artigos da Wikipédia cujos pageviews não foram atualizados. */
   pageviewErrors: number
 }
 
@@ -243,9 +224,6 @@ export async function syncRadar(
   }
 
   if (leagues.length === 0) {
-    // Nenhuma liga corrente é indistinguível de coleta quebrada (ex.: a ESPN
-    // mudou o formato da resposta). Gravar aqui seria aplicar um snapshot
-    // vazio por cima do bom — o mesmo fail-closed da falha geral.
     logError(
       ae,
       'radar_sync_error',
@@ -268,7 +246,6 @@ export async function syncRadar(
   const status = failedSlugs.length > 0 || pageviewErrors > 0 ? 'partial' : 'ok'
   logEvent(ae, 'radar_sync_run', {
     blobs: [status],
-    // competições, mapeadas, linhas de pageviews, duração
     doubles: [leagues.length, mapped.length, pageviewRows, Date.now() - startedAt],
   })
 

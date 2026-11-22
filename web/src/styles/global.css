@@ -1,17 +1,5 @@
-/**
- * Global base styles.
- *
- * Imports design tokens from variables.css, applies a minimal CSS reset,
- * and sets base typography for the whole application.
- *
- * Import order in main.tsx: this file must be the first CSS import so
- * that CSS custom properties are available to all component stylesheets.
- */
-
 @import './variables.css';
 @import './utilities.css';
-
-/* ─── Reset ─────────────────────────────────────────────────────────────── */
 
 *,
 *::before,
@@ -20,8 +8,6 @@
   margin: 0;
   padding: 0;
 }
-
-/* ─── Base ──────────────────────────────────────────────────────────────── */
 
 html {
   scroll-padding-bottom: var(--consent-banner-height, 0px);
@@ -37,12 +23,9 @@ body {
   line-height: var(--line-height-normal);
   min-height: 100vh;
   padding-bottom: var(--consent-banner-height, 0px);
-  /* Improve font rendering on macOS/iOS */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-
-/* ─── Typography ────────────────────────────────────────────────────────── */
 
 h1,
 h2,
@@ -62,15 +45,11 @@ a:hover {
   text-decoration: underline;
 }
 
-/* ─── Elements ──────────────────────────────────────────────────────────── */
-
 button {
   cursor: pointer;
   font-family: inherit;
 }
 
-/* Foco visível por padrão em todo controle (WCAG 2.4.7 e 1.4.11). O verde da
-   marca tem mais de 10:1 contra os fundos. Componentes só ajustam o recuo. */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

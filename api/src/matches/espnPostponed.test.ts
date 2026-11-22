@@ -24,20 +24,17 @@ const SCHEDULED: EspnCompetitionStatusType = {
   state: 'pre',
   completed: false,
 }
-/** Mesmo `type` de Santa Clara × Gil Vicente, encerrado no scoreboard do mesmo dia. */
 const FULL_TIME: EspnCompetitionStatusType = {
   name: 'STATUS_FULL_TIME',
   state: 'post',
   completed: true,
 }
-/** Cancelado montado pelo formato do adiado; o nome decide mesmo com completed true. */
 const canceled = (completed: boolean): EspnCompetitionStatusType => ({
   name: 'STATUS_CANCELED',
   state: 'post',
   completed,
 })
 
-/** O evento real com outro status e, na remarcação, outra data. Placar segue 0-0. */
 function espnEvent(status: EspnCompetitionStatusType, iso = KICKOFF): EspnScoreboardEvent {
   const ev = structuredClone(ADIADO)
   const date = iso.replace(':00Z', 'Z')
@@ -67,7 +64,6 @@ function fdMatch(status: string, utcDate = KICKOFF) {
 
 type Providers = { fd: ReturnType<typeof fdMatch>; espn: EspnScoreboardEvent[] }
 
-/** football-data responde `providers.fd`; a ESPN, os eventos do dia UTC pedido. */
 function stubProviders(providers: Providers) {
   const espnDates: string[] = []
   vi.stubGlobal(
@@ -144,7 +140,6 @@ function readMatch(sqlite: DatabaseSync): MatchState {
     .get() as MatchState
 }
 
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const inWindow = (iso: string) => Date.parse(iso) + 120 * 60_000
 
 const LOCKED_AND_UNSCORED = {

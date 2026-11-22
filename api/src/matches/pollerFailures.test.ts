@@ -8,10 +8,8 @@ import { pollActiveMatches } from './poller'
 import { syncFixtures } from './sync'
 
 const KICKOFF = '2026-11-08T15:30:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = Date.parse(KICKOFF) + 120 * 60_000
 
-/** Estoril × Marítimo real da ESPN, aqui como jogo encerrado em 0-0. */
 function espnFullTime(): EspnScoreboardEvent {
   const ev = structuredClone((adiadoJson as { events: EspnScoreboardEvent[] }).events[0])
   const type = { name: 'STATUS_FULL_TIME', state: 'post', completed: true }
@@ -40,7 +38,6 @@ function fdResponse(status: string, home: number | null, away: number | null) {
   })
 }
 
-/** Request que nunca responde: só termina se quem chamou abortar pelo `signal`. */
 function hangingFetch(init?: RequestInit): Promise<Response> {
   return new Promise((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
@@ -49,7 +46,6 @@ function hangingFetch(init?: RequestInit): Promise<Response> {
 
 type FootballData = (init?: RequestInit) => Response | Promise<Response>
 
-/** A football-data responde `providers.fd`; a ESPN devolve o jogo encerrado no dia dele. */
 function stubProviders(providers: { fd: FootballData }) {
   vi.stubGlobal(
     'fetch',
@@ -70,7 +66,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** Jogo agendado vindo da football-data e um palpite 0-0 num grupo da competição. */
 async function setup(providers: { fd: FootballData }) {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -139,7 +134,6 @@ describe('poller: falhas que precisam aparecer', () => {
     const { sqlite, db } = await setup(providers)
     const { ae, pollerRuns } = fakeAe()
 
-    // A pontuação falha no D1 ao gravar os pontos do palpite.
     sqlite.exec(`
       CREATE TRIGGER pontuacao_quebrada BEFORE UPDATE OF points_awarded ON predictions
       BEGIN SELECT RAISE(ABORT, 'D1_ERROR: disco cheio'); END;

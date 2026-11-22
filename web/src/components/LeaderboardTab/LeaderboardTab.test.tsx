@@ -158,7 +158,6 @@ describe('LeaderboardTab rodada', () => {
     await waitFor(() => screen.getByText('Ana'))
     const pedro = within(rowOf('Pedro'))
     expect(pedro.getByText('▲2')).toHaveAttribute('aria-hidden', 'true')
-    // O espaço e o travessão separam a variação do número da posição no leitor de tela.
     expect(pedro.getByText('— subiu 2 posições').textContent).toBe(' — subiu 2 posições')
     const ana = within(rowOf('Ana'))
     expect(ana.getByText('▼1')).toHaveAttribute('aria-hidden', 'true')

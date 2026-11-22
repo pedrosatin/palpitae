@@ -3,20 +3,11 @@ import { needsPenaltyPick } from './predictedTie'
 import { isMatchLocked } from './predictionDrafts'
 
 export interface RoundProgress {
-  /** Jogos da rodada com palpite salvo, sem contar o jogo aberto em que falta pênalti. */
   predicted: number
-  /** Palpitados mais os jogos abertos ainda sem palpite completo. */
   total: number
-  /** Início do próximo jogo aberto com data marcada. `null` quando só restam adiados. */
   nextClosing: string | null
 }
 
-/**
- * Palpite salvo que pede o vencedor nos pênaltis e não tem essa escolha. Acontece
- * na volta quando a ida muda e o agregado passa a empatar. O card mostra "falta
- * pênalti". A ida vem dos palpites salvos, porque o contador conta só o que está
- * salvo.
- */
 function missingPenalty(
   match: Match,
   prediction: Prediction,

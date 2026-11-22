@@ -121,8 +121,6 @@ export default function PredictionsImportBar({
   setImportExpanded,
 }: ImportProps) {
   const showSelector = (importPending || importExpanded) && importOptions.length > 0
-  // Nada faltando e nenhuma importação anterior: o link recolhido mantém a opção
-  // de copiar outro grupo por cima dos palpites daqui.
   const showLinkOnly = !showSelector && !importCompleted && otherGroups.length > 0
   if (!showSelector && !showLinkOnly && !importCompleted && !importFeedback) return null
 

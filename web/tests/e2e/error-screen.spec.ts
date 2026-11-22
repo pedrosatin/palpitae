@@ -1,10 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// A página de grupo só aceita id no formato de UUID (#726).
 const GROUP_ID = '00000000-0000-4000-8000-0000000000e1'
 
-// Resposta fora do formato e aba que quebra no render mostram a tela de erro no
-// lugar da aba. Cabeçalho e abas continuam na página, sem tela em branco.
 const future = new Date(Date.now() + 3 * 86_400_000).toISOString()
 const match = {
   id: 'err-m1',
@@ -88,7 +85,6 @@ test('membros fora do formato: erro na aba Ranking e as abas seguem navegáveis'
 test('aba que quebra no render mostra a tela de erro com nova tentativa', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  // Membro sem nome num jogo aberto quebra as iniciais da aba Grupo.
   await mockApi(page, {
     '/predictions/group': {
       self_user_id: 'err-u',

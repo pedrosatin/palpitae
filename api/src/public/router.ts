@@ -5,20 +5,10 @@ import { logEvent } from '../observability'
 import { INVITE_OPEN_HEADER, PROXY_SECRET_HEADER, sameSecret } from '../security/limits'
 import type { AppContext } from '../types'
 
-/**
- * Rotas públicas (sem `requireAuth`). Cada uma devolve o mínimo necessário para
- * um visitante anônimo ou um crawler; nada aqui pode expor dado de usuário.
- */
 const router = new Hono<AppContext>()
 
-// Formato e alfabeto de `generateInviteCode` (groups/router.ts): XXXX-XXXX sem
-// I, O, 0 e 1. Validar antes de consultar evita bater no D1 com lixo e limita o
-// que um scanner pode testar por requisição.
 const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
 
-// O preview tolera dados com até 5 min de atraso. A Function busca esta rota com
-// `cacheTtlByStatus` (200 por 5 min, 404 por 1 min), e aberturas repetidas do link
-// não chegam ao D1.
 const CACHE_OK = 'public, max-age=300'
 const CACHE_MISS = 'public, max-age=60'
 

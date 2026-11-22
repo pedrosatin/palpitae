@@ -37,7 +37,6 @@ function http(
 function makeOps(overrides: Partial<OpsResponse> = {}): OpsResponse {
   return {
     days: 30,
-    // Muito no passado: a coleta cobre o período inteiro, sem aviso.
     httpFirstSeenAt: '2020-01-01 00:00:00',
     httpByProvider: [],
     httpByCompetition: [],
@@ -113,20 +112,17 @@ describe('ProviderOpsSection', () => {
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(2)
 
-    // Ordenado por falhas: ESPN/poller (15 falhas) antes de football-data (2).
     const espn = within(rows[0])
     expect(espn.getByText('ESPN')).toBeInTheDocument()
     expect(espn.getByText('Poller de resultados')).toBeInTheDocument()
-    // 300 + 12 + 3 = 315 tentativas estimadas; sucesso amostrado → "≈".
     expect(espn.getByText('≈315')).toBeInTheDocument()
     expect(espn.getByText('15')).toBeInTheDocument()
-    expect(espn.getByText('4,8%')).toBeInTheDocument() // 15 / 315
+    expect(espn.getByText('4,8%')).toBeInTheDocument()
     expect(espn.getByText('403 ×12 · sem resposta ×3')).toBeInTheDocument()
 
     const fd = within(rows[1])
     expect(fd.getByText('football-data.org')).toBeInTheDocument()
     expect(fd.getByText('Descoberta de jogos')).toBeInTheDocument()
-    // Só falhas (contagem exata): sem "≈".
     expect(fd.queryByText(/≈/)).not.toBeInTheDocument()
     expect(fd.getByText('100%')).toBeInTheDocument()
   })
@@ -154,7 +150,6 @@ describe('ProviderOpsSection', () => {
     expect(within(table).getByText('Libertadores')).toBeInTheDocument()
     expect(screen.getByText(/Linha ausente é falta de dado, não prova de zero/)).toBeInTheDocument()
 
-    // Mesma competição e provedor somam: 5 falhas em 105 tentativas.
     const brasileirao = within(table).getByText('Brasileirão Série A 2026').closest('tr')!
     expect(within(brasileirao).getByText('≈105')).toBeInTheDocument()
     expect(within(brasileirao).getByText('4,8%')).toBeInTheDocument()
@@ -182,17 +177,16 @@ describe('ProviderOpsSection', () => {
     const rows = within(table).getAllByRole('row').slice(1)
     const brasileirao = within(rows[0])
     expect(brasileirao.getByText('Brasileirão Série A 2026')).toBeInTheDocument()
-    expect(brasileirao.getByText('4')).toBeInTheDocument() // erros: 3 + 1
+    expect(brasileirao.getByText('4')).toBeInTheDocument()
     expect(
       brasileirao.getByText('Poller de resultados ×3 · Descoberta de jogos ×1'),
     ).toBeInTheDocument()
-    expect(brasileirao.getByText('10')).toBeInTheDocument() // execuções do fallback
-    expect(brasileirao.getByText('7')).toBeInTheDocument() // jogos atualizados pelo fallback
+    expect(brasileirao.getByText('10')).toBeInTheDocument()
+    expect(brasileirao.getByText('7')).toBeInTheDocument()
 
     expect(within(table).getByText('sem liga')).toBeInTheDocument()
     expect(within(table).getByText('Sincronização manual ×2')).toBeInTheDocument()
     expect(screen.getByText(/Erros de sync valem para qualquer provedor/)).toBeInTheDocument()
-    // Nunca apresenta o erro de sync como exclusivo da football-data.
     expect(screen.queryByText(/API Football/)).not.toBeInTheDocument()
   })
 
@@ -253,7 +247,6 @@ describe('ProviderOpsSection', () => {
     expect(stage.getByText('Libertadores')).toBeInTheDocument()
     expect(stage.getByText('Fase desconhecida')).toBeInTheDocument()
     expect(stage.getByText('round-of-32')).toBeInTheDocument()
-    // 6 eventos somados em 3 execuções: o mesmo descarte se repete, 2 por execução.
     const numbers = (row: HTMLElement) =>
       within(row)
         .getAllByRole('cell')
@@ -265,7 +258,6 @@ describe('ProviderOpsSection', () => {
     expect(
       screen.getByText(/volta a ser descartado e contado em cada execução/),
     ).toBeInTheDocument()
-    // Sem competição gravada, a linha mostra o código do provedor.
     expect(tbd.getByText('bra.copa_do_brazil')).toBeInTheDocument()
     expect(tbd.getByText('Time ausente')).toBeInTheDocument()
     expect(tbd.getByText('time a definir')).toBeInTheDocument()

@@ -30,7 +30,6 @@ export interface HeatmapResponse {
 export type HeatmapMeasure = 'predictions' | 'saves' | 'logins'
 
 export interface HeatmapGrid {
-  /** `cells[diaDaSemana][hora]`, com domingo = 0, no fuso de Brasília. */
   cells: number[][]
   total: number
   max: number
@@ -55,7 +54,6 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const MEASURES: {
   value: HeatmapMeasure
   label: string
-  /** Substantivo para frases e tooltips. */
   noun: string
   field: 'predictions' | 'prediction_saves' | 'logins'
   event: 'prediction_saved' | 'login_success'
@@ -87,7 +85,6 @@ const MEASURES: {
   },
 ]
 
-/** Timestamp da SQL API (`YYYY-MM-DD HH:MM:SS`, UTC) ou ISO → epoch ms; NaN se inválido. */
 function parseUtc(ts: string): number {
   const iso = ts.includes('T') ? ts : ts.replace(' ', 'T')
   return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
@@ -127,7 +124,6 @@ export function buildHeatmapGrid(
   return { cells, total, max: peak?.value ?? 0, peak }
 }
 
-/** Cabe na célula estreita: 950, 1,2k, 12k. */
 function compact(n: number): string {
   const rounded = Math.round(n)
   if (rounded < 1000) return String(rounded)
@@ -139,7 +135,6 @@ function hourRange(hour: number): string {
   return `${hour}h a ${(hour + 1) % 24}h`
 }
 
-/** `YYYY-MM-DD HH:MM:SS` UTC → `dd/mm hh:mm BRT`. */
 function formatBrt(ts: string): string {
   const t = parseUtc(ts)
   if (!Number.isFinite(t)) return ts
@@ -148,7 +143,6 @@ function formatBrt(ts: string): string {
   return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} BRT`
 }
 
-/** Ausência de coleta não é zero: avisa quando o tipo não cobre o período inteiro. */
 function CoverageNotice({
   data,
   noun,
@@ -167,7 +161,6 @@ function CoverageNotice({
     )
   }
   const first = parseUtc(firstSeen)
-  // Folga de um dia: a retenção de 90 dias do Analytics Engine come o início da janela de 90d.
   if (Number.isFinite(first) && first > Date.now() - data.days * DAY_MS + DAY_MS) {
     return (
       <p className={styles.samplingWarning}>

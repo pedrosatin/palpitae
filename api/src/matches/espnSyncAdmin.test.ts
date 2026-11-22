@@ -104,7 +104,6 @@ describe('POST /matches/sync de competição ESPN', () => {
       { kind: 'manual', round: '20261015', status: 'pending', attempts: 0 },
     ])
 
-    // Segundo pedido, dentro do bloqueio de 15 min: nenhum request novo.
     const second = await sync(body)
     expect(await second.json()).toMatchObject({ ok: true, pending: true })
     expect(fetchMock).toHaveBeenCalledTimes(1)

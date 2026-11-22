@@ -14,7 +14,6 @@ afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
 })
 
-// A API inteira sobre SQLite em memória, com a sessão assinada como no login.
 async function fixture() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)

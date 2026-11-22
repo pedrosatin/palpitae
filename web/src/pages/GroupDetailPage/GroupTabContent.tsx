@@ -15,9 +15,7 @@ interface GroupTabContentProps {
   isAdmin: boolean
   userId: string
   onOpenRules?: () => void
-  /** Rodada do `?rodada=` da URL, em que a aba Palpitar abre. */
   requestedRound?: string | null
-  /** Chamado quando a aba Palpitar abre na rodada pedida, para tirá-la da URL. */
   onRequestedRoundApplied?: () => void
   onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }

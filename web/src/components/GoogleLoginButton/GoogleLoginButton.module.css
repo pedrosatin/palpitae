@@ -1,12 +1,3 @@
-/**
- * GoogleLoginButton styles.
- *
- * Follows Google's Sign-In Button branding guidelines:
- *   white background, Google G logo on the left, dark label text.
- * See: https://developers.google.com/identity/branding-guidelines
- *
- * The focus-visible ring uses --color-primary to stay on-brand.
- */
 
 .button {
   align-items: center;

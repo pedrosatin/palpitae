@@ -28,7 +28,6 @@ vi.mock('./scoring', async (importOriginal) => {
 
 const handles: DatabaseSync[] = []
 const NOW = Date.parse('2026-11-16T12:00:00Z')
-/** Saldo do ramo drenador do `scheduled` (`DRAIN_CALL_BUDGET`). */
 const SLICE = 45
 
 beforeEach(() => {
@@ -71,7 +70,6 @@ const item = (overrides: Partial<ProviderWorkItem> = {}): ProviderWorkItem => ({
   ...overrides,
 })
 
-/** Scoreboard com `count` jogos entre `teams` times, todos no mesmo estado. */
 function board(count: number, teams: number, finished: boolean) {
   const events = Array.from({ length: count }, (_, i) => {
     const ev = structuredClone(template.events[0]) as EspnScoreboardEvent
@@ -283,7 +281,6 @@ describe('runEspnWorkItem', () => {
 })
 
 describe('custo de um item da ESPN', () => {
-  /** Roda o item sobre o sync real e devolve as chamadas que ele gastou. */
   async function measuredCost(
     work: ProviderWorkItem,
     payload: unknown,

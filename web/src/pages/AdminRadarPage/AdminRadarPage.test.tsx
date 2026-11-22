@@ -50,8 +50,6 @@ function mockFetch(body: unknown, status = 200) {
   return vi.fn(async () => ({ ok: status === 200, status, json: async () => body }))
 }
 
-// Competições pequenas de enchimento: o veredito compara com a MEDIANA do
-// interesse, então uma amostra de duas linhas não exercitaria a régua de verdade.
 const filler = [200, 250, 300].map((views, i) =>
   item({
     id: `filler-${i}`,
@@ -78,7 +76,6 @@ describe('AdminRadarPage', () => {
     expect(within(liberta).getByText('Em andamento')).toBeInTheDocument()
     expect(within(liberta).getByText('4 hoje')).toBeInTheDocument()
     expect(within(liberta).getByText('+25%')).toBeInTheDocument()
-    // Interesse bem acima da mediana e sem suporte → chamada pra ação.
     expect(within(liberta).getByText('Candidata forte')).toBeInTheDocument()
 
     const serieA = screen.getByText('Serie A').closest('tr') as HTMLElement
@@ -139,16 +136,14 @@ describe('AdminRadarPage', () => {
     render(<AdminRadarPage />)
     await screen.findByText('CONMEBOL Libertadores')
 
-    // Em andamento por padrão: as futuras estão escondidas.
     expect(screen.queryByText('Premier League')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'A começar' }))
 
     expect(screen.getByText('estreia em 3 dias')).toBeInTheDocument()
     expect(screen.getByText('estreia em 6 meses')).toBeInTheDocument()
-    // Em andamento sai de cena, e a estreia mais próxima manda na ordem.
     expect(screen.queryByText('CONMEBOL Libertadores')).not.toBeInTheDocument()
-    const rows = screen.getAllByRole('row').slice(1) // pula o cabeçalho
+    const rows = screen.getAllByRole('row').slice(1)
     expect(rows[0]).toHaveTextContent('Premier League')
   })
 
@@ -195,7 +190,6 @@ function radarBody(name: string, days: number) {
   return { ...defaultBody, days, items: [item({ id: `id-${name}`, name })] }
 }
 
-// Fetch por período: cada `days` tem a sua resposta, controlada pelo teste.
 function fetchByDays(byDays: Record<string, () => Promise<unknown>>) {
   return vi.fn((url: string) => byDays[daysOf(url) ?? '']())
 }
@@ -209,7 +203,6 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
     vi.stubGlobal(
       'fetch',
       fetchByDays({
-        // O cabeçalho do período de 30 dias chega, o corpo demora.
         '30': async () => ({ ok: true, status: 200, json: () => corpo30.promise }),
         '7': async () => okResponse(radarBody('Liga dos 7 dias', 7)),
       }),

@@ -37,13 +37,11 @@ const SLUGS = [
   'bra.copa_do_brazil',
   'bra.2',
 ] as const
-/** Ticks seguintes do cron fundido: o dreno nos minutos 5, 10, 20, 25, 35, 40, 50 e 55 e o poller nos 0 e 30. */
 const FOLLOWING_TICKS = [14, 15, 16]
   .flatMap((hour) =>
     [0, 5, 10, 20, 25, 30, 35, 40, 50, 55].map((minute) => Date.UTC(2026, 10, 17, hour, minute, 0)),
   )
   .filter((at) => at > TICK)
-/** A limpeza de registros expirados do `scheduled` é 1 chamada. */
 const CLEANUP_CALLS = 1
 
 const handles: DatabaseSync[] = []
@@ -68,11 +66,9 @@ afterEach(() => {
   setProviderRateLimitForTests('espn', 1000)
 })
 
-/** Jogo de uma competição da ESPN: quando começou, em horas antes do tick. */
 type EspnGame = { key: string; startedHoursAgo: number }
 
 const TODAY: EspnGame = { key: 'hoje', startedHoursAgo: 130 / 60 }
-/** Começou ontem à noite: ainda no resgate de 24 h, e a data do scoreboard é a do dia anterior. */
 const YESTERDAY: EspnGame = { key: 'ontem', startedHoursAgo: 16.5 }
 
 function espnEvent(slug: string, game: EspnGame, finished: boolean): EspnScoreboardEvent {
@@ -102,7 +98,6 @@ function espnEvent(slug: string, game: EspnGame, finished: boolean): EspnScorebo
   return ev
 }
 
-/** Calendário da football-data: uma rodada de 10 jogos que começou na janela do tick. */
 function fdCalendar(matchday: number, status: 'TIMED' | 'FINISHED') {
   const team = (n: number) => ({
     id: matchday * 1000 + n,
@@ -132,9 +127,7 @@ function fdCalendar(matchday: number, status: 'TIMED' | 'FINISHED') {
 type WorldOptions = {
   comps: number
   games: EspnGame[]
-  /** Rodadas da football-data com jogo na janela; cada uma é uma tarefa do poller. */
   fdRounds?: number
-  /** D1 que recusa a chamada 51 (padrão) ou só conta. */
   limit?: number | null
 }
 
@@ -143,10 +136,6 @@ type Behavior = {
   fd: null | (() => Response | null)
 }
 
-/**
- * Banco com as competições e os jogos já gravados (agendados, como ficam depois
- * da descoberta) e os provedores simulados, que respondem o resultado final.
- */
 async function setupWorld(options: WorldOptions) {
   const { comps, games, fdRounds = 0, limit = D1_CALLS_PER_INVOCATION } = options
   const { sqlite, db } = createSqliteD1()
@@ -177,7 +166,6 @@ async function setupWorld(options: WorldOptions) {
       if (date === 'seed') {
         return Response.json({ events: games.map((game) => espnEvent(slug, game, false)) })
       }
-      // A data do scoreboard é a do dia UTC do início do jogo.
       const events = games
         .filter((game) => espnDate(TICK - game.startedHoursAgo * HOUR) === date)
         .map((game) => espnEvent(slug, game, true))
@@ -221,7 +209,6 @@ async function setupWorld(options: WorldOptions) {
 
 type World = Awaited<ReturnType<typeof setupWorld>>
 
-/** Um tick do cron fundido, no instante dado. Devolve as falhas das rotinas. */
 async function runTick(h: Pick<World, 'limited' | 'env'>, at: number): Promise<string[]> {
   vi.setSystemTime(at)
   h.limited.startInvocation()
@@ -235,7 +222,6 @@ async function runTick(h: Pick<World, 'limited' | 'env'>, at: number): Promise<s
   )
 }
 
-/** Estado final dos jogos, por competição e id no provedor: o que um tick sem limite deixa. */
 function snapshot(sqlite: DatabaseSync) {
   return sqlite
     .prepare(
@@ -258,7 +244,6 @@ const finishedMatches = (sqlite: DatabaseSync): number =>
     }
   ).n
 
-/** Tudo terminou: jogos encerrados e pontuados, fila vazia de pendências. */
 function settled(sqlite: DatabaseSync): boolean {
   const open = sqlite
     .prepare(`SELECT COUNT(*) AS n FROM matches WHERE status != 'finished' OR scored_at IS NULL`)
@@ -266,7 +251,6 @@ function settled(sqlite: DatabaseSync): boolean {
   return open.n === 0 && workCount(sqlite, `status IN ('pending', 'running')`) === 0
 }
 
-/** Roda os ticks seguintes até tudo terminar, conferindo o limite em cada um. */
 async function drainUntilSettled(h: World) {
   for (const at of FOLLOWING_TICKS) {
     if (settled(h.sqlite)) return
@@ -277,7 +261,6 @@ async function drainUntilSettled(h: World) {
   }
 }
 
-/** Um tick sem limite de chamadas, na mesma semente: o resultado que a fila deve reproduzir. */
 async function controlSnapshot(options: WorldOptions) {
   // A pausa por cota da football-data é do isolate: o mundo de controle começa sem ela.
   clearFootballDataPause()

@@ -271,7 +271,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     const ana = { id: 'u-ana', email: 'ana@palpitae.com' }
     const beto = { id: 'u-beto', email: 'beto@palpitae.com' }
 
-    // Ana prevê Flamengo 2x0 na ida e Palmeiras 1x0 na volta, com agregado de 2x1 para o Flamengo como visitante na volta
     expect(
       (
         await apiRequest(db, ana, '/predictions', {
@@ -300,7 +299,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       ).status,
     ).toBe(200)
 
-    // Beto prevê empate 1x1 na ida e vitória do Palmeiras por 2x0 na volta, com agregado de 3x1 para o Palmeiras como mandante na volta
     expect(
       (
         await apiRequest(db, beto, '/predictions/bulk', {
@@ -325,7 +323,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       ).status,
     ).toBe(200)
 
-    // Jogo de ida termina Flamengo 2x0 Palmeiras enquanto o jogo de volta ainda não aconteceu
     sqlite
       .prepare(
         `UPDATE matches
@@ -335,7 +332,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       .run()
     await scoreUnprocessedMatches(COMP_ID, db)
 
-    // Antes do jogo decisivo, o ranking tem apenas os 3 pontos do placar exato da partida de ida para Ana
     const membersAfterLeg1 = await apiRequest(db, ana, `/groups/${group.id}/members`)
     const { members: rankingLeg1 } = (await membersAfterLeg1.json()) as {
       members: Array<{ user_id: string; total_points: number }>
@@ -343,7 +339,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     expect(rankingLeg1.find((m) => m.user_id === 'u-ana')?.total_points).toBe(3)
     expect(rankingLeg1.find((m) => m.user_id === 'u-beto')?.total_points).toBe(0)
 
-    // Jogo de volta termina Palmeiras 1x0 Flamengo e fecha o agregado em 2x1 para o Flamengo
     sqlite
       .prepare(
         `UPDATE matches
@@ -353,8 +348,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       .run()
     await scoreUnprocessedMatches(COMP_ID, db)
 
-    // Ana soma 3 da ida, 3 do placar exato da volta e 2 de classificado, totalizando 8 pontos
-    // Beto soma 0 da ida, 1 do vencedor da volta e 0 de classificado, totalizando 1 ponto
     const membersAfterLeg2 = await apiRequest(db, ana, `/groups/${group.id}/members`)
     const { members: rankingLeg2 } = (await membersAfterLeg2.json()) as {
       members: Array<{ user_id: string; total_points: number }>
@@ -362,7 +355,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     expect(rankingLeg2.find((m) => m.user_id === 'u-ana')?.total_points).toBe(8)
     expect(rankingLeg2.find((m) => m.user_id === 'u-beto')?.total_points).toBe(1)
 
-    // Confere que predicted_classified e classified_points aparecem nas três rotas de listagem de palpites
     const ownPredsRes = await apiRequest(db, ana, `/predictions?group_id=${group.id}`)
     const { predictions: ownPreds } = (await ownPredsRes.json()) as {
       predictions: Array<{
@@ -429,7 +421,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     const ana = { id: 'u-ana', email: 'ana@palpitae.com' }
     const beto = { id: 'u-beto', email: 'beto@palpitae.com' }
 
-    // Na ida, Ana palpita Botafogo 2x0 Fluminense
     expect(
       (
         await apiRequest(db, ana, '/predictions', {
@@ -461,7 +452,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     ).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-qf-leg2')).toBeNull()
 
-    // Com predicted_penalty_winner definido como home para o Fluminense avançar nos pênaltis, o palpite é aceito
     expect(
       (
         await apiRequest(db, ana, '/predictions', {
@@ -477,7 +467,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       ).status,
     ).toBe(200)
 
-    // Beto também prevê empate no agregado de 2x2 mas escolhe away nos pênaltis
     expect(
       (
         await apiRequest(db, beto, '/predictions/bulk', {
@@ -498,7 +487,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       ).status,
     ).toBe(200)
 
-    // Resultados reais com Botafogo 2x0 na ida, Fluminense 2x0 na volta e vitória do Fluminense nos pênaltis
     sqlite
       .prepare(
         `UPDATE matches
@@ -553,7 +541,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     const ana = { id: 'u-ana', email: 'ana@palpitae.com' }
     const beto = { id: 'u-beto', email: 'beto@palpitae.com' }
 
-    // Semifinal em jogo único entre Flamengo e Botafogo e Final em jogo único entre Flamengo e Fluminense
     expect(
       (
         await apiRequest(db, ana, '/predictions/bulk', {
@@ -594,7 +581,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       ).status,
     ).toBe(200)
 
-    // Semifinal termina 1x0 para o mandante e Final termina 1x1 com visitante campeão nos pênaltis
     sqlite
       .prepare(
         `UPDATE matches
@@ -653,7 +639,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     const beto = { id: 'u-beto', email: 'beto@palpitae.com' }
     const caio = { id: 'u-caio', email: 'caio@palpitae.com' }
 
-    // Ana palpita apenas no jogo de ida
     await apiRequest(db, ana, '/predictions', {
       method: 'PUT',
       body: JSON.stringify({
@@ -664,7 +649,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       }),
     })
 
-    // Beto palpita apenas no jogo de volta
     await apiRequest(db, beto, '/predictions', {
       method: 'PUT',
       body: JSON.stringify({
@@ -675,7 +659,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
       }),
     })
 
-    // Caio palpita nos dois jogos do confronto
     await apiRequest(db, caio, '/predictions/bulk', {
       method: 'PUT',
       body: JSON.stringify({
@@ -713,7 +696,6 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
         predicted_classified: 'home' | 'away' | null
       }>
     }
-    // Beto acertou o vencedor da volta mas não tem palpite na ida, ficando com predicted_classified nulo e zero pontos de classificado
     expect(betoPreds.find((p) => p.match_id === 'm-r16-leg2')).toMatchObject({
       points_awarded: 1,
       classified_points: 0,
@@ -790,10 +772,8 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
           return {
             competition: { id: 2001, name: 'UEFA Champions League', code: 'CL' },
             matches: [
-              // Ida e volta das quartas: a football-data manda matchday 1 e 2, mas o leg não vem do matchday.
               { ...fdMatch(9001, '2026-04-08T19:00:00Z', 'QUARTER_FINALS', 1, 2), matchday: 1 },
               { ...fdMatch(9002, '2026-04-15T19:00:00Z', 'QUARTER_FINALS', 2, 1), matchday: 2 },
-              // Jogo único de mata-mata com matchday 1, como a rodada de 32 da Copa do Mundo.
               fdMatch(9003, '2026-06-28T19:00:00Z', 'LAST_32', 3, 4),
               fdMatch(9004, '2026-05-30T19:00:00Z', 'FINAL', 1, 2),
             ],
@@ -887,16 +867,13 @@ describe('regras do vencedor de pênaltis no palpite de mata-mata', () => {
     seedKnockoutFixtures(sqlite)
     const group = await createConfiguredGroup(db, 2)
 
-    // Ida empatada em fase com pênaltis: aceita sem pick e grava null mesmo se vier um pick.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 1, 1)).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg1')).toBeNull()
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 1, 1, 'home')).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg1')).toBeNull()
 
-    // A ida passa a Flamengo 1x0. Volta empatada com agregado desigual não exige o pick.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 1, 0)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 2, 2)).status).toBe(200)
-    // Volta 2x0 não empata o agregado (2x1): pick enviado é descartado.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 2, 0, 'home')).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg2')).toBeNull()
 
@@ -909,7 +886,6 @@ describe('regras do vencedor de pênaltis no palpite de mata-mata', () => {
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 1, 0, 'foo')).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg2')).toBeNull()
 
-    // Jogo único empatado numa fase decidida nos pênaltis continua exigindo o pick.
     expect((await putPrediction(db, ANA, group.id, 'm-final-single', 0, 0)).status).toBe(400)
     expect((await putPrediction(db, ANA, group.id, 'm-final-single', 0, 0, 'foo')).status).toBe(400)
     const bulkRes = await apiRequest(db, BETO, '/predictions/bulk', {
@@ -934,7 +910,6 @@ describe('regras do vencedor de pênaltis no palpite de mata-mata', () => {
     seedKnockoutFixtures(sqlite)
     const group = await createConfiguredGroup(db, 2)
 
-    // Ida gravada: Flamengo 2x0. Depois a ida trava.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 2, 0)).status).toBe(200)
     sqlite
       .prepare(`UPDATE matches SET locked_at = '2026-08-10T22:00:00Z' WHERE id = 'm-r16-leg1'`)
@@ -962,7 +937,6 @@ describe('regras do vencedor de pênaltis no palpite de mata-mata', () => {
     expect(body.saved).toEqual(['m-r16-leg2'])
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg2')).toBeNull()
 
-    // Ida destravada no mesmo payload vale como base: o agregado empata e o pick é gravado.
     sqlite.prepare(`UPDATE matches SET locked_at = NULL WHERE id = 'm-r16-leg1'`).run()
     const unlockedRes = await apiRequest(db, ANA, '/predictions/bulk', {
       method: 'PUT',
@@ -991,7 +965,6 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     seedKnockoutFixtures(sqlite)
     const group = await createConfiguredGroup(db, 2)
 
-    // Volta primeiro (sem ida, nada a validar), depois a ida que deixa o agregado em 1x1.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 1, 0)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 1, 0)).status).toBe(200)
 
@@ -1012,10 +985,8 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     seedKnockoutFixtures(sqlite)
     const group = await createConfiguredGroup(db, 2)
 
-    // Primeiro a ida 0x2 e a volta 1x0: agregado 3x0 para o Palmeiras (mandante da volta).
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 0, 2)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 1, 0)).status).toBe(200)
-    // A ida passa a 3x0: agregado 3x1 para o Flamengo (visitante da volta).
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 3, 0)).status).toBe(200)
 
     finishMatch(sqlite, 'm-r16-leg1', 2, 0)
@@ -1038,9 +1009,7 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     // Par das oitavas sem leg: a ida é o jogo de start_time anterior.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 2, 0)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 1, 0)).status).toBe(200)
-    // Ida empatada sem pick é aceita: o par sem leg já identifica a ida.
     expect((await putPrediction(db, BETO, group.id, 'm-r16-leg1', 1, 1)).status).toBe(200)
-    // Semifinal de jogo único, sem par: pontua pelo próprio placar.
     expect((await putPrediction(db, ANA, group.id, 'm-semi-single', 0, 1)).status).toBe(200)
 
     finishMatch(sqlite, 'm-r16-leg1', 2, 0)
@@ -1095,7 +1064,6 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     expect(createRes.status).toBe(201)
     const { group } = (await createRes.json()) as { group: { id: string } }
 
-    // Agregado previsto 2x2 decidido pelo pick do Arsenal (visitante da volta), fora de penalty_phases.
     expect((await putPrediction(db, ANA, group.id, 'm-cl-1', 1, 1)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-cl-2', 1, 1, 'away')).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-cl-2')).toBe('away')
@@ -1118,11 +1086,9 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     seedKnockoutFixtures(sqlite)
     const group = await createConfiguredGroup(db, 2)
 
-    // Ana prevê 2x0 na ida e 1x0 na volta: Flamengo (visitante da volta) avança por 2x1.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 2, 0)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 1, 0)).status).toBe(200)
 
-    // Placar errado da ida (0x0) faz o Palmeiras avançar no agregado.
     finishMatch(sqlite, 'm-r16-leg1', 0, 0)
     finishMatch(sqlite, 'm-r16-leg2', 1, 0)
     await scoreUnprocessedMatches(COMP_ID, db)
@@ -1131,7 +1097,6 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     })
     expect(await totalPoints(db, group.id, 'u-ana')).toBe(3)
 
-    // O provider corrige a ida para 2x0; o upsert do sync zera o scored_at só da ida.
     sqlite
       .prepare(
         `UPDATE matches SET home_score = 2, away_score = 0, scored_at = NULL WHERE id = 'm-r16-leg1'`,
@@ -1143,10 +1108,8 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
       points_awarded: 3,
       classified_points: 2,
     })
-    // 3 da ida exata + 3 da volta exata + 2 de classificado.
     expect(await totalPoints(db, group.id, 'u-ana')).toBe(8)
 
-    // Rodar de novo não muda nada.
     await scoreUnprocessedMatches(COMP_ID, db)
     expect(await totalPoints(db, group.id, 'u-ana')).toBe(8)
   })
@@ -1160,7 +1123,6 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 2, 0)).status).toBe(200)
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 1, 0)).status).toBe(200)
 
-    // Só a volta travou (dado atípico, mas possível com adiamento da ida).
     sqlite
       .prepare(`UPDATE matches SET locked_at = '2026-08-17T22:00:00Z' WHERE id = 'm-r16-leg2'`)
       .run()
@@ -1377,7 +1339,6 @@ it('recalcula o valor enviado mesmo quando outra edição muda a regra depois da
               await blocked
               return row
             },
-            // O limitador mede as linhas lidas e troca o `first` por `all`.
             async all() {
               const result = await bound.all()
               paused()

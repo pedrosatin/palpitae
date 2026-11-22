@@ -10,18 +10,14 @@ import { PREDICTION_STATUS_LABEL, type PredictionStatus } from './predictionStat
 import { useMatchCard, type UseMatchCardProps } from './useMatchCard'
 import { teamShortName, type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
-// Re-exported for backwards compatibility with consumers importing from './MatchCard'.
 export { OUTCOMES }
 export type { Match, Prediction }
 
 interface MatchCardProps extends UseMatchCardProps {
-  /** Jogo de ida do confronto, para mostrar o placar real e o agregado na volta. */
   leg1Match?: Match
-  /** Jogo de volta, para o card da ida dizer quando ele acontece. */
   leg2Match?: Match
 }
 
-// "falta pênalti" usa o contorno amarelo de "sem palpite". Os dois pedem uma escolha.
 const STATUS_CLASS: Record<PredictionStatus, string> = {
   empty: styles.statusEmpty,
   saved: styles.statusSaved,
@@ -84,12 +80,8 @@ export default function MatchCard(props: MatchCardProps) {
     handleScoreInput,
   } = useMatchCard(props)
 
-  // Kickoff + 3 h sem placar (não adiado): o feed atrasou. Mantém o placar
-  // existente; só acrescenta o rótulo. Texto no badge, sem depender só de cor.
   const resultPending = isResultOverdue(match, props.now ?? Date.now())
 
-  // Escolha de pênalti na mesma linha dos controles, para o empate não aumentar a
-  // altura do card. Depois da escolha os botões viram um chip, e o toque reabre.
   const penaltyInline = (
     <PenaltyPicker
       match={match}
@@ -102,8 +94,6 @@ export default function MatchCard(props: MatchCardProps) {
     />
   )
 
-  // O leitor de tela ouve o jogo e o estado juntos ao entrar no card. "contra" no
-  // lugar de "×", que seria lido como "vezes".
   const groupLabel = `${match.home_team_name} contra ${match.away_team_name}, ${stateLabel(locked, isFinished, status, resultPending)}`
 
   return (
@@ -113,7 +103,6 @@ export default function MatchCard(props: MatchCardProps) {
       aria-busy={saving}
       className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}
     >
-      {/* Status badge */}
       <div className={styles.meta}>
         <span className={styles.date}>
           {isPostponed ? 'data a definir' : formatMatchDate(match.start_time)}
@@ -136,10 +125,8 @@ export default function MatchCard(props: MatchCardProps) {
         )}
       </div>
 
-      {/* Teams + scores */}
       <MatchScoreRow match={match} isFinished={isFinished} />
 
-      {/* Prediction area */}
       <div className={styles.predictionArea}>
         {match.decides_on_penalties && (
           <InfoHint
@@ -285,7 +272,6 @@ function PenaltyPicker({
 function MatchScoreRow({ match, isFinished }: { match: Match; isFinished: boolean }) {
   return (
     <div className={styles.matchRow}>
-      {/* Home team */}
       <div className={styles.team}>
         <img
           className={styles.crest}
@@ -296,7 +282,6 @@ function MatchScoreRow({ match, isFinished }: { match: Match; isFinished: boolea
         <span className={styles.teamName}>{match.home_team_name}</span>
       </div>
 
-      {/* Score area */}
       <div className={styles.scoreArea}>
         {isFinished ? (
           <>
@@ -316,7 +301,6 @@ function MatchScoreRow({ match, isFinished }: { match: Match; isFinished: boolea
         )}
       </div>
 
-      {/* Away team */}
       <div className={`${styles.team} ${styles.teamAway}`}>
         <span className={styles.teamName}>{match.away_team_name}</span>
         <img
@@ -400,9 +384,6 @@ function OutcomePickerView({
 }) {
   return (
     <div className={styles.outcomeRow}>
-      {/* display:contents wrapper — keeps the three buttons as flex
-          children of .outcomeRow while giving them their own radiogroup,
-          so the penalty radiogroup below is a sibling, never nested. */}
       <div className={styles.outcomeButtons} role="radiogroup" aria-label="Resultado">
         {(['home', 'draw', 'away'] as const).map((outcome) => (
           <button
@@ -513,8 +494,6 @@ function ScoreInputView({
   handleScoreInput: (value: string, update: (v: string) => void) => void
   handleSave: () => void
 }) {
-  // Durante o envio, campos e +/− ficam travados, como os botões de resultado e de
-  // pênalti. Uma mudança no meio do envio seria trocada pelo placar da resposta.
   return (
     <div className={styles.inputRow}>
       <ScoreStepper
@@ -537,10 +516,6 @@ function ScoreInputView({
         onScoreInput={handleScoreInput}
       />
       {penaltyInline}
-      {/* Palpite salvo e sem mudança mostra "Salvo", sem opacidade reduzida. O botão
-          continua o mesmo elemento do clique ao "Salvo". Durante o envio e no "Salvo"
-          ele usa `aria-disabled` no lugar de `disabled`, que tiraria o foco dele.
-          `handleSave` ignora o clique nesses dois estados. */}
       <button
         type="button"
         className={`${styles.saveBtn} ${saveDone ? styles.saveBtnDone : ''}`}

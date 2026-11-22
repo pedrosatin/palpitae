@@ -37,7 +37,6 @@ export interface OverviewResponse {
   predictionsDaily: { day: string; users: string | number }[]
 }
 
-// KPIs de negócio a partir do D1 (estado real da base) — GET /metrics/business.
 export interface BusinessResponse {
   days: number
   usersTotal: number
@@ -47,20 +46,14 @@ export interface BusinessResponse {
   groupsCreatedInPeriod: number
   avgGroupsPerUser: number
   medianGroupsPerUser: number
-  // Ausentes numa API anterior ao snapshot por campeonato — a página cai no
-  // top 10 legado (`topCompetitions`) enquanto o deploy da API não chega.
   activeGroupDays?: number
-  /** Limiar em horas de `overdue_no_score` nesta resposta (padrão 3). */
   overdueResultHours?: number
-  /** Soma de `overdue_no_score` em todas as temporadas. */
   overdueTotal?: number
-  /** Soma de `finished_unscored` em todas as temporadas. */
   finishedUnscoredTotal?: number
   competitions?: CompetitionSnapshot[]
   topCompetitions: { competition: string; groups: number }[]
 }
 
-// Uma linha por temporada cadastrada (inclusive sem grupo) — só agregados.
 export interface CompetitionSnapshot {
   id: string
   name: string
@@ -72,15 +65,11 @@ export interface CompetitionSnapshot {
   groups_current: number
   members: number
   active_groups_14d: number
-  // Saúde de resultados (D1). Ausentes numa API anterior a esse recorte —
-  // a página mostra "—" / aviso em vez de tratar a falta como zero.
   overdue_no_score?: number
   finished_unscored?: number
 }
 
 export interface ArchiveResponse {
-  // `events` = contagem real do dia (customMetadata do export); null em
-  // arquivo antigo que o backfill de metadata ainda não alcançou.
   files: {
     key: string
     size: number
@@ -89,8 +78,6 @@ export interface ArchiveResponse {
   }[]
 }
 
-// Análise sob demanda do arquivo frio: agrega o CORPO dos NDJSON de um período
-// (GET /metrics/archive/query). Único jeito de dissecar dados além da janela do AE.
 export interface ArchiveQueryResponse {
   from: string
   to: string
@@ -98,8 +85,6 @@ export interface ArchiveQueryResponse {
   totalEvents: number
   byType: { event_type: string; count: number }[]
   byDay: { day: string; count: number }[]
-  // Ausentes em API anterior ao teto de leitura. `truncated`: o teto de bytes
-  // parou a leitura e só os dias de `daysRead` entraram.
   truncated?: boolean
   daysRead?: string[]
   malformedLines?: number

@@ -25,7 +25,6 @@ describe('GroupTabs', () => {
     const predictionsTab = screen.getByRole('link', { name: 'Palpitar' })
     expect(predictionsTab).toBeInTheDocument()
     expect(predictionsTab).toHaveAttribute('href', '/test/predictions')
-    // active styling should be present
     expect(predictionsTab.className).toContain('tabActive')
 
     const groupPicksTab = screen.getByRole('link', { name: 'Grupo' })
@@ -38,7 +37,6 @@ describe('GroupTabs', () => {
     expect(leaderboardTab).toHaveAttribute('href', '/test/leaderboard')
     expect(leaderboardTab.className).not.toContain('tabActive')
 
-    // Optional tabs shouldn't be rendered
     expect(screen.queryByRole('link', { name: 'Tabela' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Membros' })).not.toBeInTheDocument()
   })

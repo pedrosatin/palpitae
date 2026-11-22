@@ -64,7 +64,6 @@ adminRouter.delete('/users/:id', async (c) => {
       )
       .bind(userId),
     db.prepare('DELETE FROM groups WHERE owner_user_id = ? RETURNING id').bind(userId),
-    // `payments` não tem cascata para `users` e segue sem uso; sai junto para não travar a exclusão.
     db.prepare('DELETE FROM payments WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
   ])

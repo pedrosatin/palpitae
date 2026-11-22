@@ -3,13 +3,6 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import { deadlineMatchesSql, groupsListSql } from './groupsList'
 import { LIVE_MATCHES_SQL } from './liveMatches'
 
-// O GET /groups roda a cada abertura da home. A CTE `competition_info` separa
-// as competições distintas do usuário e calcula status e rodadas abertas uma
-// vez por competição, em vez de repetir a varredura de jogos por grupo. Cada
-// grupo lê apenas os jogos das rodadas abertas já resolvidas, além do prazo, do
-// próximo jogo e do fim da rodada no mesmo resumo. Este teste falha se a CTE
-// deixar de ser materializada, se um campo novo trouxer outra varredura dos
-// jogos ou se o agrupamento de rodadas criar B-tree temporária.
 
 type PlanRow = { id: number; parent: number; detail: string }
 

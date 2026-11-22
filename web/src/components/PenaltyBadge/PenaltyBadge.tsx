@@ -12,19 +12,11 @@ export function BallIcon({ className }: { className?: string }) {
 }
 
 interface PenaltyBadgeProps {
-  /** Short name of the team predicted/decided to win on penalties. */
   team: string
-  /** Texto do tooltip, aberto por clique, toque, Enter ou Espaço. */
   tooltip: string
-  /** `subtle` for read-only lists, `accent` for an editable pick chip. */
   variant?: 'subtle' | 'accent'
-  /**
-   * Quando informado, o clique executa esta ação e o chip não tem tooltip; o
-   * texto fica só no `aria-label`. Usado pelo chip editável para reabrir a escolha.
-   */
   onActivate?: () => void
   disabled?: boolean
-  /** Applied to the root so callers can place it (e.g. margin-left: auto). */
   className?: string
 }
 

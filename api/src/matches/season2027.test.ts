@@ -11,7 +11,6 @@ import { discoverFixtures } from './fixtureDiscovery'
 
 const handles: DatabaseSync[] = []
 
-/** Todas as colunas de `competitions`, menos o contador do cache, que sobe a cada gravação de jogo. */
 function competitionRows(sqlite: DatabaseSync, where = '') {
   return sqlite
     .prepare(`SELECT * FROM competitions ${where} ORDER BY id`)
@@ -128,7 +127,6 @@ describe('preparação das temporadas ESPN 2027', () => {
       delete withoutYear.season?.year
       const wrongYear = event(code, 2026)
       const stringYear = event(code)
-      // Simula payload externo fora do contrato TypeScript.
       Object.assign(stringYear.season!, { year: '2027' })
       const boards: EspnScoreboard[] = [
         { leagues: [{ season: { year: 2026 } }], events: [] },

@@ -20,7 +20,6 @@ describe('embutirCssDeEntrada', () => {
     const saida = embutirCssDeEntrada(HTML, '.hero{color:#0f0}')
     expect(saida).not.toContain('rel="stylesheet"')
     expect(saida).toContain('<style>.hero{color:#0f0}</style>')
-    // O resto do <head> fica intacto.
     expect(saida).toContain('html{background:#0d0d0d}')
     expect(saida).toContain('<div id="root"></div>')
   })

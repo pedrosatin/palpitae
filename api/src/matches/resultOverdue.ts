@@ -73,9 +73,7 @@ export function isResultOverdue(
 /** Agregado de jogos atrasados sem placar no D1. */
 export type OverdueResultSummary = {
   matches: number
-  /** Minutos desde o kickoff do jogo atrasado mais antigo; 0 se não há nenhum. */
   oldest_minutes: number
-  /** Competições distintas com pelo menos um atraso. */
   competitions: number
 }
 

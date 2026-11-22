@@ -90,7 +90,6 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
   })
 
   it('inclui adiado sem locked_at mesmo com prediction.locked de uma busca anterior', () => {
-    // O PUT aceita esse jogo: `isMatchLocked` da API não lê o `locked` do palpite.
     const match = makeMatch({
       id: 'm-postponed',
       start_time: past,
@@ -216,7 +215,6 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
   })
 })
 
-/** Rascunho digitado sobre `saved`, ou sobre jogo sem palpite. */
 function typed<T>(value: T, saved?: Prediction): DraftEntry<T> {
   return { value, base: savedBase(saved), at: 0 }
 }
@@ -286,7 +284,6 @@ describe('pruneUnsavedDrafts', () => {
   })
 
   it('descarta o rascunho digitado sobre um palpite salvo que mudou depois', () => {
-    // Salvo 1×0, rascunho 3×0, e outro aparelho salvou 2×2.
     const knockout = makeMatch({ id: 'm2', decides_on_penalties: true })
     const result = pruneUnsavedDrafts({
       matches: [open, knockout],
@@ -351,15 +348,12 @@ describe('pruneUnsavedDrafts', () => {
       ]),
       penaltyDrafts: new Map([['volta', typed<'home' | 'away' | null>('home', voltaSaved)]]),
     }
-    // Ida salva 1×0 e volta 1×0 empatam o agregado em 1×1.
     expect(pruneUnsavedDrafts({ ...input, drafts: new Map() }).penaltyDrafts.size).toBe(1)
-    // A ida em edição para 2×0 desfaz o empate.
     const undone = pruneUnsavedDrafts({
       ...input,
       drafts: new Map([['ida', typed({ home: '2', away: '0' }, idaSaved)]]),
     })
     expect(undone.penaltyDrafts.size).toBe(0)
-    // Em outra rodada, o rascunho da ida não entra no agregado, como no "Salvar todos".
     const otherRound = pruneUnsavedDrafts({
       ...input,
       matches: [{ ...leg1, round: '2' }, leg2],

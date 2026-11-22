@@ -6,9 +6,6 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import { signJwt } from './jwt'
 
-// API inteira sobre o D1 em memória. `ADMIN_GOOGLE_SUB` amarra o papel de admin e o
-// acesso a piloto do admin à conta Google dona do `ADMIN_EMAIL`, para que um e-mail
-// reciclado não herde o papel. Todos os valores são sintéticos.
 
 const ADMIN_EMAIL = 'admin@example.test'
 const SUB_CERTO = 'sub-certo-0001'
@@ -106,9 +103,7 @@ describe('ADMIN_GOOGLE_SUB definido', () => {
   it('conta com o e-mail e o sub certos é admin e vê o piloto', async () => {
     const { request } = fixture({ ADMIN_GOOGLE_SUB: SUB_CERTO })
 
-    // Métricas: passa do gate de admin e para na configuração ausente da SQL API.
     expect((await request('/metrics/overview')).status).toBe(503)
-    // Sync manual: passa do gate e para na validação do corpo.
     expect((await request('/matches/sync', 'POST', {})).status).toBe(400)
     expect(await seesPilot(await request('/competitions'))).toBe(true)
     expect((await request('/matches?competition_id=piloto')).status).toBe(200)

@@ -18,7 +18,6 @@ import {
 describe('fetchEspnScoreboard', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    // Em Vitest o delay default é 0 via process.env.VITEST no módulo; aqui restauramos 1,3s para medir pacing.
     resetEspnClientForTests()
     setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
   })
@@ -90,7 +89,6 @@ describe('fetchEspnScoreboard', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ events: [], leagues: [] })))
 
     const promise = fetchEspnScoreboard('eng.1', '20261005')
-    // Retry imediato: pacing 1300 cobre o backoff 500
     await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS)
 
     await expect(promise).resolves.toEqual({ events: [], leagues: [] })
@@ -124,7 +122,6 @@ describe('fetchEspnScoreboard', () => {
     const withRetry = fetchEspnScoreboard('bra.1', '20261001')
     const neighbor = fetchEspnScoreboard('bra.1', '20261002')
 
-    // 3 inícios × 1300ms + margem para o body de 20ms por sucesso
     await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS * 3 + 100)
     await Promise.all([withRetry, neighbor])
 
@@ -138,7 +135,6 @@ describe('fetchEspnScoreboard', () => {
       ).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
     }
 
-    // 403 não retenta; reset limpa fila/relógio para a próxima suíte
     resetEspnClientForTests()
     setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
     vi.mocked(fetch).mockReset()

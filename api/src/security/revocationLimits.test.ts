@@ -89,7 +89,6 @@ describe('limite próprio de revogação pela API inteira', () => {
     '%s limita a 10 tentativas por token e libera na próxima janela',
     async (route) => {
       const { sqlite, sign, call } = await fixture()
-      // A falha de armazenamento mantém a sessão válida para as novas tentativas.
       sqlite.exec(`
       CREATE TRIGGER falha_logout BEFORE INSERT ON revoked_sessions
       BEGIN SELECT RAISE(FAIL, 'falha simulada'); END;
@@ -103,7 +102,6 @@ describe('limite próprio de revogação pela API inteira', () => {
       const blocked = await call(route, tokenA, 'POST', '192.0.2.2')
       expect(blocked.status).toBe(429)
       expect(blocked.headers.get('Retry-After')).toBe('60')
-      // As duas rotas compartilham o teto, e outro token da conta tem saldo próprio.
       expect(
         (
           await call(

@@ -29,7 +29,6 @@ export { MISSING_EVENTS_PER_DISCOVERY }
  */
 export const DISCOVERY_CALL_BUDGET = DRAIN_CALL_BUDGET
 
-/** O enfileiramento do que não coube: 1 `db.batch()` no fim, reservado do saldo antes de qualquer tarefa. */
 const DISCOVERY_DEFER_CALLS = 1
 
 type ActiveCompetition = {
@@ -39,14 +38,12 @@ type ActiveCompetition = {
   provider: string
 }
 
-/** O estado de uma execução da descoberta, que as funções por competição atualizam. */
 type DiscoveryRun = {
   apiKey: string
   ae: AnalyticsEngineDataset | undefined
   now: number
   espnDates: string[]
   missingEvents: { remaining: number }
-  /** Itens `discovery` da fila para o que as competições não entregaram. */
   deferrals: NewWorkItem[]
   fixturesUpdated: number
   eventsDiscarded: number
@@ -54,7 +51,6 @@ type DiscoveryRun = {
   hadError: boolean
 }
 
-/** Custo estimado da descoberta de uma competição, em chamadas (D1 e `fetch`). */
 function discoveryCost(comp: ActiveCompetition, espnDates: number): number {
   if (comp.provider === 'espn') return espnDiscoveryCost(espnDates)
   return footballDataItemCost({
@@ -68,11 +64,6 @@ function discoveryCost(comp: ActiveCompetition, espnDates: number): number {
   })
 }
 
-/**
- * Itens `discovery` da fila para o que a competição não entregou, com o prazo que o
- * erro informa: um por data na ESPN (as `dates` dadas, ou as nove), um por
- * competição na football-data.
- */
 function deferralItems(
   run: DiscoveryRun,
   comp: ActiveCompetition,
@@ -100,7 +91,6 @@ function deferralItems(
   ]
 }
 
-/** Sincroniza a competição e pontua o que o sync deixou sem `scored_at`, com o saldo dela. */
 async function syncAndScore(
   run: DiscoveryRun,
   comp: ActiveCompetition,
@@ -137,12 +127,7 @@ async function syncAndScore(
   return result
 }
 
-/** A falha do sync: vira item da fila, e só a que não é falta de saldo conta como erro do provedor. */
 function deferFailedSync(run: DiscoveryRun, comp: ActiveCompetition, err: unknown): void {
-  // Qualquer falha vira trabalho pendente: o dreno retoma no mesmo dia, e o progresso da
-  // descoberta não espera a de amanhã. Sem vaga ou com cota bloqueada, o prazo segue o reset;
-  // nas demais falhas, a espera conservadora. Falta de saldo de subrequests não é falha do
-  // provedor.
   run.deferrals.push(...deferralItems(run, comp, undefined, err))
   if (err instanceof CallBudgetExhaustedError) {
     console.info(`[discovery] Sem saldo de chamadas comp=${comp.id}: a fila retoma.`)
@@ -154,7 +139,6 @@ function deferFailedSync(run: DiscoveryRun, comp: ActiveCompetition, err: unknow
   })
 }
 
-/** O sync parcial da ESPN: o que chegou foi gravado, as datas que faltaram voltam pelo dreno. */
 function deferPartialSync(
   run: DiscoveryRun,
   comp: ActiveCompetition,
@@ -172,7 +156,6 @@ function deferPartialSync(
   )
 }
 
-/** Sincroniza uma competição dentro do saldo que ela reservou e avança o status se o calendário veio inteiro. */
 async function syncCompetition(
   run: DiscoveryRun,
   comp: ActiveCompetition,
@@ -190,11 +173,9 @@ async function syncCompetition(
     return
   }
   if (result?.pending) {
-    // O status só avança com a descoberta completa.
     deferPartialSync(run, comp, result.pending)
     return
   }
-  // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
   try {
     const advanced = await advanceCompetitionStatus(
       span.db,
@@ -300,10 +281,6 @@ export async function discoverFixtures(
     DISCOVERY_DEFER_CALLS,
   )
 
-  // Competições não-terminais com provider sincronizável. 'finished' fica de fora:
-  // torneio acabado não ganha jogos novos, não vale gastar chamada da API. A
-  // coluna só vira 'finished' dias depois do último jogo (`reconcileCompetitionStatus`),
-  // e esses dias são a janela de correção do calendário.
   const rows = await budget.db
     .prepare(
       `SELECT c.id, c.external_id, c.season, c.provider
@@ -321,7 +298,6 @@ export async function discoverFixtures(
     console.info('[discovery] Nenhuma competição ativa.')
     logEvent(ae, 'fixture_discovery_run', {
       blobs: ['ok'],
-      // competitions, fixtures_updated, api_calls, duration_ms, events_discarded, matches_missing
       doubles: [0, 0, 0, Date.now() - startedAt, 0, 0],
     })
     return
@@ -340,7 +316,6 @@ export async function discoverFixtures(
     matchesMissing: 0,
     hadError: false,
   }
-  // Requests primárias planejadas, excluindo retries do provedor.
   const plannedApiRequests = rows.results.reduce(
     (count, comp) => count + (comp.provider === 'espn' ? run.espnDates.length : 1),
     0,
@@ -350,9 +325,6 @@ export async function discoverFixtures(
     ? await readEspnAccessPause(budget.db, now)
     : null
 
-  // A consulta prioriza visibilidade pública, uso por grupos e slug, sem preferência
-  // por provedor. A reserva pelo custo completo segue essa ordem; o que não cabe
-  // vai para a fila antes de qualquer tarefa começar.
   const costOf = (comp: ActiveCompetition) =>
     opts.callBudget === undefined ? 0 : discoveryCost(comp, run.espnDates.length)
   const admitted: { comp: ActiveCompetition; span: ItemBudget }[] = []

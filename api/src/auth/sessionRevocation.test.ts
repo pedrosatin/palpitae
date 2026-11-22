@@ -13,7 +13,6 @@ const SECRET = 'test-secret'
 const API = 'https://api.palpitae.com.br'
 const FRONT = 'https://palpitae.com.br'
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-// Rota com `requireAuth` que lê (GET) e grava (PATCH) na conta da sessão.
 const PROTECTED = '/notifications/preferences'
 
 /** Troca o último caractere da assinatura por outro que difere só nos bits dados. */
@@ -149,7 +148,6 @@ describe('revogação de sessão pela API inteira', () => {
 
       expect(await me(variant)).toEqual({ authenticated: false })
       expect(await status(variant)).toBe(401)
-      // A recusa da variante não derruba a sessão legítima.
       expect(await status(token)).toBe(200)
     },
   )

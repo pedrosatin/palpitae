@@ -8,7 +8,6 @@ interface ApiState {
   logoutStatus: number
 }
 
-/** API simulada no mesmo origin do Vite (`VITE_API_URL=http://localhost:5173/api`). */
 async function mockApi(page: Page, state: ApiState) {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, '')
@@ -48,11 +47,9 @@ test.describe('Sessão', () => {
     const state = { authenticated: true, groupsStatus: 401, logoutStatus: 200 }
     await mockApi(page, state)
 
-    // A sessão expira no painel: "/" vira a landing, que não mostra o aviso.
     await page.goto('/')
     await expect(page.getByRole('link', { name: 'Entrar' }).first()).toBeVisible()
 
-    // Novo login na mesma aba (a volta do Google é uma navegação completa).
     state.groupsStatus = 200
     await page.goto('/configuracoes')
     await expect(page.getByRole('heading', { name: 'Conta' })).toBeVisible()
@@ -75,7 +72,6 @@ test.describe('Sessão', () => {
     await expect(alert).toContainText('Não conseguimos confirmar no servidor')
     await expect(alert).toContainText('Sair de todos os dispositivos')
 
-    // O aviso vale uma vez: recarregar /entrar não o repete.
     await page.reload()
     await expect(page.getByRole('heading', { name: 'Bem-vindo ao Palpitae' })).toBeVisible()
     await expect(page.getByRole('alert')).toHaveCount(0)

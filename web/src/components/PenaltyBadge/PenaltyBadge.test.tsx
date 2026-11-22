@@ -46,7 +46,6 @@ describe('PenaltyBadge', () => {
   })
 
   it('abre com Enter e Espaço no botão focado', async () => {
-    // userEvent trava com timers falsos; este teste não depende do fechamento automático.
     vi.useRealTimers()
     const user = userEvent.setup()
     render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
@@ -88,7 +87,6 @@ describe('PenaltyBadge', () => {
     render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
     const button = screen.getByRole('button')
 
-    // We use fireEvent to simulate touch/click without hover side effects
     fireEvent.click(button)
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 

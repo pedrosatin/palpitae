@@ -27,11 +27,9 @@ import {
 export interface MilestoneShareCardData {
   groupName: string
   milestone: ExactMilestone
-  /** Todos os limiares cruzados nesta rodada (pode ser mais de um). */
   crossed: ExactMilestone[]
   exactHits: number
   domain: string
-  /** Link do grupo gravado no rodapé e no texto; null cai no domínio. */
   groupLink: string | null
 }
 
@@ -67,7 +65,6 @@ export function milestoneShareFileName(milestone: ExactMilestone): string {
   return `palpitae-marco-${milestone}-exatos.png`
 }
 
-/** Texto legível do link no rodapé (sem esquema). */
 function footerLinkLabel(data: MilestoneShareCardData): string {
   if (data.groupLink) return stripScheme(data.groupLink)
   return data.domain
@@ -132,7 +129,6 @@ export function layoutFooterLink(
   return { fontSize: FOOTER_LINK_FONT_MIN, lines: [left, right] }
 }
 
-/** Rodapé do cartão de marco: tagline e URL do grupo (ou domínio), sem truncar. */
 function drawMilestoneFooter(ctx: CanvasRenderingContext2D, data: MilestoneShareCardData): void {
   const W = SHARE_CARD_WIDTH
   const H = SHARE_CARD_HEIGHT

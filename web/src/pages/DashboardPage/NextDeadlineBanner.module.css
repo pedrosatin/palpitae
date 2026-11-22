@@ -1,6 +1,3 @@
-/* Faixa "Próximo prazo" no topo do painel. Com pendência ela é o primeiro
-   elemento com a cor da marca na tela, porque é a ação da visita. Sem pendência
-   vira uma linha discreta. */
 
 .banner {
   display: flex;
@@ -53,7 +50,6 @@
   color: var(--color-text-secondary);
 }
 
-/* Link com cara de botão primário. Alvo de toque de 44 px. */
 .action {
   display: inline-flex;
   align-items: center;

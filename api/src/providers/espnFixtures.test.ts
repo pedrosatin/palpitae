@@ -60,7 +60,6 @@ type FixtureEvent = {
   date?: string
   name?: string
   season?: { year?: number; slug?: string }
-  /** Ausente no scoreboard ao vivo de bra.2. O contrato da liga fixa isso. */
   week?: number | { number?: number }
   matchday?: number
   competitions?: FixtureCompetition[]
@@ -70,7 +69,6 @@ type FixtureBoard = {
   leagues?: {
     slug?: string
     season?: { year?: number }
-    /** Copas: entradas de fase. Ligas: lista plana de datas ISO. */
     calendar?: ({ entries?: { label?: string }[] } | string)[]
   }[]
   events?: FixtureEvent[]
@@ -90,7 +88,6 @@ const CARIOCA = cariocaJson as unknown as FixtureBoard
 const MINEIRO = mineiroJson as unknown as FixtureBoard
 const NORDESTE = nordesteJson as unknown as FixtureBoard
 
-/** Fases por competição em `leagues[0].calendar[0].entries`, como o relatório descreve. */
 const CALENDAR_SIZE: Record<Slug, number> = {
   'conmebol.libertadores': 8,
   'conmebol.sudamericana': 7,
@@ -99,7 +96,6 @@ const CALENDAR_SIZE: Record<Slug, number> = {
 
 const BOARDS = (Object.keys(FIXTURES) as Slug[]).map((slug) => ({ slug, board: FIXTURES[slug] }))
 
-/** Team id da ESPN para o Atlético-MG, conferido na fixture da Sul-Americana. */
 const ATLETICO_MG_ID = '7632'
 
 function comp(event: FixtureEvent): FixtureCompetition {
@@ -147,7 +143,6 @@ function tiePair(events: FixtureEvent[], phaseSlug: string): [FixtureEvent, Fixt
   return pair
 }
 
-/** "Round of 16" vira "round-of-16", no formato de `season.slug`. */
 function slugify(label: string): string {
   return label.trim().toLowerCase().replace(/\s+/g, '-')
 }
@@ -206,7 +201,6 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
 
   it('jogo agendado traz placar "0" nos dois competidores', () => {
     const scheduled = (board.events ?? []).filter((e) => comp(e).status?.type?.state === 'pre')
-    // Só a fixture da Copa do Brasil guarda um jogo futuro, a semifinal de 1 de novembro.
     expect(scheduled).toHaveLength(slug === 'bra.copa_do_brazil' ? 1 : 0)
     for (const event of scheduled) {
       for (const competitor of comp(event).competitors ?? []) {
@@ -252,7 +246,6 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
   it('jogo de grupo identifica o grupo e não tem leg nem series', () => {
     const groupEvents = (board.events ?? []).filter((e) => e.season?.slug === 'group-stage')
     if (slug === 'bra.copa_do_brazil') {
-      // A Copa do Brasil não tem fase de grupos; o calendário dela é só mata-mata.
       expect(groupEvents).toHaveLength(0)
       return
     }
@@ -278,11 +271,9 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
     expect(comp(leg1).series?.completed).toBe(false)
     expect(comp(leg2).series?.completed).toBe(true)
 
-    // O mando inverte entre a ida e a volta.
     expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
     expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
 
-    // Agregado estruturado na volta, igual em competitors e em series.competitors.
     const seriesByTeam = new Map(
       (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
     )
@@ -307,7 +298,6 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
       const loser = competitors.find((c) => !c.winner)
       expect(winner).toBeTruthy()
       expect((winner?.shootoutScore ?? 0) > (loser?.shootoutScore ?? 0)).toBe(true)
-      // Havendo series, o classificado da series é o vencedor dos pênaltis.
       const series = comp(event).series
       if (series) {
         expect(series.competitors?.find((c) => c.winner)?.id).toBe(winner?.team?.id)
@@ -365,7 +355,6 @@ describe('amostras decisivas do spike', () => {
       expect(comp(event).series ?? null).toBeNull()
       expect(comp(event).status?.type?.name).toBe('STATUS_FINAL_PEN')
     }
-    // Da quinta rodada em diante o confronto passa a ter ida e volta.
     const fifthRound = (board.events ?? []).find((e) => e.season?.slug === 'fifth-round')
     expect(comp(fifthRound as FixtureEvent).leg?.value).toBe(1)
     expect(comp(fifthRound as FixtureEvent).series?.totalCompetitions).toBe(2)

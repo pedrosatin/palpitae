@@ -55,7 +55,6 @@ describe('Barra de importação', () => {
     await user.click(await screen.findByRole('button', { name: 'Importar' }))
     expect(await screen.findByRole('button', { name: 'Importar de novo' })).toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
-    // Na mesma visita a origem é conhecida e aparece numa mensagem só.
     expect(screen.getByText('Palpites importados de Origem.')).toBeInTheDocument()
     expect(screen.queryByText(/importado\(s\)/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Importar de novo' }))
@@ -64,14 +63,13 @@ describe('Barra de importação', () => {
     view.unmount()
     const next = render(<PredictionsTab groupId="target" competitionId="c" />)
     await screen.findByRole('button', { name: 'Importar de novo' })
-    // Depois de remontar, a API informa só que houve importação, sem o grupo de origem.
     expect(screen.getByText('Você já importou palpites de outro grupo.')).toBeInTheDocument()
     expect(screen.queryByText(/Palpites importados de/)).not.toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
     next.rerender(<PredictionsTab groupId="other" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
     next.unmount()
-    state.completed.clear() // Nova conta, sem conclusão no backend.
+    state.completed.clear()
     render(<PredictionsTab groupId="target" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
   })
@@ -302,7 +300,6 @@ describe('Barra de importação', () => {
     it('reabre o seletor quando a rodada nova tem palpites em outro grupo', async () => {
       const posts = mockSources({
         import_completed: true,
-        // `done` travou depois da resposta da API e não entra na contagem.
         import_sources: { source: ['m', 'm2', 'done'] },
         predictions: [{ match_id: 'm' }],
       })
@@ -356,7 +353,6 @@ describe('Barra de importação', () => {
       })
       render(<PredictionsTab groupId="target" competitionId="c" />)
       expect(await screen.findByText('Importar palpites de:')).toBeInTheDocument()
-      // O grupo com mais pendências vem selecionado, mesmo não sendo o primeiro de /groups.
       expect(screen.getByRole('option', { name: 'Vazio (2 palpites novos)' })).toHaveProperty(
         'selected',
         true,

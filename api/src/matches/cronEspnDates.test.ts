@@ -286,7 +286,6 @@ describe('cron ESPN com datas explícitas', () => {
       const idx = codes.indexOf(slug)
       const events =
         date === '20261020' && idx >= 0 ? [event(`m-${idx}`, '2026-10-20T22:00:00Z')] : []
-      // Identidade por competição: reusa o template trocando só o id do evento.
       if (events[0]) {
         events[0].competitions![0].competitors![0].team!.id = `home-${idx}`
         events[0].competitions![0].competitors![1].team!.id = `away-${idx}`

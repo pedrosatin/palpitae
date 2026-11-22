@@ -26,7 +26,6 @@ function renderAt(path: string) {
 describe('RouteErrorBoundary', () => {
   beforeEach(() => {
     crash.home = true
-    // O React registra no console o erro que a fronteira capturou.
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 

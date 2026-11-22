@@ -44,9 +44,7 @@ describe('parseInviteCode', () => {
     ['https://palpitae.com.br/outro/abcd-ef23', 'ABCD-EF23'],
     ['https://palpitae.com.br/convite/ABCD-EF23/extra', 'ABCD-EF23'],
     ['https://palpitae.com.br/convite/', 'HTTPS://PALPITAE.COM.BR/CONVITE/'],
-    // Link sem https://, que o new URL() não aceita.
     ['palpitae.com.br/convite/abcd-ef23', 'ABCD-EF23'],
-    // Mensagem do WhatsApp colada inteira: vale a última ocorrência.
     [
       'Entra no meu bolão "WXYZ-2345" no Palpitae: https://palpitae.com.br/convite/abcd-ef23',
       'ABCD-EF23',

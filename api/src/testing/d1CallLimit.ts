@@ -13,11 +13,8 @@ const STATEMENT_CALLS = new Set<PropertyKey>(['first', 'run', 'all', 'raw'])
 
 export type LimitedD1 = {
   db: D1Database
-  /** Começa outra invocação: zera a contagem. */
   startInvocation(): void
-  /** Chamadas da invocação atual, contando as rejeitadas. */
   calls(): number
-  /** Conta um `fetch` na invocação atual. Lança se passou do limite. */
   chargeFetch(): void
 }
 

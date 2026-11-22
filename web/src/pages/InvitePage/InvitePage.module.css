@@ -1,8 +1,3 @@
-/**
- * Página de convite do visitante. Mesmo layout centralizado do LoginPage, com
- * os dados do grupo acima do botão e tudo dentro da primeira tela do celular.
- */
-
 .root {
   align-items: center;
   display: flex;

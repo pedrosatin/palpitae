@@ -23,7 +23,6 @@ export function useMatchRounds(
   events: RoundNavEvents,
   defaultRound?: string | null,
 ) {
-  // A ordem vem da API; a lista não deve ser reordenada no front.
   const rounds = new Map<string, Match[]>()
   const knockoutRounds = new Set<string>()
   for (const m of matches) {
@@ -38,8 +37,6 @@ export function useMatchRounds(
 
   const postponedByRound = new Map<string, number>()
   for (const [round, roundList] of rounds) {
-    // Jogo adiado que o sync já viu iniciado (`locked_at`) está travado: não entra
-    // na dica de "palpite segue aberto".
     const count = roundList.filter((m) => Boolean(m.postponed) && !m.locked_at).length
     if (count > 0) postponedByRound.set(round, count)
   }

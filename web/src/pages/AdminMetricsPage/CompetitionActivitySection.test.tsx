@@ -27,7 +27,6 @@ function makeData(
 ): CompetitionActivityResponse {
   return {
     days: 30,
-    // Muito no passado: a dimensão cobre o período inteiro, sem aviso.
     predictionsDimensionSince: '2020-01-01 00:00:00',
     competitions: [],
     ...overrides,
@@ -77,13 +76,11 @@ describe('CompetitionActivitySection', () => {
       name: 'Atividade por campeonato',
     })
     const rows = within(table).getAllByRole('row')
-    // cabeçalho + 2 linhas
     expect(rows).toHaveLength(3)
     expect(within(rows[1]).getByText('Brasileirão Série A 2026')).toBeInTheDocument()
     expect(within(rows[1]).getByText('4')).toBeInTheDocument()
     expect(within(rows[1]).getByText('1.200')).toBeInTheDocument()
     expect(within(rows[1]).getByText('310')).toBeInTheDocument()
-    // Sem temporada, mostra só o nome.
     expect(within(rows[2]).getByText('Libertadores')).toBeInTheDocument()
   })
 
@@ -195,7 +192,6 @@ describe('CompetitionActivitySection · grupos criados por dia', () => {
   const chartName = 'Grupos criados por dia, por campeonato'
 
   beforeEach(() => {
-    // "Hoje" fixo (UTC) para o eixo do gráfico ser determinístico.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-29T15:00:00Z'))
   })
@@ -238,7 +234,6 @@ describe('CompetitionActivitySection · grupos criados por dia', () => {
     expect(within(chart).getByText('2026-10-24 · Brasileirão Série A 2026: 3')).toBeInTheDocument()
     expect(within(chart).getByText('2026-10-24 · Libertadores 2026: 1')).toBeInTheDocument()
     expect(within(chart).getByText('2026-10-28 · Brasileirão Série A 2026: 2')).toBeInTheDocument()
-    // Só 3 segmentos: Libertadores não aparece em 28/10 e nenhum dia vazio vira barra.
     expect(chart.querySelectorAll('rect')).toHaveLength(3)
     expect(screen.getByText(/Grupos criados por dia · últimos 7 dias/)).toBeInTheDocument()
   })
@@ -249,13 +244,11 @@ describe('CompetitionActivitySection · grupos criados por dia', () => {
         data={withDaily([daily('2026-10-24', COMP_B, 1), daily('2026-10-25', COMP_A, 5)])}
       />,
     )
-    // A legenda vem antes da tabela no DOM; o title de cada item é o id do campeonato.
     const legend = [COMP_A, COMP_B].map((id) => screen.getAllByTitle(id)[0])
     expect(legend.map((el) => el.textContent)).toEqual([
       'Brasileirão Série A 2026',
       'Libertadores 2026',
     ])
-    // Brasileirão (5) vem antes de Libertadores (1) na ordem do DOM.
     expect(
       legend[0].compareDocumentPosition(legend[1]) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
@@ -297,10 +290,10 @@ describe('CompetitionActivitySection · grupos criados por dia', () => {
   it('fronteira do eixo: primeiro e último dia entram; dia parcial anterior e futuro ficam fora com aviso', () => {
     const { days, outsideAxis } = buildGroupsDailySeries(
       withDaily([
-        daily('2026-10-22', COMP_A, 4), // parcial: um dia antes do eixo de 7 dias
-        daily('2026-10-23', COMP_A, 1), // primeiro dia do eixo
-        daily('2026-10-29', COMP_A, 2), // hoje
-        daily('2026-10-30', COMP_A, 8), // futuro (relógio do navegador atrasado)
+        daily('2026-10-22', COMP_A, 4),
+        daily('2026-10-23', COMP_A, 1),
+        daily('2026-10-29', COMP_A, 2),
+        daily('2026-10-30', COMP_A, 8),
       ]),
     )
     expect(days[0].segments).toEqual([expect.objectContaining({ value: 1 })])
@@ -335,7 +328,6 @@ describe('CompetitionActivitySection · grupos criados por dia', () => {
       />,
     )
     const chart = screen.getByRole('img', { name: chartName })
-    // 8 nomeados + "Outros" (Liga 8 = 2 e Liga 9 = 1).
     expect(chart.querySelectorAll('rect')).toHaveLength(9)
     expect(within(chart).getByText('2026-10-26 · Outros: 3')).toBeInTheDocument()
     expect(screen.getByTitle('Campeonatos de menor volume agrupados')).toBeInTheDocument()

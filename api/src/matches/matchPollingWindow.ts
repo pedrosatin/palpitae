@@ -21,13 +21,9 @@ export const LATE_SWEEP_INTERVAL_MS = 3 * 60 * 60 * 1000
 export const DAY_MS = 24 * 60 * 60 * 1000
 
 export type ResultWindowBounds = {
-  /** Jogos que começaram há pelo menos `EARLIEST_RESULT_MS`. */
   earliestOver: string
-  /** Jogos que começaram há no máximo `ACTIVE_RESULT_WINDOW_MS`. */
   stillRelevant: string
-  /** Jogos que começaram há no máximo `RESCUE_WINDOW_MS`. */
   rescueFloor: string
-  /** Jogos que começaram há no máximo `LATE_SWEEP_WINDOW_MS`. */
   lateFloor: string
 }
 
