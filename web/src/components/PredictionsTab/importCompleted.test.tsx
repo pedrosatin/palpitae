@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import GroupTabContent from '../../pages/GroupDetailPage/GroupTabContent'
@@ -7,6 +7,7 @@ import { fetchGroupsList } from '../../lib/groupsList'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
 import { usePredictionsTab } from './usePredictionsTab'
+import { renderWithQuery as render, renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())

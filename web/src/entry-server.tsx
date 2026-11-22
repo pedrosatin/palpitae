@@ -11,6 +11,11 @@
  * entre esta árvore e a de `main.tsx` vira erro de hidratação, então as duas
  * precisam ser alteradas juntas.
  *
+ * O `QueryClientProvider` fica só no `main.tsx`, porque a landing não chama
+ * `useQuery` e o provider só injeta contexto, sem gerar HTML. Um `useQuery`
+ * montado nesta árvore lança erro por falta de cliente, e o prerender falha em
+ * vez de buscar.
+ *
  * Só a rota "/" é pré-renderizada: é a única pública, a única indexada e a
  * única que não depende da sessão.
  */

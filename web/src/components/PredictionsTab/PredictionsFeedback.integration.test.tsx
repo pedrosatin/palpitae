@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
+import { renderWithQuery as render } from '../../test-utils'
 
 const originalKey = config.tbbcSiteKey
 

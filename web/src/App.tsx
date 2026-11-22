@@ -22,6 +22,7 @@ import { RouteErrorBoundary } from './components/ErrorBoundary'
 import { buildApiUrl } from './config'
 import { clearSessionExpired, notifyLogoutUnconfirmed, SESSION_EXPIRED_EVENT } from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
+import { appQueryClient } from './lib/queryClient'
 import { INVITE_PATH_PREFIX } from './lib/invite'
 import { loggedInLoginTarget, pageLoadedFromHistory } from './lib/loginRedirect'
 import { clearStoredDrafts } from './lib/predictionDraftStorage'
@@ -169,6 +170,7 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
 
   const checkSession = useCallback(() => {
     invalidateApiCache()
+    appQueryClient.clear()
     // Raw fetch on purpose: an anonymous visit is the normal logged-out state,
     // not an expired session — apiFetch would flag "sessão expirou" for every
     // visitor. The endpoint answers 200 either way (`{ user }` or
@@ -222,6 +224,7 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
         clearSessionExpired()
       }
       invalidateApiCache()
+      appQueryClient.clear()
       beforeLeave?.()
       setUser(null)
       setStatus('unauthenticated')

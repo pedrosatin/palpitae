@@ -1,9 +1,10 @@
-import { renderHook, waitFor, act } from '@testing-library/react'
+import { waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePredictionsTab } from './usePredictionsTab'
 import * as ga from '../../analytics/ga'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { makeMatch } from '../matchFixtures'
+import { createTestQueryClient, renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({
   trackEvent: vi.fn(),
@@ -335,5 +336,81 @@ describe('usePredictionsTab', () => {
       expect.anything(),
     )
     expect(mockInvalidate).not.toHaveBeenCalled()
+  })
+
+  it('refetch das partidas não volta a rodada escolhida para a padrão', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    mockFetch(matches, [], [], '1')
+    const { result, queryClient } = renderHook(() => usePredictionsTab('g1', 'c1'))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('1')
+
+    act(() => {
+      result.current.next()
+    })
+    expect(result.current.selectedRound).toBe('2')
+
+    // O refetch traz outro status para o m2, então o dado muda de referência.
+    mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '1')
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })
+    })
+    await waitFor(() => expect(result.current.matches[1].status).toBe('live'))
+
+    expect(result.current.selectedRound).toBe('2')
+  })
+
+  it('com cache velho, a rodada padrão vem da resposta nova', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    const queryClient = createTestQueryClient()
+    // Dado da visita anterior, com mais de 30 s: a montagem busca de novo.
+    queryClient.setQueryData(
+      ['matches', 'c1'],
+      { matches, default_round: '1' },
+      { updatedAt: Date.now() - 60_000 },
+    )
+    // A resposta nova traz outra rodada padrão e outro status para o m2.
+    mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '2')
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
+
+    await waitFor(() => expect(result.current.matches[1]?.status).toBe('live'))
+    expect(result.current.selectedRound).toBe('2')
+  })
+
+  it('aplica ?rodada= só na primeira carga e o refetch mantém a rodada escolhida', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    mockFetch(matches, [], [], '1')
+    const onApplied = vi.fn()
+    const { result, queryClient } = renderHook(() =>
+      usePredictionsTab('g1', 'c1', undefined, '2', onApplied),
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('2')
+    expect(onApplied).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      result.current.prev()
+    })
+    expect(result.current.selectedRound).toBe('1')
+
+    mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '1')
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['matches', 'c1'] })
+    })
+    await waitFor(() => expect(result.current.matches[1].status).toBe('live'))
+
+    expect(result.current.selectedRound).toBe('1')
+    expect(onApplied).toHaveBeenCalledTimes(1)
   })
 })
