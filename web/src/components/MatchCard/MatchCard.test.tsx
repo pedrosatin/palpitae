@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import { renderWithQuery as render } from '../../test-utils'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
@@ -159,7 +159,8 @@ describe('MatchCard – estado do palpite', () => {
     observer.observe(button, { attributes: true, attributeFilter: ['disabled'] })
 
     await user.click(button)
-    expect(button).toHaveTextContent('...')
+    expect(button).toHaveTextContent('Salvo')
+    expect(screen.getByText('palpite salvo')).toBeInTheDocument()
     expect(button).not.toBeDisabled()
     expect(button).toHaveAttribute('aria-disabled', 'true')
     await user.click(button)
@@ -1104,23 +1105,64 @@ describe('MatchCard – falha no salvamento', () => {
     ]
   }
 
-  it('falha de rede libera o botão, mantém o placar e mostra o erro', async () => {
+  it('falha de rede devolve o card ao valor anterior e mostra o erro', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockRejectedValue(new TypeError('Failed to fetch'))
     const user = userEvent.setup()
-    render(<Parent />)
-    await fillOneToZero(user)
+    try {
+      render(<Parent />)
+      await fillOneToZero(user)
 
-    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      await user.click(screen.getByRole('button', { name: 'Salvar' }))
 
-    const button = await screen.findByRole('button', { name: 'Salvar' })
-    expect(button).toBeEnabled()
-    expect(button).not.toHaveAttribute('aria-disabled')
-    expect(scoreValues()).toEqual(['1', '0'])
-    expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('Erro de conexão. Tente novamente.')
-    fetchMock.mockRestore()
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Erro de conexão. Tente novamente.',
+      )
+      const button = screen.getByRole('button', { name: 'Salvar' })
+      expect(button).toBeDisabled()
+      expect(scoreValues()).toEqual(['', ''])
+      expect(screen.getByText('sem palpite')).toBeInTheDocument()
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it('erro 4xx devolve o card ao palpite salvo anterior com a mensagem da API', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ error: 'Jogo já começou' }), { status: 409 }))
+    const user = userEvent.setup()
+    function EditParent() {
+      const [prediction, setPrediction] = useState<Prediction | undefined>(
+        makePrediction({ predicted_home_score: 1, predicted_away_score: 2 }),
+      )
+      return (
+        <MatchCard
+          match={makeMatch()}
+          prediction={prediction}
+          groupId="group-1"
+          onSaved={(_id, home, away) =>
+            setPrediction(makePrediction({ predicted_home_score: home, predicted_away_score: away }))
+          }
+        />
+      )
+    }
+    try {
+      render(<EditParent />)
+      await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+      expect(scoreValues()).toEqual(['2', '2'])
+
+      await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+      expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Jogo já começou')
+      expect(scoreValues()).toEqual(['1', '2'])
+      expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Salvo' })).toHaveAttribute('aria-disabled', 'true')
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 
   it('tentar de novo depois da falha envia uma vez e limpa o erro', async () => {
@@ -1130,19 +1172,25 @@ describe('MatchCard – falha no salvamento', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     const onSaved = vi.fn()
     const user = userEvent.setup()
-    render(<Parent onSaved={onSaved} />)
-    await fillOneToZero(user)
+    try {
+      render(<Parent onSaved={onSaved} />)
+      await fillOneToZero(user)
 
-    await user.click(screen.getByRole('button', { name: 'Salvar' }))
-    await screen.findByText('Erro de conexão. Tente novamente.')
-    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      await screen.findByText('Erro de conexão. Tente novamente.')
+      expect(scoreValues()).toEqual(['', ''])
 
-    expect(await screen.findByRole('button', { name: 'Salvo' })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(onSaved).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
-    expect(scoreValues()).toEqual(['1', '0'])
-    fetchMock.mockRestore()
+      await fillOneToZero(user)
+      await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+      expect(await screen.findByRole('button', { name: 'Salvo' })).toBeInTheDocument()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(onSaved).toHaveBeenCalledTimes(1)
+      expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
+      expect(scoreValues()).toEqual(['1', '0'])
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 
   it('no modo só vencedor, tocar de novo na opção depois da falha envia outra vez', async () => {
@@ -1151,23 +1199,27 @@ describe('MatchCard – falha no salvamento', () => {
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     const user = userEvent.setup()
-    render(<Parent outcomeOnly />)
+    try {
+      render(<Parent outcomeOnly />)
 
-    await user.click(screen.getByRole('radio', { name: 'Casa' }))
-    await screen.findByText('Erro de conexão. Tente novamente.')
-    expect(screen.getByRole('radio', { name: 'Casa' })).toBeEnabled()
-    await user.click(screen.getByRole('radio', { name: 'Casa' }))
+      await user.click(screen.getByRole('radio', { name: 'Casa' }))
+      await screen.findByText('Erro de conexão. Tente novamente.')
+      expect(screen.getByRole('radio', { name: 'Casa' })).toBeEnabled()
+      expect(screen.getByRole('radio', { name: 'Casa' })).not.toBeChecked()
+      await user.click(screen.getByRole('radio', { name: 'Casa' }))
 
-    expect(await screen.findByText('Salvo!')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
+      expect(await screen.findByText('Salvo!')).toBeInTheDocument()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('radio', { name: 'Casa' }))
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    fetchMock.mockRestore()
+      await user.click(screen.getByRole('radio', { name: 'Casa' }))
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 
-  it('com o envio pendente o placar permanece 1×0 e a resposta marca esse placar como salvo', async () => {
+  it('mostra o palpite salvo antes de a API responder e não sobrescreve edição feita no meio', async () => {
     let respond: (res: Response) => void = () => {}
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
       () =>
@@ -1176,26 +1228,122 @@ describe('MatchCard – falha no salvamento', () => {
         }),
     )
     const user = userEvent.setup()
-    render(<Parent />)
-    await fillOneToZero(user)
+    try {
+      const view = render(<Parent />)
+      const invalidateSpy = vi.spyOn(view.queryClient, 'invalidateQueries')
+      await fillOneToZero(user)
 
-    await user.click(screen.getByRole('button', { name: 'Salvar' }))
-    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
-    await user.type(screen.getByRole('spinbutton', { name: /Placar Argentina/i }), '3')
-    expect(scoreValues()).toEqual(['1', '0'])
-    const card = screen.getByRole('group', { name: /^Brasil contra Argentina/ })
-    expect(card).toHaveAttribute('aria-busy', 'true')
+      await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      const card = screen.getByRole('group', { name: /^Brasil contra Argentina/ })
+      expect(card).toHaveAttribute('aria-busy', 'true')
+      const liveAnnouncement = screen.getByText('Salvando palpite...')
+      expect(liveAnnouncement).toHaveAttribute('aria-live', 'polite')
+      expect(liveAnnouncement).toHaveClass('sr-only')
+      expect(screen.getByRole('spinbutton', { name: /Placar Brasil/i })).toBeEnabled()
+      expect(screen.getByRole('spinbutton', { name: /Placar Argentina/i })).toBeEnabled()
+      expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Salvo' })).toHaveAttribute('aria-disabled', 'true')
+      expect(invalidateSpy).not.toHaveBeenCalled()
 
-    respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
-    expect(await screen.findByRole('button', { name: 'Salvo' })).toBeInTheDocument()
-    expect(scoreValues()).toEqual(['1', '0'])
-    expect(screen.getByText('palpite salvo')).toBeInTheDocument()
-    expect(card).toHaveAttribute('aria-busy', 'false')
+      await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+      await user.type(screen.getByRole('spinbutton', { name: /Placar Argentina/i }), '3')
+      expect(scoreValues()).toEqual(['2', '3'])
+      expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
-    expect(scoreValues()).toEqual(['2', '0'])
-    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeEnabled()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    fetchMock.mockRestore()
+      respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      await screen.findByRole('button', { name: 'Atualizar' })
+      expect(card).toHaveAttribute('aria-busy', 'false')
+      expect(screen.queryByText('Salvando palpite...')).not.toBeInTheDocument()
+      expect(scoreValues()).toEqual(['2', '3'])
+      expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Atualizar' })).toBeEnabled()
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['groups', 'list'],
+        refetchType: 'none',
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['groups', 'predictions'],
+        refetchType: 'none',
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it('envios concorrentes em ordem invertida abortam o anterior, não sobrescrevem o último e mantêm o rollback em 2×0', async () => {
+    const puts: Array<{
+      resolve: (res: Response) => void
+      reject: (err: unknown) => void
+      signal?: AbortSignal
+    }> = []
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          puts.push({ resolve, reject, signal: init?.signal ?? undefined })
+        }),
+    )
+    const onSaved = vi.fn()
+    const user = userEvent.setup()
+    try {
+      function ControlledParent() {
+        const [prediction, setPrediction] = useState<Prediction | undefined>(undefined)
+        return (
+          <MatchCard
+            match={makeMatch()}
+            prediction={prediction}
+            groupId="group-1"
+            onSaved={(_id, home, away, penalty) => {
+              onSaved(home, away, penalty)
+              setPrediction(
+                makePrediction({
+                  predicted_home_score: home,
+                  predicted_away_score: away,
+                  predicted_penalty_winner: penalty,
+                }),
+              )
+            }}
+          />
+        )
+      }
+
+      render(<ControlledParent />)
+      await fillOneToZero(user)
+      await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      expect(puts).toHaveLength(1)
+      expect(puts[0].signal?.aborted).toBe(false)
+
+      await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+      await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+      expect(puts).toHaveLength(2)
+      expect(puts[0].signal?.aborted).toBe(true)
+
+      await act(async () => {
+        puts[1].resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      })
+      expect(onSaved).toHaveBeenCalledTimes(1)
+      expect(onSaved).toHaveBeenLastCalledWith(2, 0, null)
+
+      await act(async () => {
+        puts[0].resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      })
+      expect(onSaved).toHaveBeenCalledTimes(1)
+      expect(scoreValues()).toEqual(['2', '0'])
+
+      await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+      await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+      expect(puts).toHaveLength(3)
+
+      await act(async () => {
+        puts[2].resolve(
+          new Response(JSON.stringify({ error: 'Jogo já começou' }), { status: 409 }),
+        )
+      })
+      expect(await screen.findByRole('alert')).toHaveTextContent('Jogo já começou')
+      expect(scoreValues()).toEqual(['2', '0'])
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 })
+

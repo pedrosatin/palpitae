@@ -7,6 +7,7 @@ import {
   roundsWithDrafts,
   savedBase,
   type DraftEntries,
+  type DraftEntry,
   type PenaltyWinner,
 } from '../../lib/predictionDrafts'
 import { emptyDrafts, readStoredDrafts, writeStoredDrafts } from '../../lib/predictionDraftStorage'
@@ -77,5 +78,71 @@ export function usePredictionDrafts(
     }))
   }
 
-  return { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange }
+  function clearSubmittedDrafts(submitted: Array<{ matchId: string; nextBase: string }>) {
+    if (submitted.length === 0) return
+    setEntries((prev) => {
+      let drafts: Map<string, DraftEntry<{ home: string; away: string }>> | null = null
+      let penaltyDrafts: Map<string, DraftEntry<PenaltyWinner>> | null = null
+      for (const { matchId, nextBase } of submitted) {
+        const d = prev.drafts.get(matchId)
+        if (d && d.base !== nextBase) {
+          drafts ??= new Map(prev.drafts)
+          drafts.delete(matchId)
+        }
+        const p = prev.penaltyDrafts.get(matchId)
+        if (p && p.base !== nextBase) {
+          penaltyDrafts ??= new Map(prev.penaltyDrafts)
+          penaltyDrafts.delete(matchId)
+        }
+      }
+      if (!drafts && !penaltyDrafts) return prev
+      return {
+        drafts: drafts ?? prev.drafts,
+        penaltyDrafts: penaltyDrafts ?? prev.penaltyDrafts,
+      }
+    })
+  }
+
+  function rebaseDrafts(rebases: Array<{ matchId: string; fromBase: string; toBase: string }>) {
+    if (rebases.length === 0) return
+    setEntries((prev) => {
+      let drafts: Map<string, DraftEntry<{ home: string; away: string }>> | null = null
+      let penaltyDrafts: Map<string, DraftEntry<PenaltyWinner>> | null = null
+      for (const { matchId, fromBase, toBase } of rebases) {
+        const d = prev.drafts.get(matchId)
+        if (d && d.base === fromBase) {
+          drafts ??= new Map(prev.drafts)
+          drafts.set(matchId, { ...d, base: toBase })
+        }
+        const p = prev.penaltyDrafts.get(matchId)
+        if (p && p.base === fromBase) {
+          penaltyDrafts ??= new Map(prev.penaltyDrafts)
+          penaltyDrafts.set(matchId, { ...p, base: toBase })
+        }
+      }
+      if (!drafts && !penaltyDrafts) return prev
+      return {
+        drafts: drafts ?? prev.drafts,
+        penaltyDrafts: penaltyDrafts ?? prev.penaltyDrafts,
+      }
+    })
+  }
+
+  function hasRawDraft(matchId: string) {
+    const currentBase = savedBase(predictions.get(matchId))
+    return (
+      entries.drafts.get(matchId)?.base === currentBase ||
+      entries.penaltyDrafts.get(matchId)?.base === currentBase
+    )
+  }
+
+  return {
+    unsavedDrafts,
+    unsavedRounds,
+    handleDraftChange,
+    handlePenaltyDraftChange,
+    clearSubmittedDrafts,
+    rebaseDrafts,
+    hasRawDraft,
+  }
 }

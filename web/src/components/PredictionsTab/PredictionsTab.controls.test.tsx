@@ -180,8 +180,11 @@ describe('PredictionsTab – resultado do "Salvar todos"', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Salvar todos (2)' })).toBeEnabled()
-    expect(screen.getAllByText('alterado, não salvo')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
+    expect(screen.getByLabelText('Placar Palmeiras')).toHaveValue(1)
+    expect(screen.getByLabelText('Placar Bahia')).toHaveValue(0)
+    expect(screen.getByLabelText('Placar Cruzeiro')).toHaveValue(0)
+    expect(screen.getAllByText('palpite salvo')).toHaveLength(3)
     expect(container.firstElementChild).toHaveClass('rootWithSaveBarTall')
 
     await userEvent.click(screen.getByRole('button', { name: /próxima rodada/i }))
@@ -197,7 +200,9 @@ describe('PredictionsTab – resultado do "Salvar todos"', () => {
     expect(
       await screen.findByText('1 palpite salvo. 1 palpite não foi salvo. Tente novamente.'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Salvar todos (1)' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
+    expect(screen.getByLabelText('Placar Palmeiras')).toHaveValue(1)
+    expect(screen.getByLabelText('Placar Bahia')).toHaveValue(0)
   })
 
   it('o erro do envio não aparece na rodada seguinte', async () => {

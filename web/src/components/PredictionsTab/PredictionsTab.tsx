@@ -118,6 +118,9 @@ export default function PredictionsTab({
     importedFromName,
     handleImport,
     handleSaved,
+    handleCardSave,
+    hasRawDraft,
+    cardErrors,
     replicateTargets,
     replicateOverflow,
     replicateEnabled,
@@ -288,6 +291,9 @@ export default function PredictionsTab({
                   groupId={groupId}
                   outcomeOnly={pointsExact === 0}
                   onSaved={handleSaved}
+                  onSave={handleCardSave}
+                  hasDraft={hasRawDraft(match.id)}
+                  externalError={cardErrors.get(match.id) ?? null}
                   onDraftChange={handleDraftChange}
                   onPenaltyDraftChange={handlePenaltyDraftChange}
                   now={now}
