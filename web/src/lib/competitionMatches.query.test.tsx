@@ -1,9 +1,11 @@
-import { screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { act, screen, waitFor } from '@testing-library/react'
+import { onlineManager } from '@tanstack/react-query'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import GroupPicksTab from '../components/GroupPicksTab/GroupPicksTab'
 import PredictionsTab from '../components/PredictionsTab/PredictionsTab'
+import { useGroupPicksTab } from '../components/GroupPicksTab/useGroupPicksTab'
 import { makeMatch } from '../components/matchFixtures'
-import { createTestQueryClient, renderWithQuery } from '../test-utils'
+import { createTestQueryClient, renderHookWithQuery, renderWithQuery } from '../test-utils'
 
 function json(body: unknown) {
   return Promise.resolve({
@@ -15,6 +17,10 @@ function json(body: unknown) {
 describe('query de partidas da competição', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    onlineManager.setOnline(true)
   })
 
   it('abre Palpites e depois Palpites do grupo com uma única busca de partidas', async () => {
@@ -60,7 +66,7 @@ describe('query de partidas da competição', () => {
     expect(matchesCalls).toBe(1)
   })
 
-  it('trocar de grupo com a busca em andamento não aplica a resposta antiga', async () => {
+  it('trocar de grupo com os palpites do grupo anterior em andamento não mostra a resposta dele', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     let releaseG1: (() => void) | undefined
     const g1Held = new Promise<Response>((resolve) => {
@@ -136,5 +142,109 @@ describe('query de partidas da competição', () => {
     })
     expect(screen.queryByText('Antigo')).not.toBeInTheDocument()
     expect(screen.getByText('DoGrupo2')).toBeInTheDocument()
+  })
+
+  it('desmontar Palpites antes da resposta e montar Palpites do grupo usa uma busca', async () => {
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    let releaseMatches: ((value: Response) => void) | undefined
+    const matchesHeld = new Promise<Response>((resolve) => {
+      releaseMatches = resolve
+    })
+    let matchesCalls = 0
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/matches')) {
+        matchesCalls += 1
+        return matchesHeld
+      }
+      if (u.includes('/predictions/group')) {
+        return json({
+          self_user_id: 'u1',
+          members: [{ user_id: 'u1', display: 'Pedro' }],
+          predictions: [],
+        })
+      }
+      if (u.includes('/predictions')) {
+        return json({ predictions: [] })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${u}`))
+    })
+
+    const queryClient = createTestQueryClient()
+    const first = renderWithQuery(<PredictionsTab groupId="g1" competitionId="c1" />, {
+      queryClient,
+    })
+    expect(matchesCalls).toBe(1)
+    first.unmount()
+
+    renderWithQuery(
+      <GroupPicksTab groupId="g1" competitionId="c1" predictionsVisibility="public" />,
+      { queryClient },
+    )
+
+    releaseMatches!({
+      ok: true,
+      json: async () => ({ matches, default_round: '1' }),
+    } as Response)
+
+    await waitFor(() => {
+      expect(screen.getByText('Pedro')).toBeInTheDocument()
+    })
+    expect(matchesCalls).toBe(1)
+  })
+
+  it('com navegador offline a aba mostra o erro de rede', async () => {
+    onlineManager.setOnline(false)
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.reject(new TypeError('Failed to fetch')),
+    )
+
+    renderWithQuery(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to fetch')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Carregando...')).not.toBeInTheDocument()
+  })
+
+  it('refetch das partidas não volta a rodada escolhida nos palpites do grupo', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/matches')) {
+        return json({ matches, default_round: '1' })
+      }
+      if (u.includes('/predictions/group')) {
+        return json({
+          self_user_id: 'u1',
+          members: [{ user_id: 'u1', display: 'Pedro' }],
+          predictions: [],
+        })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${u}`))
+    })
+
+    const { result, queryClient } = renderHookWithQuery(() =>
+      useGroupPicksTab('g1', 'c1', 'public'),
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('1')
+
+    act(() => {
+      result.current.next()
+    })
+    expect(result.current.selectedRound).toBe('2')
+
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })
+    })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.selectedRound).toBe('2')
   })
 })

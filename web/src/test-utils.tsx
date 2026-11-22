@@ -6,13 +6,14 @@ import {
   type RenderOptions,
 } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
+import { appQueryDefaults } from './lib/queryClient'
 
-/** QueryClient novo por teste, sem retry, para montar componentes que usam useQuery. */
+/** QueryClient novo por teste: mesmos defaults da app, sem retry. */
 export function createTestQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
+      queries: { ...appQueryDefaults, retry: false },
+      mutations: { retry: false, networkMode: 'always' },
     },
   })
 }

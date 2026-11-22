@@ -11,31 +11,33 @@ export type CompetitionMatchesResponse = {
 
 export const MATCHES_STALE_TIME_MS = 30_000
 
-/**
- * Busca a lista de partidas da competição. As abas Palpites, Palpites do grupo e
- * Tabela compartilham a query `['matches', competitionId]` com staleTime de 30s.
- */
+/** Busca a lista de partidas da competição. */
 export function fetchCompetitionMatches(
   competitionId: string,
-  signal?: AbortSignal,
 ): Promise<CompetitionMatchesResponse> {
   return apiFetch(
     buildApiUrl(
       '/matches',
       new URLSearchParams({ competition_id: competitionId, round_order: '1' }),
     ),
-    signal ? { signal } : undefined,
   ).then((r) => {
     if (!r.ok) throw new Error('Erro ao carregar jogos')
     return r.json() as Promise<CompetitionMatchesResponse>
   })
 }
 
+/**
+ * Opções da query de partidas. As abas Palpites, Palpites do grupo e Tabela
+ * compartilham a query `['matches', competitionId]` com staleTime de 30s.
+ */
 export function competitionMatchesQueryOptions(competitionId: string) {
   return queryOptions({
     queryKey: ['matches', competitionId] as const,
     staleTime: MATCHES_STALE_TIME_MS,
-    queryFn: ({ signal }) => fetchCompetitionMatches(competitionId, signal),
+    queryFn: () => {
+      // Abortar um GET já enviado não economiza leitura no D1 e faria a próxima aba refazer a busca.
+      return fetchCompetitionMatches(competitionId)
+    },
   })
 }
 

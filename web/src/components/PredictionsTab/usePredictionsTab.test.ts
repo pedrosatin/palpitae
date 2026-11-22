@@ -337,4 +337,51 @@ describe('usePredictionsTab', () => {
     )
     expect(mockInvalidate).not.toHaveBeenCalled()
   })
+
+  it('refetch das partidas não volta a rodada escolhida para a padrão', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    mockFetch(matches, [], [], '1')
+    const { result, queryClient } = renderHook(() => usePredictionsTab('g1', 'c1'))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('1')
+
+    act(() => {
+      result.current.next()
+    })
+    expect(result.current.selectedRound).toBe('2')
+
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })
+    })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.selectedRound).toBe('2')
+  })
+
+  it('aplica ?rodada= na primeira carga e mantém depois do refetch', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    mockFetch(matches, [], [], '1')
+    const onApplied = vi.fn()
+    const { result, queryClient } = renderHook(() =>
+      usePredictionsTab('g1', 'c1', undefined, '2', onApplied),
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('2')
+    expect(onApplied).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['matches', 'c1'] })
+    })
+
+    expect(result.current.selectedRound).toBe('2')
+    expect(onApplied).toHaveBeenCalledTimes(1)
+  })
 })

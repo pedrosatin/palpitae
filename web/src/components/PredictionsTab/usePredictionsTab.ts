@@ -126,6 +126,8 @@ function usePredictionsFetch(
   // A rodada do link fica fora das dependências da busca. Quando o `?rodada=` sai
   // da URL, a aba não busca de novo nem volta para a rodada padrão.
   const requested = useRef({ round: requestedRound, onApplied: onRequestedRoundApplied })
+  // Aplica a rodada padrão uma vez por grupo+competição; refetch não reseta a escolha.
+  const appliedDefaultRoundKey = useRef<string | null>(null)
   useEffect(() => {
     requested.current = { round: requestedRound, onApplied: onRequestedRoundApplied }
   })
@@ -157,6 +159,9 @@ function usePredictionsFetch(
 
   useEffect(() => {
     if (!matchesQuery.data) return
+    const key = `${groupId}:${competitionId}`
+    if (appliedDefaultRoundKey.current === key) return
+    appliedDefaultRoundKey.current = key
     const { round, onApplied } = requested.current
     applyDefaultRoundFromMatches(
       matchesQuery.data.matches,
@@ -165,7 +170,7 @@ function usePredictionsFetch(
       round,
     )
     if (round) onApplied?.()
-  }, [groupId, competitionId, matchesQuery.dataUpdatedAt, matchesQuery.data])
+  }, [groupId, competitionId, matchesQuery.data])
 
   const matchesError = matchesQueryErrorMessage(matchesQuery.error, matchesQuery.isError)
 

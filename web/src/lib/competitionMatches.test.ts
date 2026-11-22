@@ -34,7 +34,6 @@ describe('competitionMatches', () => {
 
       expect(apiFetch).toHaveBeenCalledWith(
         `${config.apiUrl}/matches?competition_id=comp-1&round_order=1`,
-        undefined,
       )
       expect(result).toEqual(mockResponse)
     })
@@ -47,22 +46,6 @@ describe('competitionMatches', () => {
       await expect(fetchCompetitionMatches('comp-2')).rejects.toThrow('Erro ao carregar jogos')
       expect(apiFetch).toHaveBeenCalledWith(
         `${config.apiUrl}/matches?competition_id=comp-2&round_order=1`,
-        undefined,
-      )
-    })
-
-    it('repassa o signal ao apiFetch', async () => {
-      vi.mocked(apiFetch).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ matches: [], default_round: '1' }),
-      } as Response)
-      const controller = new AbortController()
-
-      await fetchCompetitionMatches('comp-signal', controller.signal)
-
-      expect(apiFetch).toHaveBeenCalledWith(
-        `${config.apiUrl}/matches?competition_id=comp-signal&round_order=1`,
-        { signal: controller.signal },
       )
     })
   })
@@ -81,7 +64,6 @@ describe('competitionMatches', () => {
       expect(apiFetch).toHaveBeenCalledTimes(1)
       expect(apiFetch).toHaveBeenCalledWith(
         `${config.apiUrl}/matches?competition_id=comp-3&round_order=1`,
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       )
     })
   })

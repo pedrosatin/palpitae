@@ -160,6 +160,8 @@ export function useGroupPicksTab(
   const [picksLoading, setPicksLoading] = useState(true)
   const [picksError, setPicksError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
+  // Aplica a rodada padrão uma vez por grupo+competição; refetch não reseta a escolha.
+  const appliedDefaultRoundKey = useRef<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -185,12 +187,15 @@ export function useGroupPicksTab(
 
   useEffect(() => {
     if (!matchesQuery.data) return
+    const key = `${groupId}:${competitionId}`
+    if (appliedDefaultRoundKey.current === key) return
+    appliedDefaultRoundKey.current = key
     applyDefaultRoundFromMatches(
       matchesQuery.data.matches,
       matchesQuery.data.default_round,
       setRoundIndex,
     )
-  }, [competitionId, matchesQuery.dataUpdatedAt, matchesQuery.data])
+  }, [groupId, competitionId, matchesQuery.data])
 
   const matches = matchesQuery.data?.matches ?? []
   const matchesError = matchesQueryErrorMessage(matchesQuery.error, matchesQuery.isError)
