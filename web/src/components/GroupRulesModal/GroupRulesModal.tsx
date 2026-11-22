@@ -26,7 +26,7 @@ export default function GroupRulesModal({ isOpen, onClose, group }: GroupRulesMo
   const rules = buildGroupRules(group)
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Regras do grupo">
+    <Modal isOpen={isOpen} onClose={onClose} title="Regras do grupo" analyticsId="regras_grupo">
       <Section title="Pontuação" lines={rules.scoring} />
       <Section title="Bônus do mata-mata" lines={rules.bonuses} />
       <Section title="Prazo" lines={[rules.lock]} />

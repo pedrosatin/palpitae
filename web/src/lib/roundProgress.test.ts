@@ -55,7 +55,6 @@ describe('roundProgress', () => {
       makeMatch({ id: 'aberto', start_time: at(3) }),
     ]
 
-    // O que falta é total - predicted: 1 jogo aberto sem palpite.
     expect(roundProgress(round, predictions(pred('feito')), NOW)).toEqual({
       predicted: 1,
       total: 2,
@@ -95,7 +94,6 @@ describe('roundProgress', () => {
         decides_on_penalties: true,
       }),
     ]
-    // Ida 2×0 e volta 2×0 empatam no agregado.
     const ida = pred('ida', { predicted_home_score: 2, predicted_away_score: 0 })
     const volta = pred('volta', { predicted_home_score: 2, predicted_away_score: 0 })
 

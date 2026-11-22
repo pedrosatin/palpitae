@@ -20,24 +20,24 @@
  * atualiza `logo_url` em time existente e não reescreve nome nem sigla.
  */
 export const FOOTBALL_DATA_CLUBS: Readonly<Record<string, { name: string; shortName: string }>> = {
-  '1765': { name: 'Fluminense', shortName: 'FLU' }, // Fluminense FC
-  '1766': { name: 'Atlético-MG', shortName: 'CAM' }, // CA Mineiro
-  '1767': { name: 'Grêmio', shortName: 'GRE' }, // Grêmio FBPA
-  '1768': { name: 'Athletico-PR', shortName: 'CAP' }, // CA Paranaense
-  '1769': { name: 'Palmeiras', shortName: 'PAL' }, // SE Palmeiras
-  '1770': { name: 'Botafogo', shortName: 'BOT' }, // Botafogo FR
-  '1771': { name: 'Cruzeiro', shortName: 'CRU' }, // Cruzeiro EC
-  '1772': { name: 'Chapecoense', shortName: 'CHA' }, // Chapecoense AF
-  '1776': { name: 'São Paulo', shortName: 'SAO' }, // São Paulo FC
-  '1777': { name: 'Bahia', shortName: 'BAH' }, // EC Bahia
-  '1779': { name: 'Corinthians', shortName: 'COR' }, // SC Corinthians Paulista
-  '1780': { name: 'Vasco', shortName: 'VAS' }, // CR Vasco da Gama
-  '1782': { name: 'Vitória', shortName: 'VIT' }, // EC Vitória
-  '1783': { name: 'Flamengo', shortName: 'FLA' }, // CR Flamengo
-  '4241': { name: 'Coritiba', shortName: 'CFC' }, // Coritiba FBC
-  '4286': { name: 'Bragantino', shortName: 'BRA' }, // RB Bragantino
-  '4287': { name: 'Remo', shortName: 'REMO' }, // Clube do Remo
-  '4364': { name: 'Mirassol', shortName: 'MIR' }, // Mirassol FC
-  '6684': { name: 'Internacional', shortName: 'INT' }, // SC Internacional
-  '6685': { name: 'Santos', shortName: 'SAN' }, // Santos FC
+  '1765': { name: 'Fluminense', shortName: 'FLU' },
+  '1766': { name: 'Atlético-MG', shortName: 'CAM' },
+  '1767': { name: 'Grêmio', shortName: 'GRE' },
+  '1768': { name: 'Athletico-PR', shortName: 'CAP' },
+  '1769': { name: 'Palmeiras', shortName: 'PAL' },
+  '1770': { name: 'Botafogo', shortName: 'BOT' },
+  '1771': { name: 'Cruzeiro', shortName: 'CRU' },
+  '1772': { name: 'Chapecoense', shortName: 'CHA' },
+  '1776': { name: 'São Paulo', shortName: 'SAO' },
+  '1777': { name: 'Bahia', shortName: 'BAH' },
+  '1779': { name: 'Corinthians', shortName: 'COR' },
+  '1780': { name: 'Vasco', shortName: 'VAS' },
+  '1782': { name: 'Vitória', shortName: 'VIT' },
+  '1783': { name: 'Flamengo', shortName: 'FLA' },
+  '4241': { name: 'Coritiba', shortName: 'CFC' },
+  '4286': { name: 'Bragantino', shortName: 'BRA' },
+  '4287': { name: 'Remo', shortName: 'REMO' },
+  '4364': { name: 'Mirassol', shortName: 'MIR' },
+  '6684': { name: 'Internacional', shortName: 'INT' },
+  '6685': { name: 'Santos', shortName: 'SAN' },
 }

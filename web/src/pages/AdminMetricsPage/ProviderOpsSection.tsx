@@ -1,4 +1,6 @@
+import { formatNumber, formatSince, isNewerThanPeriod } from './format'
 import {
+  competitionLabel,
   discardDetailLabel,
   discardReasonLabel,
   httpContextLabel,
@@ -34,12 +36,19 @@ export interface OpsResponse {
     skipped: number
     failures: number
   }[]
-  /** Ausente em API anterior ao registro de descartes. */
   discards?: OpsDiscardRow[]
-  /** Ausente em API anterior ao registro de jogos fora do calendário. */
   missingMatches?: OpsMissingMatchRow[]
-  /** Ausente em API anterior ao registro de jogos encerrados sem pontuação. */
   unscoredMatches?: OpsUnscoredRow[]
+  pendingWork?: OpsPendingWorkRow[]
+  pendingWorkError?: boolean
+}
+
+interface OpsPendingWorkRow {
+  provider: string
+  status: string
+  items: number
+  oldest_age_minutes: number
+  max_attempts: number
 }
 
 interface OpsDiscardRow {
@@ -63,11 +72,8 @@ interface OpsMissingMatchRow {
 
 interface OpsUnscoredRow {
   competition_id: string
-  /** Pico de jogos encerrados sem pontuação no período. */
   matches: number
-  /** Pico, em minutos, do tempo desde o início do jogo mais antigo. */
   oldest_minutes: number
-  /** Ciclos do poller que registraram a pendência. */
   cycles: number
   last_seen: string
 }
@@ -85,12 +91,6 @@ interface OpsHttpRow {
 /** Nome e temporada por id de competição (vem do snapshot de /metrics/business). */
 export type CompetitionNames = Map<string, { name: string; season: string | null }>
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('pt-BR')
-}
-
 function formatPercent(part: number, total: number): string {
   if (total <= 0) return '—'
   return `${((part / total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
@@ -99,14 +99,6 @@ function formatPercent(part: number, total: number): string {
 function formatMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`
   return `${(ms / 1000).toFixed(1)} s`
-}
-
-/** "YYYY-MM-DD hh:mm:ss" (UTC da SQL API) → "dd/mm hh:mm UTC". */
-export function formatSince(ts: string): string {
-  const [date, time] = ts.split(' ')
-  if (!date || !time) return ts
-  const [, m, d] = date.split('-')
-  return `${d}/${m} ${time.slice(0, 5)} UTC`
 }
 
 /** Sem resposta (status 0) e 4xx/5xx são falhas; 2xx/3xx são sucesso amostrado. */
@@ -182,14 +174,29 @@ function Attempts({ totals }: { totals: HttpTotals }) {
   )
 }
 
+function FailureCells({ totals }: { totals: HttpTotals }) {
+  return (
+    <>
+      <td className={`${styles.num} ${totals.failures > 0 ? styles.statusError : ''}`}>
+        {formatNumber(Math.round(totals.failures))}
+      </td>
+      <td className={styles.num}>{formatPercent(totals.failures, totals.attempts)}</td>
+      <td className={styles.detail}>{failureBreakdown(totals)}</td>
+    </>
+  )
+}
+
+function byFailuresThenAttempts(a: [string, HttpTotals], b: [string, HttpTotals]): number {
+  return b[1].failures - a[1].failures || b[1].attempts - a[1].attempts
+}
+
 function competitionName(id: string, names: CompetitionNames): { text: string; title?: string } {
   if (!id) return { text: 'sem liga', title: 'Evento sem competição associada' }
   const found = names.get(id)
-  if (!found) return { text: `Campeonato ${id.slice(0, 8)}`, title: id }
+  if (!found) return { text: competitionLabel(id, undefined, undefined), title: id }
   return { text: found.season ? `${found.name} ${found.season}` : found.name, title: id }
 }
 
-/** Aviso sobre o que a ausência de linhas significa neste período. */
 function CollectionNotice({ ops }: { ops: OpsResponse }) {
   if (!ops.httpFirstSeenAt) {
     return (
@@ -199,8 +206,7 @@ function CollectionNotice({ ops }: { ops: OpsResponse }) {
       </p>
     )
   }
-  const first = new Date(`${ops.httpFirstSeenAt.replace(' ', 'T')}Z`).getTime()
-  if (Number.isFinite(first) && first > Date.now() - ops.days * DAY_MS) {
+  if (isNewerThanPeriod(ops.httpFirstSeenAt, ops.days)) {
     return (
       <p className={styles.samplingWarning}>
         A coleta de tentativas HTTP começou em {formatSince(ops.httpFirstSeenAt)}; antes disso não
@@ -216,9 +222,7 @@ function HttpByProcess({ ops }: { ops: OpsResponse }) {
   if (totals.size === 0) {
     return <p className={styles.hint}>Nenhuma tentativa HTTP registrada no período.</p>
   }
-  const rows = [...totals.entries()].sort(
-    (a, b) => b[1].failures - a[1].failures || b[1].attempts - a[1].attempts,
-  )
+  const rows = [...totals.entries()].sort(byFailuresThenAttempts)
   return (
     <div className={styles.tableScroll}>
       <table className={styles.table} aria-label="Tentativas HTTP por provedor e processo">
@@ -245,11 +249,7 @@ function HttpByProcess({ ops }: { ops: OpsResponse }) {
                 <td className={styles.num}>
                   <Attempts totals={t} />
                 </td>
-                <td className={`${styles.num} ${t.failures > 0 ? styles.statusError : ''}`}>
-                  {formatNumber(Math.round(t.failures))}
-                </td>
-                <td className={styles.num}>{formatPercent(t.failures, t.attempts)}</td>
-                <td className={styles.detail}>{failureBreakdown(t)}</td>
+                <FailureCells totals={t} />
                 <td className={styles.num}>
                   {t.attempts > 0 ? formatMs(t.weightedMs / t.attempts) : '—'}
                 </td>
@@ -268,9 +268,7 @@ function HttpByCompetition({ ops, names }: { ops: OpsResponse; names: Competitio
     (r) => `${r.competition_id}\u0000${r.provider}`,
   )
   if (totals.size === 0) return null
-  const rows = [...totals.entries()].sort(
-    (a, b) => b[1].failures - a[1].failures || b[1].attempts - a[1].attempts,
-  )
+  const rows = [...totals.entries()].sort(byFailuresThenAttempts)
   return (
     <>
       <h3 className={styles.subTitle}>Tentativas HTTP por campeonato</h3>
@@ -301,11 +299,7 @@ function HttpByCompetition({ ops, names }: { ops: OpsResponse; names: Competitio
                   <td className={styles.num}>
                     <Attempts totals={t} />
                   </td>
-                  <td className={`${styles.num} ${t.failures > 0 ? styles.statusError : ''}`}>
-                    {formatNumber(Math.round(t.failures))}
-                  </td>
-                  <td className={styles.num}>{formatPercent(t.failures, t.attempts)}</td>
-                  <td className={styles.detail}>{failureBreakdown(t)}</td>
+                  <FailureCells totals={t} />
                 </tr>
               )
             })}
@@ -401,18 +395,15 @@ function SyncAndFallback({ ops, names }: { ops: OpsResponse; names: CompetitionN
   )
 }
 
-/** Campeonato pelo id; sem competição gravada, o código do provedor. */
 function discardCompetition(row: OpsDiscardRow, names: CompetitionNames) {
   if (row.competition_id || !row.competition_code) return competitionName(row.competition_id, names)
   return { text: row.competition_code, title: 'Competição ainda não gravada no banco' }
 }
 
-/** "2026-12-06T16:30:00Z" → "06/12 16:30 UTC". */
 function formatKickoff(iso: string): string {
   return iso ? formatSince(iso.replace('T', ' ').replace('Z', '')) : '—'
 }
 
-/** Média de eventos descartados por execução que registrou o descarte. */
 function perSync(row: OpsDiscardRow): string {
   if (row.syncs <= 0) return '—'
   return (row.events / row.syncs).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
@@ -500,10 +491,6 @@ function MissingMatchesTable({
   )
 }
 
-/**
- * Eventos que o sync não importou. Some quando a API ainda não envia o campo,
- * para não afirmar zero sem dado.
- */
 function Discards({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
   if (!Array.isArray(ops.discards)) return null
   return (
@@ -525,10 +512,6 @@ function Discards({ ops, names }: { ops: OpsResponse; names: CompetitionNames })
   )
 }
 
-/**
- * Jogos pendentes que a descoberta não viu no calendário completo da
- * football-data. Some quando a API ainda não envia o campo.
- */
 function MissingMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
   if (!Array.isArray(ops.missingMatches)) return null
   return (
@@ -547,7 +530,6 @@ function MissingMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNa
   )
 }
 
-/** Minutos como "45 min", "3 h" ou "2 d". */
 function formatAge(minutes: number): string {
   if (minutes < 120) return `${Math.round(minutes)} min`
   const hours = minutes / 60
@@ -578,7 +560,6 @@ function UnscoredMatchesTable({
           {rows.map((r, i) => {
             const name = competitionName(r.competition_id, names)
             return (
-              // O id chega vazio quando a sanitização o descarta; o índice evita a colisão.
               <tr key={`${i}|${r.competition_id}`}>
                 <td title={name.title}>{name.text}</td>
                 <td className={styles.num}>{formatNumber(r.matches)}</td>
@@ -594,10 +575,6 @@ function UnscoredMatchesTable({
   )
 }
 
-/**
- * Competições com jogo encerrado que passou mais de um ciclo do poller sem
- * pontuação. Some quando a API ainda não envia o campo.
- */
 function UnscoredMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
   if (!Array.isArray(ops.unscoredMatches)) return null
   return (
@@ -618,7 +595,68 @@ function UnscoredMatches({ ops, names }: { ops: OpsResponse; names: CompetitionN
   )
 }
 
-/** A resposta pode vir de uma API antiga ou truncada: só renderiza o que tem forma. */
+const WORK_STATUS_LABEL: Record<string, string> = {
+  pending: 'pendente',
+  running: 'em execução',
+  failed: 'falhou',
+}
+
+function PendingWorkTable({ rows }: { rows: OpsPendingWorkRow[] }) {
+  return (
+    <div className={styles.tableScroll}>
+      <table className={styles.table} aria-label="Fila de trabalho dos provedores">
+        <thead>
+          <tr>
+            <th>provedor</th>
+            <th>status</th>
+            <th className={styles.num}>itens</th>
+            <th className={styles.num}>mais antigo há</th>
+            <th className={styles.num}>tentativas (máx.)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.provider}|${r.status}`}>
+              <td>{providerLabel(r.provider)}</td>
+              <td className={styles.nowrap}>{WORK_STATUS_LABEL[r.status] ?? r.status}</td>
+              <td className={styles.num}>{formatNumber(r.items)}</td>
+              <td className={styles.num}>{formatAge(r.oldest_age_minutes)}</td>
+              <td className={styles.num}>{formatNumber(r.max_attempts)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function PendingWork({ ops }: { ops: OpsResponse }) {
+  if (ops.pendingWorkError) {
+    return (
+      <>
+        <h3 className={styles.subTitle}>Fila de trabalho dos provedores</h3>
+        <p className={styles.hint}>Fila indisponível.</p>
+      </>
+    )
+  }
+  if (!Array.isArray(ops.pendingWork)) return null
+  return (
+    <>
+      <h3 className={styles.subTitle}>Fila de trabalho dos provedores</h3>
+      <p className={styles.hint}>
+        Itens `pending`, `running` e `failed` da fila durável. A idade é do item mais antigo de
+        cada grupo. Chamadas HTTP acima são tentativas reais registradas; esta tabela é o
+        trabalho ainda não concluído, não o planejamento.
+      </p>
+      {ops.pendingWork.length === 0 ? (
+        <p className={styles.hint}>Nenhum item aberto ou falho na fila.</p>
+      ) : (
+        <PendingWorkTable rows={ops.pendingWork} />
+      )}
+    </>
+  )
+}
+
 function isUsable(ops: OpsResponse | null): ops is OpsResponse {
   return (
     !!ops &&
@@ -663,6 +701,7 @@ export default function ProviderOpsSection({
           <Discards ops={ops} names={names} />
           <MissingMatches ops={ops} names={names} />
           <UnscoredMatches ops={ops} names={names} />
+          <PendingWork ops={ops} />
         </>
       )}
     </section>

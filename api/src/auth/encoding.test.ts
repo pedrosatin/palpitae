@@ -122,7 +122,6 @@ describe('base64UrlDecodeCanonical', () => {
     )
   })
 
-  // Todas as entradas abaixo passam em base64UrlDecode e viram os bytes de um texto canônico.
   it.each([
     ['`==` no fim', 'Zg==', 'Zg'],
     ['`=` no fim', 'Zm8=', 'Zm8'],

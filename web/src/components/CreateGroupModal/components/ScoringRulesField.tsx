@@ -4,6 +4,34 @@ import styles from '../CreateGroupModal.module.css'
 import shared from '../../modal-shared.module.css'
 import { PRESET_LABELS, PRESET_VALUES, SCORING_HELP_TEXT, ScoringPreset } from '../constants'
 
+const MAX_POINTS = 10
+
+function clampPoints(value: number) {
+  return Math.max(0, Math.min(MAX_POINTS, Math.floor(value)))
+}
+
+interface PointsInputProps {
+  id: string
+  value: number
+  onChange: (points: number) => void
+  disabled: boolean
+}
+
+function PointsInput({ id, value, onChange, disabled }: PointsInputProps) {
+  return (
+    <input
+      id={id}
+      className={styles.pointsInput}
+      type="number"
+      min={0}
+      max={MAX_POINTS}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(clampPoints(Number(e.target.value)))}
+    />
+  )
+}
+
 interface ScoringRulesFieldProps {
   scoringPreset: ScoringPreset
   setScoringPreset: (preset: ScoringPreset) => void
@@ -27,6 +55,8 @@ export default function ScoringRulesField({
   setPointsPenalty,
   showPenaltyField,
 }: ScoringRulesFieldProps) {
+  const pointsLocked = scoringPreset !== 'custom'
+
   function handlePreset(preset: ScoringPreset) {
     trackEvent('click_create_group_preset_selecionado', { preset })
     setScoringPreset(preset)
@@ -66,17 +96,11 @@ export default function ScoringRulesField({
               })
             }
           />
-          <input
+          <PointsInput
             id="points-exact"
-            className={styles.pointsInput}
-            type="number"
-            min={0}
-            max={10}
             value={pointsExact}
-            disabled={scoringPreset !== 'custom'}
-            onChange={(e) =>
-              setPointsExact(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
-            }
+            onChange={setPointsExact}
+            disabled={pointsLocked}
           />
         </div>
         <div className={styles.pointsField}>
@@ -91,17 +115,11 @@ export default function ScoringRulesField({
               })
             }
           />
-          <input
+          <PointsInput
             id="points-winner"
-            className={styles.pointsInput}
-            type="number"
-            min={0}
-            max={10}
             value={pointsWinner}
-            disabled={scoringPreset !== 'custom'}
-            onChange={(e) =>
-              setPointsWinner(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
-            }
+            onChange={setPointsWinner}
+            disabled={pointsLocked}
           />
         </div>
       </div>
@@ -111,17 +129,11 @@ export default function ScoringRulesField({
             <label className={styles.pointsLabel} htmlFor="points-penalty">
               Bônus pênalti
             </label>
-            <input
+            <PointsInput
               id="points-penalty"
-              className={styles.pointsInput}
-              type="number"
-              min={0}
-              max={10}
               value={pointsPenalty}
-              disabled={scoringPreset !== 'custom'}
-              onChange={(e) =>
-                setPointsPenalty(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
-              }
+              onChange={setPointsPenalty}
+              disabled={pointsLocked}
             />
           </div>
           <p className={styles.penaltyHint}>

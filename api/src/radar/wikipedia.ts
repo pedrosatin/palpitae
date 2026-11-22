@@ -13,11 +13,17 @@ const PAGEVIEWS_BASE = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-
 
 const USER_AGENT = 'palpitae-radar/1.0 (https://palpitae.com.br)'
 
+/**
+ * Teto por requisição à Wikimedia, o mesmo do RESEND_TIMEOUT_MS: uma conexão
+ * pendurada não segura o job inteiro. Estourar vira erro de um artigo só: o
+ * sync segue e o artigo mantém os pageviews anteriores.
+ */
+export const WIKIMEDIA_TIMEOUT_MS = 10_000
+
 type PageviewsResponse = {
   items?: { timestamp?: string; views?: number }[]
 }
 
-/** "YYYY-MM-DD" → "YYYYMMDD" (formato que a API espera nos limites). */
 function compact(day: string): string {
   return day.replaceAll('-', '')
 }
@@ -39,7 +45,10 @@ export async function fetchPageviews(
   const encoded = encodeURIComponent(article.replaceAll(' ', '_')).replaceAll('%2F', '%252F')
   const url = `${PAGEVIEWS_BASE}/pt.wikipedia/all-access/user/${encoded}/daily/${compact(from)}/${compact(to)}`
 
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+  const res = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT },
+    signal: AbortSignal.timeout(WIKIMEDIA_TIMEOUT_MS),
+  })
   if (res.status === 404) return new Map()
   if (!res.ok) {
     throw new Error(`Pageviews respondeu ${res.status} para "${article}"`)
@@ -48,7 +57,6 @@ export async function fetchPageviews(
   const payload = (await res.json()) as PageviewsResponse
   const byDay = new Map<string, number>()
   for (const item of payload.items ?? []) {
-    // timestamp vem como "YYYYMMDD00" (hora sempre 00 no grão diário).
     const ts = item.timestamp
     if (!ts || ts.length < 8) continue
     byDay.set(`${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`, item.views ?? 0)

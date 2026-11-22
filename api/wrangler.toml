@@ -1,10 +1,9 @@
-# Todo comando wrangler rodado em api/ precisa de --config ./wrangler.toml. Sem ele o
-# wrangler procura wrangler.json e wrangler.jsonc em todos os diretórios acima antes
-# de aceitar este arquivo, e o wrangler.jsonc da raiz (projeto do Pages) vence.
-# Os scripts dev, dev:cron e deploy do package.json já passam a opção.
 name = "palpitae-api"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
+
+workers_dev = false
+preview_urls = false
 
 [[d1_databases]]
 binding = "DB"
@@ -18,31 +17,14 @@ migrations_dir = "migrations"
 enabled = true
 
 # Analytics Engine — hot path de eventos de negócio/saúde (retenção ~3 meses,
-# grátis). O cold path (R2, retenção ilimitada) virá de um cron diário que exporta
-# este dataset. Dataset é criado sozinho no primeiro writeDataPoint. Binding = AE.
+# grátis). O cold path é o cron diário que exporta este dataset para o R2
+# (palpitae-events, retenção de 13 meses). Dataset é criado sozinho no primeiro writeDataPoint. Binding = AE.
 [[analytics_engine_datasets]]
 binding = "AE"
 dataset = "palpitae_events"
 
-# Crons (o handler `scheduled` distingue pelo controller.cron):
-#  - "0,30 * * * *" → result poller: resultados da janela ativa + pontuação (ADR-007).
-#    A cada 30 min; janela ativa = 85 min ⇒ no máx. 1 tick de atraso até pontuar.
-#    Jogos sem resultado ou sem pontuação seguem na consulta por até 24 h (resgate).
-#  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
-#    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
-#  - "0 10 * * *"   → lembrete: e-mail para quem tem jogo de hoje sem palpite.
-#    1x/dia às 10h UTC (07h BRT). Máximo de um e-mail por usuário por dia (ADR-020).
-#  - "15 6 * * *"   → fixture discovery: busca jogos novos (mata-mata, remarcações)
-#    das competições ativas. 1x/dia às 06:15 UTC (03:15 BRT), sem jogos e fora dos
-#    ticks 0/30 do poller. Ver fixtureDiscovery.ts.
-# As expressões abaixo precisam bater com api/src/crons.ts (um teste compara as duas).
-# Cron sem ramo no handler só registra `scheduled_unknown_cron`.
-# O radar de competições (/admin/oportunidades) NÃO tem cron aqui: a
-# API-Football limita por IP e os IPs de saída dos Workers são compartilhados
-# (429 na 1ª chamada, com a quota intacta). A coleta roda no GitHub Actions —
-# .github/workflows/radar-sync.yml. Ver ADR-014.
 [triggers]
-crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *"]
+crons = ["0,5,10,20,25,30,35,40,50,55 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
 # Criar antes do deploy (de api/):
@@ -54,15 +36,27 @@ bucket_name = "palpitae-events"
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
 FRONTEND_URL = "https://palpitae.com.br"
+# Alerta por e-mail de resultado atrasado ao ADMIN_EMAIL (ver docs/observability.md).
+# Reserva a janela antes de enviar; cooldown padrão de 6 h.
+RESULT_OVERDUE_ALERT = "1"
 # CF-Worker que a Cloudflare preenche no proxy do Pages, com o nome do projeto.
 # Atualize antes ou junto de renomear o projeto Pages. Ver docs/security.md.
 FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
-# Opcional: teto de chamadas ao Resend por execução do lembrete diário (padrão 45,
-# que cabe nos 50 subrequests do plano Free). Ver ADR-020.
+# Opcional: teto de chamadas ao Resend/Mailjet por execução do lembrete diário
+# (padrão 45, que cabe nos 50 subrequests do plano Free). Ver ADR-020.
 # REMINDER_FETCH_BUDGET = "45"
-# Secrets — gravar de api/, sempre com --config ./wrangler.toml. Sem ele o
-# wrangler acha primeiro o wrangler.jsonc da raiz (projeto do Pages) e manda o
-# secret para o Worker palpitae-web, não para este.
+# Opcional: limiar em horas para resultado atrasado sem placar (padrão 3). Ver
+# api/src/matches/resultOverdue.ts e docs/observability.md.
+# RESULT_OVERDUE_HOURS = "3"
+# Alerta de resultado atrasado: ligado em [vars] acima. Exige ADMIN_EMAIL e
+# RESEND_API_KEY. Cooldown padrão 6 h.
+# RESULT_OVERDUE_ALERT_COOLDOWN_HOURS = "6"
+# Opcional: orçamento diário de linhas do D1 por usuário (padrões 250000 lidas e
+# 5000 escritas). Valor que não seja inteiro positivo volta ao padrão. Ver ADR-022.
+# D1_DAILY_ROWS_READ_PER_USER = "250000"
+# D1_DAILY_ROWS_WRITTEN_PER_USER = "5000"
+# Secrets — gravar de api/, sempre com --config ./wrangler.toml, pelo motivo do
+# topo deste arquivo.
 #   npx wrangler secret put JWT_SECRET --config ./wrangler.toml
 #   npx wrangler secret put UNSUBSCRIBE_SECRET --config ./wrangler.toml # link de descadastro; trocar só se vazar, ver docs/security.md
 #   npx wrangler secret put GOOGLE_CLIENT_ID --config ./wrangler.toml
@@ -70,7 +64,12 @@ FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
 #   npx wrangler secret put FOOTBALL_API_KEY --config ./wrangler.toml
 #   npx wrangler secret put CF_ACCOUNT_ID --config ./wrangler.toml    # cold path: conta da SQL API do Analytics Engine
 #   npx wrangler secret put AE_SQL_TOKEN --config ./wrangler.toml     # cold path: token Account Analytics:Read
+#   npx wrangler secret put CF_ANALYTICS_TOKEN --config ./wrangler.toml # uso das cotas: outro token Account Analytics:Read
 #   npx wrangler secret put RESEND_API_KEY --config ./wrangler.toml   # round reminder: API key do Resend
+#   npx wrangler secret put MAILJET_API_KEY --config ./wrangler.toml  # fallback do lembrete diário (opcional)
+#   npx wrangler secret put MAILJET_API_SECRET --config ./wrangler.toml # fallback do lembrete diário (opcional)
+#   npx wrangler secret put MAILJET_WEBHOOK_SECRET --config ./wrangler.toml # senha Basic do webhook unsub/spam (opcional)
 #   npx wrangler secret put ADMIN_EMAIL --config ./wrangler.toml      # dashboard /metrics: e-mail do admin (403 sem ele)
+#   npx wrangler secret put ADMIN_GOOGLE_SUB --config ./wrangler.toml # opcional: amarra o admin ao sub do Google; ver docs/security.md
 #   npx wrangler secret put PROXY_SHARED_SECRET --config ./wrangler.toml # mesmo valor do Pages; ver docs/security.md
 # Local overrides go in .dev.vars (already has localhost values)

@@ -1,6 +1,5 @@
 PRAGMA foreign_keys = ON;
 
--- Users & Auth
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
@@ -16,7 +15,6 @@ CREATE TABLE IF NOT EXISTS profiles (
   avatar_url TEXT
 );
 
--- Competitions & Teams
 CREATE TABLE IF NOT EXISTS competitions (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -39,7 +37,6 @@ CREATE TABLE IF NOT EXISTS teams (
   UNIQUE (external_id, provider)
 );
 
--- Matches
 CREATE TABLE IF NOT EXISTS matches (
   id TEXT PRIMARY KEY,
   competition_id TEXT NOT NULL REFERENCES competitions(id) ON DELETE CASCADE,
@@ -61,7 +58,6 @@ CREATE INDEX IF NOT EXISTS idx_matches_competition ON matches(competition_id);
 CREATE INDEX IF NOT EXISTS idx_matches_start_time ON matches(start_time);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
 
--- Groups
 CREATE TABLE IF NOT EXISTS groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -75,7 +71,6 @@ CREATE TABLE IF NOT EXISTS groups (
 
 CREATE INDEX IF NOT EXISTS idx_groups_competition ON groups(competition_id);
 
--- Group Members
 CREATE TABLE IF NOT EXISTS group_members (
   id TEXT PRIMARY KEY,
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -87,7 +82,6 @@ CREATE TABLE IF NOT EXISTS group_members (
 
 CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
 
--- Predictions
 CREATE TABLE IF NOT EXISTS predictions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -104,7 +98,6 @@ CREATE TABLE IF NOT EXISTS predictions (
 CREATE INDEX IF NOT EXISTS idx_predictions_group ON predictions(group_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 
--- Leaderboard (Materialized)
 CREATE TABLE IF NOT EXISTS leaderboard (
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -116,7 +109,6 @@ CREATE TABLE IF NOT EXISTS leaderboard (
 
 CREATE INDEX IF NOT EXISTS idx_leaderboard_group ON leaderboard(group_id);
 
--- Payments
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,

@@ -1,98 +1,101 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { GroupWithStats } from '../../../components/GroupCard'
-import { invalidateApiCache } from '../../../lib/api-cache'
-import { fetchGroupsList } from '../../../lib/groupsList'
+import {
+  fetchGroupsList,
+  groupsListQueryKey,
+  groupsListQueryOptions,
+  groupsListQueryPrefix,
+} from '../../../lib/groupsList'
 
 interface UseDashboardGroupsParams {
   userId: string
   normalizedPendingInvite?: string
 }
 
-/** Carregando, erro e lista se excluem: um erro antigo não sobrevive à carga seguinte. */
-type GroupsLoad =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; groups: GroupWithStats[] }
-
 export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashboardGroupsParams) {
   const location = useLocation()
-  const [load, setLoad] = useState<GroupsLoad>({ status: 'loading' })
+  const queryClient = useQueryClient()
   const [joinOpen, setJoinOpen] = useState(false)
-  // Grupo do convite em que o usuário já está. A página navega direto para ele.
   const [matchedInviteGroupId, setMatchedInviteGroupId] = useState<string | null>(null)
-  // Só a carga mais recente aplica a resposta. Uma anterior que chega depois é descartada.
-  const requestIdRef = useRef(0)
-  // Convite na URL agora. Se ele saiu enquanto a lista carregava, a resposta não abre o modal.
-  const pendingInviteRef = useRef(normalizedPendingInvite)
-  pendingInviteRef.current = normalizedPendingInvite
+  const [queryInvite, setQueryInvite] = useState(normalizedPendingInvite)
+  const prevUserIdRef = useRef(userId)
+
+  if (prevUserIdRef.current !== userId || normalizedPendingInvite) {
+    prevUserIdRef.current = userId
+    if (queryInvite !== normalizedPendingInvite) {
+      setQueryInvite(normalizedPendingInvite)
+    }
+  }
+
+  const groupsQuery = useQuery(groupsListQueryOptions(userId, queryInvite))
+  const refetchRef = useRef(groupsQuery.refetch)
+  refetchRef.current = groupsQuery.refetch
+  const queryInviteRef = useRef(queryInvite)
+  queryInviteRef.current = queryInvite
+  const refreshIdRef = useRef(0)
 
   const fetchGroups = useCallback(
     (forceRefresh = false) => {
-      const requestId = ++requestIdRef.current
-      setLoad({ status: 'loading' })
       if (forceRefresh) {
-        invalidateApiCache('groups:')
+        void queryClient.cancelQueries({ queryKey: groupsListQueryPrefix }, { silent: true })
+        void queryClient.invalidateQueries({ queryKey: groupsListQueryPrefix, refetchType: 'none' })
+        if (queryInviteRef.current !== normalizedPendingInvite) {
+          setQueryInvite(normalizedPendingInvite)
+          return
+        }
+        void refetchRef.current({ cancelRefetch: true })
+        return
       }
-
-      fetchGroupsList(userId, normalizedPendingInvite)
-        .then((data) => {
-          if (requestId !== requestIdRef.current) return
-          setLoad({ status: 'ready', groups: data.groups })
-          const invite =
-            normalizedPendingInvite && pendingInviteRef.current === normalizedPendingInvite
-              ? normalizedPendingInvite
-              : undefined
-          if (invite) {
-            setJoinOpen(!data.matched_invite_group_id)
-          }
-          setMatchedInviteGroupId(invite ? (data.matched_invite_group_id ?? null) : null)
-        })
-        .catch((err: Error) => {
-          if (requestId !== requestIdRef.current) return
-          setLoad({ status: 'error', message: err.message })
-        })
+      void refetchRef.current({ cancelRefetch: false })
     },
-    [userId, normalizedPendingInvite],
+    [normalizedPendingInvite, queryClient],
   )
 
-  /**
-   * Busca a lista de novo sem a tela de carregamento, para os números que mudam com
-   * o relógio. A lista atual fica na tela até a nova chegar. Devolve a lista nova,
-   * ou null quando a busca falha ou uma carga pedida depois descarta a resposta.
-   * Na falha, a lista atual continua.
-   */
-  const refreshGroups = useCallback((): Promise<GroupWithStats[] | null> => {
-    const requestId = ++requestIdRef.current
-    invalidateApiCache('groups:')
-    return fetchGroupsList(userId)
-      .then((data) => {
-        if (requestId !== requestIdRef.current) return null
-        setLoad((current) =>
-          current.status === 'ready' ? { status: 'ready', groups: data.groups } : current,
-        )
-        return data.groups
-      })
-      .catch(() => null)
-  }, [userId])
-
-  // Parâmetros da última busca disparada pelo efeito.
-  const lastRequestRef = useRef<{ userId: string; state: unknown } | null>(null)
+  const refreshGroups = useCallback(async (): Promise<GroupWithStats[] | null> => {
+    const requestId = ++refreshIdRef.current
+    const invite = queryInviteRef.current
+    try {
+      const data = await fetchGroupsList(invite)
+      if (requestId !== refreshIdRef.current) return null
+      queryClient.setQueryData(groupsListQueryKey(userId, invite), data)
+      return data.groups
+    } catch {
+      return null
+    }
+  }, [queryClient, userId])
 
   useEffect(() => {
-    const state = location.state
-    const previous = lastRequestRef.current
-    lastRequestRef.current = { userId, state }
-    // Convite que sai da URL (dispensado ou aceito) não muda a lista: nada a buscar.
-    if (!normalizedPendingInvite && previous?.userId === userId && previous.state === state) return
-    const needsRefresh = (state as { refreshGroups?: boolean } | null)?.refreshGroups === true
-    fetchGroups(needsRefresh)
-  }, [fetchGroups, location.state, userId, normalizedPendingInvite])
+    const needsRefresh =
+      (location.state as { refreshGroups?: boolean } | null)?.refreshGroups === true
+    if (!needsRefresh) return
+    void queryClient.invalidateQueries({ queryKey: groupsListQueryPrefix })
+  }, [location.state, queryClient])
+
+  useEffect(() => {
+    if (!normalizedPendingInvite || !groupsQuery.data) {
+      setMatchedInviteGroupId(null)
+      return
+    }
+    setJoinOpen(!groupsQuery.data.matched_invite_group_id)
+    setMatchedInviteGroupId(groupsQuery.data.matched_invite_group_id ?? null)
+  }, [normalizedPendingInvite, groupsQuery.data])
+
+  const loading = !groupsQuery.data && (groupsQuery.isPending || groupsQuery.isFetching)
+  const error =
+    loading || groupsQuery.data
+      ? null
+      : groupsQuery.error instanceof Error
+        ? groupsQuery.error.message
+        : groupsQuery.isError
+          ? 'Falha ao carregar grupos'
+          : null
 
   return {
-    groups: load.status === 'ready' ? load.groups : [],
-    loading: load.status === 'loading',
-    error: load.status === 'error' ? load.message : null,
+    groups: groupsQuery.data?.groups ?? [],
+    loading,
+    error,
     joinOpen,
     setJoinOpen,
     matchedInviteGroupId,

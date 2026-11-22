@@ -1,6 +1,3 @@
--- Seed da La Liga 2026 via football-data PD/2014, visibility pilot.
--- O slug de produto la-liga-2026 diverge do nome cru Primera Division.
--- sync.ts usa COMP_SLUG_OVERRIDES para o upsert achar esta linha.
 INSERT INTO competitions (
   id,
   name,

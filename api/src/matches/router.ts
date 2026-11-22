@@ -3,12 +3,19 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess, isAdminUser } from '../auth/permissions'
+import { validateJson } from '../http/validateJson'
 import { logError, logEvent, logRequestPerf } from '../observability'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
+import { mapSyncBodyError, syncBodySchema } from './writeSchemas'
 import { defaultRoundSql, roundRuleBinds } from './defaultRound'
+import { isEspnRefusal } from './espnAccess'
 import { isEspnPrimaryCompetition } from './espnSync'
-import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
+import { deferEspnWork } from './espnWork'
+import { FootballDataQuotaError } from './footballDataQuota'
+import { FootballDataSlotBusyError } from './providerBudget'
+import { enqueueProviderWork } from './providerWork'
+import { decidesOnPenalties, parsePenaltyPhases } from './penalties'
 import { isKnockoutPhase, orderByRound, roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -18,7 +25,7 @@ const router = new Hono<AppContext>()
 
 /**
  * Cache-Control da cópia guardada no cache de borda, pelo conteúdo da lista:
- *   - todos os jogos encerrados → 24h (a chave muda quando um placar é repontuado)
+ *   - todos os jogos encerrados → 24h (a versão da competição muda a cada alteração exibida)
  *   - senão                     → 60s
  * A lista vazia também fica com o TTL curto para repovoar logo.
  */
@@ -29,24 +36,10 @@ function matchesCacheControl(matches: { status: string }[]): string {
   return 'public, max-age=60'
 }
 
-/**
- * Cache-Control da resposta ao navegador. O cache do navegador não muda de chave
- * quando um placar é corrigido nem quando a competição volta a ser piloto, então
- * ele fica sempre no TTL curto. A revalidação cai no cache de borda.
- */
-const BROWSER_CACHE_CONTROL = 'public, max-age=60'
+const BROWSER_CACHE_CONTROL = 'private, max-age=60'
 
-/**
- * Visibilidade da competição e o último `scored_at` dos jogos dela, numa consulta
- * só. Roda antes do cache de borda: a visibilidade barra o piloto mesmo com a
- * lista em cache, e o `scored_at` entra na chave para que um placar corrigido e
- * repontuado gere uma chave nova. O MAX lê uma entrada do índice parcial
- * idx_matches_comp_scored (migration 0042), não os jogos da competição. O
- * `scored_at IS NOT NULL` não muda o MAX, mas é o que libera o índice parcial.
- */
-export const COMPETITION_CACHE_STATE_SQL = `SELECT c.visibility,
-       (SELECT MAX(scored_at) FROM matches
-        WHERE competition_id = c.id AND scored_at IS NOT NULL) AS last_scored_at
+/** Visibilidade e versão monotônica da lista, lidas antes do cache de borda. */
+export const COMPETITION_CACHE_STATE_SQL = `SELECT c.visibility, c.matches_version
 FROM competitions c
 WHERE c.id = ?`
 
@@ -54,15 +47,14 @@ async function fetchCompetitionCacheState(db: D1Database, competitionId: string)
   return db
     .prepare(COMPETITION_CACHE_STATE_SQL)
     .bind(competitionId)
-    .first<{ visibility: string | null; last_scored_at: string | null }>()
+    .first<{ visibility: string | null; matches_version: number }>()
 }
 
-/** Chave canônica do cache de borda: só os filtros que mudam a resposta. */
 function matchesCacheKey(
   requestUrl: string,
   competitionId: string,
   filters: { round?: string; status?: string },
-  lastScoredAt: string | null | undefined,
+  matchesVersion: number | undefined,
 ): Request {
   const cacheUrl = new URL(requestUrl)
   cacheUrl.search = ''
@@ -71,20 +63,38 @@ function matchesCacheKey(
   cacheUrl.searchParams.set('round_order', '1')
   if (filters.round) cacheUrl.searchParams.set('round', filters.round)
   if (filters.status) cacheUrl.searchParams.set('status', filters.status)
-  cacheUrl.searchParams.set('scored', lastScoredAt ?? '')
+  cacheUrl.searchParams.set('matches_version', String(matchesVersion ?? 0))
   return new Request(cacheUrl)
 }
 
-/** Resposta do cache de borda com o Cache-Control do navegador. */
+function edgeCacheFor(isPilot: boolean): Cache | undefined {
+  if (typeof caches === 'undefined' || isPilot) return undefined
+  return (caches as unknown as { default: Cache }).default
+}
+
 function fromEdgeCache(cached: Response): Response {
   const response = new Response(cached.body, cached)
   response.headers.set('Cache-Control', BROWSER_CACHE_CONTROL)
   return response
 }
 
-// ---------------------------------------------------------------------------
-// GET /matches handler
-// ---------------------------------------------------------------------------
+/**
+ * Guarda uma cópia da resposta no cache de borda, com o TTL pelo conteúdo da lista
+ * (`matchesCacheControl`). O corpo de uma resposta só pode ser lido uma vez, então
+ * a borda recebe um clone e o original segue para quem chamou. Uma resposta gerada
+ * pelo Worker só chega à borda por este `put` explícito.
+ */
+function storeInEdgeCache(
+  c: Context<AppContext>,
+  cache: Cache,
+  cacheKey: Request,
+  response: Response,
+  matches: { status: string }[],
+) {
+  const edgeCopy = response.clone()
+  edgeCopy.headers.set('Cache-Control', matchesCacheControl(matches))
+  c.executionCtx.waitUntil(cache.put(cacheKey, edgeCopy))
+}
 
 function buildMatchesQuery(competitionId: string, round?: string, status?: string) {
   let query = `
@@ -120,7 +130,7 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
     WHERE m.competition_id = ?
   `
 
-  const params: (string | number)[] = [competitionId]
+  const params: string[] = [competitionId]
 
   if (round) {
     query += ` AND m.round = ?`
@@ -132,8 +142,6 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
     params.push(status)
   }
 
-  // m.rowid desempata jogos no mesmo horário pela ordem de inserção. Sem ele a
-  // ordem dos empates dependeria do índice que o planner escolhe.
   query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC, m.rowid ASC`
 
   return { query, params }
@@ -158,19 +166,13 @@ async function fetchMatches(
   if (hasFilters) {
     const result = await db
       .prepare(query)
-      .bind(...(params as string[]))
+      .bind(...params)
       .all<{ status: string }>()
     results = result.results
   } else {
     const nowIso = new Date().toISOString()
-    // One D1 round-trip for the full list plus the two queries that pick the
-    // default round: the open round from defaultRoundSql (see defaultRound.ts),
-    // falling back to the most recent match chronologically. The
-    // fallback is its own query rather than result.results.at(-1) because the
-    // main list is ordered by group_name first — knockout matches (NULL group)
-    // sort last and would otherwise hijack the fallback.
     const batchResults = await db.batch([
-      db.prepare(query).bind(...(params as string[])),
+      db.prepare(query).bind(...params),
       db.prepare(defaultRoundSql('?')).bind(...roundRuleBinds(nowIso), competitionId),
       db
         .prepare(
@@ -206,17 +208,13 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
       ...rest,
       ...(tie ? { tie_role: tie.role } : {}),
       leg1_match_id: tie?.role === 'leg2' ? (tie.partner?.id ?? null) : null,
-      // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
       round_label: roundLabel((rest.round as string | null) ?? ''),
-      // Classificação eliminatória derivada da fase do jogo.
       is_knockout: isKnockoutPhase(rest.phase as string | null),
-      decides_on_penalties:
-        tie?.role === 'leg2' ||
-        (tie?.role !== 'leg1' &&
-          matchGoesToPenalties(
-            parsePenaltyPhases(penalty_phases as string | null),
-            (rest.phase as string | null) ?? null,
-          )),
+      decides_on_penalties: decidesOnPenalties(
+        tie?.role,
+        parsePenaltyPhases(penalty_phases as string | null),
+        (rest.phase as string | null) ?? null,
+      ),
     }
   })
 }
@@ -224,19 +222,34 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
 /**
  * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|finished]
  *
- * Returns matches for a competition with team info.
- * Optional filters: round (e.g. "1"), status.
+ * Jogos de uma competição com os times, na ordem das rodadas. Exige sessão.
+ * Filtros opcionais: `round` (ex.: "1") e `status`.
  *
- * Response:
+ * Resposta:
  * {
  *   matches: [
  *     {
- *       id, start_time, status, home_score, away_score, phase, round,
+ *       id, start_time, status, postponed, locked_at, home_score, away_score,
+ *       phase, round, group_name, leg, duration,
+ *       penalty_winner, home_penalty_goals, away_penalty_goals,
  *       home_team_id, home_team_name, home_team_short_name, home_team_logo,
- *       away_team_id, away_team_name, away_team_short_name, away_team_logo
+ *       away_team_id, away_team_name, away_team_short_name, away_team_logo,
+ *       tie_role?,            // 'leg1' | 'leg2' | 'single', só em jogo de mata-mata
+ *       leg1_match_id,        // id da ida quando o jogo é a volta, senão null
+ *       round_label,          // rótulo da rodada em PT-BR
+ *       is_knockout,          // fase de mata-mata
+ *       decides_on_penalties, // pode ir aos pênaltis (decidesOnPenalties); na volta, pelo agregado
  *     }
- *   ]
+ *   ],
+ *   default_round?: string | null // só sem filtros: a rodada aberta ou a mais recente
  * }
+ *
+ * Erros: 400 sem `competition_id` ou com `status` inválido; 404 em competição
+ * piloto para quem não tem acesso; 500 em falha de leitura.
+ *
+ * Cache: a lista de competição pública fica no cache de borda, com a chave pelos
+ * filtros e pela `matches_version` da competição. O navegador recebe sempre
+ * `private, max-age=60`; competição piloto sai com `private, no-store`.
  */
 async function handleGetMatches(c: Context<AppContext>) {
   const startedAt = Date.now()
@@ -259,29 +272,17 @@ async function handleGetMatches(c: Context<AppContext>) {
     const dbStartedAt = Date.now()
     const competition = await fetchCompetitionCacheState(db, competitionId)
 
-    // Visibilidade antes do cache: uma competição que voltou a ser piloto não é
-    // servida por uma lista guardada quando ainda era pública.
     const isPilot = competition?.visibility === 'pilot'
-    if (isPilot && !hasPilotAccess(c.get('userEmail'), c.env)) {
+    if (isPilot && !hasPilotAccess(c.get('userIdentity'), c.env)) {
       return c.json({ error: 'Competição não encontrada' }, 404)
     }
 
-    // Edge cache (Cache API) — shared across users within the same Cloudflare
-    // colo, at no extra cost. Best-effort: per-colo and may be evicted. A hit
-    // skips the match list queries, so it saves rows read. `caches` is undefined
-    // outside the Workers runtime (e.g. node tests), hence the guard.
-    // `caches.default` is a Cloudflare extension; cast past the lib.dom
-    // CacheStorage type, which only knows the standard open()/match() surface.
-    // Piloto nunca entra no cache compartilhado.
-    const cache =
-      typeof caches !== 'undefined' && !isPilot
-        ? (caches as unknown as { default: Cache }).default
-        : undefined
+    const cache = edgeCacheFor(isPilot)
     const cacheKey = matchesCacheKey(
       c.req.url,
       competitionId,
       { round, status },
-      competition?.last_scored_at,
+      competition?.matches_version,
     )
     const cached = cache ? await cache.match(cacheKey) : undefined
     if (cached) {
@@ -313,25 +314,9 @@ async function handleGetMatches(c: Context<AppContext>) {
       matches: matchesOut,
       ...(hasFilters ? {} : { default_round: defaultRound }),
     })
-    // Só cacheia listas não-vazias. Isso (a) evita servir um snapshot vazio de uma
-    // competição que ainda vai ser sincronizada e (b) fecha o abuso: um competition_id
-    // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
-    // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
-    // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
-    if (cache && results.length > 0) {
-      // clone(): a response body can only be consumed once — the cache keeps
-      // its own copy while we still return the original to the caller. Uma
-      // resposta gerada pelo Worker só vai para a borda por este put explícito,
-      // e o TTL dela vem do conteúdo da lista (matchesCacheControl).
-      const edgeCopy = response.clone()
-      edgeCopy.headers.set('Cache-Control', matchesCacheControl(results))
-      c.executionCtx.waitUntil(cache.put(cacheKey, edgeCopy))
-    }
+    if (cache && results.length > 0) storeInEdgeCache(c, cache, cacheKey, response, results)
     response.headers.set('Cache-Control', isPilot ? 'private, no-store' : BROWSER_CACHE_CONTROL)
 
-    // Cap dimension cardinality: only real competitions (response had games)
-    // get their id; random junk competition_id from anon flooding all collapse
-    // into one 'unknown' bucket.
     const cacheCompetition = results.length > 0 ? competitionId : 'unknown'
     logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', cacheCompetition] })
 
@@ -359,93 +344,129 @@ router.get('/', requireAuth, handleGetMatches)
 /**
  * POST /matches/sync
  *
- * Syncs fixtures from football-data.org into D1.
- * Upserts competition, teams, and matches — safe to call multiple times.
+ * Ferramenta manual de seed e backfill: sincroniza os jogos de uma competição no D1
+ * e pontua os encerrados. As competições ESPN-primárias vêm da ESPN; as demais, da
+ * football-data.org, que exige `FOOTBALL_API_KEY`. Faz upsert da competição, dos
+ * times e dos jogos, então pode ser chamado mais de uma vez. Só o admin.
  *
- * Body: { competition: string, season: number, matchday?: number }
+ * Body: { competition: string, season: number, matchday?: number, dates?: string[] }
+ *   - `matchday`: rodada, só na football-data;
+ *   - `dates`: datas YYYYMMDD do scoreboard, só na ESPN.
  *
- * Example for Copa do Mundo 2026 - matchday 1:
+ * Exemplo para a Copa do Mundo 2026, rodada 1:
  *   { "competition": "WC", "season": 2026, "matchday": 1 }
  *
- * Example for all fixtures in a competition:
+ * Exemplo para todos os jogos de uma competição:
  *   { "competition": "WC", "season": 2026 }
- *
- * Requires authentication.
  */
-type SyncBody = {
-  competition?: string
-  season?: number
-  matchday?: number
-  dates?: unknown
-}
+router.post(
+  '/sync',
+  requireAuth,
+  async (c, next) => {
+    if (!isAdminUser(c.get('userIdentity'), c.env)) {
+      return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
+    }
+    return next()
+  },
+  // Com `body: 'value'`, lista, número e `null` chegam ao schema e recebem a
+  // mensagem de obrigatórios; só JSON malformado responde `Body JSON inválido`.
+  validateJson(syncBodySchema, mapSyncBodyError, { body: 'value' }),
+  async (c) => {
+    const body = c.req.valid('json')
+    const { competition, season, matchday, dates } = body
 
-function isValidDatesList(dates: unknown): dates is string[] {
-  return (
-    Array.isArray(dates) &&
-    dates.every((d): d is string => typeof d === 'string' && /^\d{8}$/.test(d))
-  )
-}
+    const apiKey = c.env.FOOTBALL_API_KEY
+    if (!isEspnPrimaryCompetition(competition) && !apiKey) {
+      return c.json({ error: 'FOOTBALL_API_KEY não configurada no servidor' }, 500)
+    }
 
-function validateSyncParams(body: SyncBody): string | null {
-  if (!body.competition || !body.season) return 'competition e season são obrigatórios'
-  if (typeof body.season !== 'number') return 'season deve ser um número'
-  if (body.dates !== undefined && !isValidDatesList(body.dates)) {
-    return 'dates deve ser uma lista de datas YYYYMMDD'
-  }
-  return null
-}
-
-router.post('/sync', requireAuth, async (c) => {
-  // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
-  // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
-  // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
-  // ADMIN_EMAIL configurado, responde 403 — fechado por padrão.
-  if (!isAdminUser(c.get('userEmail'), c.env)) {
-    return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
-  }
-
-  let body: SyncBody
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Body JSON inválido' }, 400)
-  }
-
-  const validationError = validateSyncParams(body)
-  if (validationError) {
-    return c.json({ error: validationError }, 400)
-  }
-
-  const competition = body.competition as string
-  const season = body.season as number
-  const { matchday } = body
-  const dates = body.dates as string[] | undefined
-
-  const apiKey = c.env.FOOTBALL_API_KEY
-  if (!isEspnPrimaryCompetition(competition) && !apiKey) {
-    return c.json({ error: 'FOOTBALL_API_KEY não configurada no servidor' }, 500)
-  }
-
-  try {
-    const result = await syncFixtures({
-      competitionCode: competition,
-      season,
-      matchday,
-      dates,
-      apiKey,
-      db: c.env.DB,
-      onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
-      ae: c.env.AE,
-    })
-    await scoreUnprocessedMatches(result.competitionId, c.env.DB)
-    return c.json({ ok: true, synced: result })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    logError(c.env.AE, 'football_api_error', 'Erro no sync:', error, {
-      blobs: ['sync_endpoint'],
-    })
-    return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
-  }
-})
+    try {
+      const result = await syncFixtures({
+        competitionCode: competition,
+        season,
+        matchday: matchday as number | undefined,
+        dates,
+        apiKey,
+        db: c.env.DB,
+        coordinate: true,
+        onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
+        ae: c.env.AE,
+      })
+      await scoreUnprocessedMatches(result.competitionId, c.env.DB)
+      const { pending, ...synced } = result
+      if (pending) {
+        await deferEspnWork(
+          c.env.DB,
+          {
+            kind: 'manual',
+            competitionCode: competition,
+            season: String(season),
+            competitionId: result.competitionId,
+          },
+          pending.dates,
+          pending.error,
+        )
+        return c.json({
+          ok: true,
+          pending: true,
+          pendingDates: pending.dates,
+          synced,
+          message:
+            'Sync parcial: as datas pendentes ficam na fila e voltam quando a ESPN responder.',
+        })
+      }
+      return c.json({ ok: true, synced })
+    } catch (error) {
+      if (isEspnRefusal(error)) {
+        await deferEspnWork(
+          c.env.DB,
+          {
+            kind: 'manual',
+            competitionCode: competition,
+            season: String(season),
+            competitionId: '',
+          },
+          dates,
+          error,
+        )
+        return c.json({
+          ok: true,
+          pending: true,
+          message:
+            error.reason === 'suspended'
+              ? 'Sync agendado: a coleta da ESPN está suspensa até o operador retomá-la.'
+              : 'Sync agendado: a ESPN está bloqueada ou sem vaga no orçamento e a coleta volta mais tarde.',
+        })
+      }
+      // Sem vaga no orçamento, o trabalho não se perde: fica pendente na fila
+      // durável e o cron drenador executa com o orçamento, na sua vez.
+      if (error instanceof FootballDataSlotBusyError || error instanceof FootballDataQuotaError) {
+        const quota = error instanceof FootballDataQuotaError
+        await enqueueProviderWork(c.env.DB, [
+          {
+            kind: 'manual',
+            competitionCode: competition,
+            season: String(season),
+            round: matchday !== undefined ? String(matchday) : '',
+            // Cota esgotada informa quando a football-data volta; vaga cheia só espera a próxima janela.
+            ...(quota ? { notBefore: error.retryAt, lastError: error.message } : {}),
+          },
+        ])
+        return c.json({
+          ok: true,
+          pending: true,
+          message: quota
+            ? 'Sync agendado: a cota da football-data está esgotada e volta mais tarde.'
+            : 'Sync agendado: o orçamento de chamadas está cheio neste minuto.',
+        })
+      }
+      const message = error instanceof Error ? error.message : String(error)
+      logError(c.env.AE, 'football_api_error', 'Erro no sync:', error, {
+        blobs: ['sync_endpoint'],
+      })
+      return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
+    }
+  },
+)
 
 export { router as matchesRouter }

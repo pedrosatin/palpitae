@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest'
-import { renderHook, waitFor, act } from '@testing-library/react'
-import { useGroupActions, useGroupDetail, useGroupTabs, useTabsOffset } from './hooks'
+import { renderHook as rtlRenderHook, waitFor, act } from '@testing-library/react'
+import { groupDetailQueryKey, useGroupActions, useGroupDetail, useGroupTabs, useTabsOffset } from './hooks'
 import { useNavigate, NavigateFunction, MemoryRouter, useLocation } from 'react-router-dom'
+import { roundStandingsQueryKey } from '../../hooks/useRoundStandings'
 import { apiFetch } from '../../lib/api'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { groupMembersQueryKey } from '../../lib/groupMembers'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { groupsListQueryKey } from '../../lib/groupsList'
 import { trackEvent } from '../../analytics/ga'
 import { useConfirm } from '../../components/ConfirmModal'
+import { createTestQueryClient, renderHookWithQuery as renderHook } from '../../test-utils'
 import type { User, GroupDetail } from './types'
 import React from 'react'
 
-// Mock dependencies
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return {
@@ -21,10 +24,6 @@ vi.mock('react-router-dom', async (importOriginal) => {
 vi.mock('../../lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api')>()),
   apiFetch: vi.fn(),
-}))
-
-vi.mock('../../lib/api-cache', () => ({
-  invalidateApiCache: vi.fn(),
 }))
 
 vi.mock('../../analytics/ga', () => ({
@@ -93,14 +92,24 @@ describe('useGroupActions', () => {
     })
 
     it('successfully leaves group and navigates away', async () => {
-      // Create a promise we can control to test the loading state
       let resolveApi: (val: any) => void
       const apiPromise = new Promise((resolve) => {
         resolveApi = resolve
       })
       vi.mocked(apiFetch).mockReturnValueOnce(apiPromise as Promise<Response>)
 
-      const { result } = renderHook(() => useGroupActions('g1', mockUser))
+      const queryClient = createTestQueryClient()
+      queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+      queryClient.setQueryData(groupDetailQueryKey('g1'), { id: 'g1' })
+      queryClient.setQueryData(groupPredictionsQueryKey('g1'), {
+        self_user_id: 'u1',
+        members: [],
+        predictions: [],
+      })
+      queryClient.setQueryData(groupMembersQueryKey('g1'), [])
+      queryClient.setQueryData(roundStandingsQueryKey('g1'), { round: '1', standings: [] })
+      queryClient.setQueryData(['groups', 'join-requests', 'g1'], [])
+      const { result } = renderHook(() => useGroupActions('g1', mockUser), { queryClient })
 
       let leavePromise: Promise<void>
 
@@ -108,12 +117,10 @@ describe('useGroupActions', () => {
         leavePromise = result.current.leaveGroup()
       })
 
-      // Wait for the confirm promise to resolve and state to update
       await waitFor(() => {
         expect(result.current.leaving).toBe(true)
       })
 
-      // Resolve the API call
       act(() => {
         resolveApi({ ok: true, json: vi.fn() })
       })
@@ -125,7 +132,12 @@ describe('useGroupActions', () => {
       expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups/g1/members/u1'), {
         method: 'DELETE',
       })
-      expect(invalidateApiCache).toHaveBeenCalledWith('groups:')
+      expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryData(groupDetailQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(groupPredictionsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(groupMembersQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(roundStandingsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(['groups', 'join-requests', 'g1'])).toBeUndefined()
       expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
       expect(result.current.leaving).toBe(false)
     })
@@ -183,7 +195,9 @@ describe('useGroupActions', () => {
         json: vi.fn().mockResolvedValue({ invite_code: 'NEWC-ODE2' }),
       } as unknown as Response)
       const onRotated = vi.fn()
-      const { result } = renderHook(() => useGroupActions('g1', mockUser))
+      const queryClient = createTestQueryClient()
+      queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+      const { result } = renderHook(() => useGroupActions('g1', mockUser), { queryClient })
 
       await act(async () => {
         await result.current.rotateInvite(onRotated)
@@ -192,7 +206,7 @@ describe('useGroupActions', () => {
       expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups/g1/invite/rotate'), {
         method: 'POST',
       })
-      expect(invalidateApiCache).toHaveBeenCalledWith('groups:')
+      expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
       expect(onRotated).toHaveBeenCalledWith('NEWC-ODE2')
       expect(result.current.rotatingInvite).toBe(false)
     })
@@ -241,14 +255,24 @@ describe('useGroupActions', () => {
     })
 
     it('successfully deletes group and navigates away', async () => {
-      // Create a promise we can control to test the loading state
       let resolveApi: (val: any) => void
       const apiPromise = new Promise((resolve) => {
         resolveApi = resolve
       })
       vi.mocked(apiFetch).mockReturnValueOnce(apiPromise as Promise<Response>)
 
-      const { result } = renderHook(() => useGroupActions('g1', mockUser))
+      const queryClient = createTestQueryClient()
+      queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+      queryClient.setQueryData(groupDetailQueryKey('g1'), { id: 'g1' })
+      queryClient.setQueryData(groupPredictionsQueryKey('g1'), {
+        self_user_id: 'u1',
+        members: [],
+        predictions: [],
+      })
+      queryClient.setQueryData(groupMembersQueryKey('g1'), [])
+      queryClient.setQueryData(roundStandingsQueryKey('g1'), { round: '1', standings: [] })
+      queryClient.setQueryData(['groups', 'join-requests', 'g1'], [])
+      const { result } = renderHook(() => useGroupActions('g1', mockUser), { queryClient })
 
       let deletePromise: Promise<void>
 
@@ -256,12 +280,10 @@ describe('useGroupActions', () => {
         deletePromise = result.current.deleteGroup()
       })
 
-      // Wait for the confirm promise to resolve and state to update
       await waitFor(() => {
         expect(result.current.deleting).toBe(true)
       })
 
-      // Resolve the API call
       act(() => {
         resolveApi({ ok: true, json: vi.fn() })
       })
@@ -273,7 +295,12 @@ describe('useGroupActions', () => {
       expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups/g1'), {
         method: 'DELETE',
       })
-      expect(invalidateApiCache).toHaveBeenCalledWith('groups:')
+      expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryData(groupDetailQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(groupPredictionsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(groupMembersQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(roundStandingsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(['groups', 'join-requests', 'g1'])).toBeUndefined()
       expect(mockNavigate).toHaveBeenCalledWith('/', {
         replace: true,
         state: { refreshGroups: true },
@@ -335,7 +362,7 @@ const mockGroup: GroupDetail = {
 
 describe('useGroupTabs', () => {
   it('initializes with default tab if none in URL', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/'] }, children),
     })
@@ -345,7 +372,7 @@ describe('useGroupTabs', () => {
   })
 
   it('initializes with tab from URL', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/?tab=leaderboard'] }, children),
     })
@@ -354,7 +381,7 @@ describe('useGroupTabs', () => {
   })
 
   it('lê a rodada pedida pelo link do painel e abre a aba Palpitar', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/grupos/g1?rodada=21'] }, children),
     })
@@ -364,7 +391,7 @@ describe('useGroupTabs', () => {
   })
 
   it('tira a rodada pedida da URL sem mexer nos outros parâmetros', () => {
-    const { result } = renderHook(
+    const { result } = rtlRenderHook(
       () => ({ tabs: useGroupTabs(mockGroup), location: useLocation() }),
       {
         wrapper: ({ children }) =>
@@ -386,7 +413,7 @@ describe('useGroupTabs', () => {
   })
 
   it('a troca de aba descarta a rodada pedida', () => {
-    const { result } = renderHook(
+    const { result } = rtlRenderHook(
       () => ({ tabs: useGroupTabs(mockGroup), location: useLocation() }),
       {
         wrapper: ({ children }) =>
@@ -413,7 +440,7 @@ describe('useGroupTabs', () => {
       competition_type: 'cup',
       competition_code: 'bra.copa_do_brazil',
     }
-    const { result } = renderHook(() => useGroupTabs(nonLeagueGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(nonLeagueGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/?tab=standings'] }, children),
     })
@@ -428,7 +455,7 @@ describe('useGroupTabs', () => {
       competition_type: 'cup',
       competition_code: 'bra.camp.gaucho',
     }
-    const { result } = renderHook(() => useGroupTabs(gauchoGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(gauchoGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/?tab=standings'] }, children),
     })
@@ -444,7 +471,7 @@ describe('useGroupTabs', () => {
         competition_type: 'cup',
         competition_code: code,
       }
-      const { result } = renderHook(() => useGroupTabs(regional), {
+      const { result } = rtlRenderHook(() => useGroupTabs(regional), {
         wrapper: ({ children }) =>
           React.createElement(MemoryRouter, { initialEntries: ['/'] }, children),
       })
@@ -453,7 +480,7 @@ describe('useGroupTabs', () => {
   })
 
   it('setActiveTab updates URL correctly', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/'] }, children),
     })
@@ -469,7 +496,7 @@ describe('useGroupTabs', () => {
   })
 
   it('tabHref computes correct links', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(
           MemoryRouter,
@@ -483,7 +510,7 @@ describe('useGroupTabs', () => {
   })
 
   it('tabHref da aba padrão mantém outros parâmetros', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(
           MemoryRouter,
@@ -497,7 +524,7 @@ describe('useGroupTabs', () => {
   })
 
   it('does not prevent default or call setActiveTab if modifier key is pressed', () => {
-    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+    const { result } = rtlRenderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/'] }, children),
     })
@@ -509,7 +536,7 @@ describe('useGroupTabs', () => {
     })
 
     expect(preventDefault).not.toHaveBeenCalled()
-    expect(result.current.activeTab).toBe('predictions') // Hasn't changed
+    expect(result.current.activeTab).toBe('predictions')
   })
 })
 
@@ -606,12 +633,12 @@ describe('useTabsOffset', () => {
     if (document.body.contains(mockHeader)) {
       document.body.removeChild(mockHeader)
     }
-    const { result } = renderHook(() => useTabsOffset())
+    const { result } = rtlRenderHook(() => useTabsOffset())
     expect(result.current).toBe(0)
   })
 
   it('updates offset initially', () => {
-    const { result } = renderHook(() => useTabsOffset())
+    const { result } = rtlRenderHook(() => useTabsOffset())
     expect(result.current).toBe(100)
   })
 
@@ -623,7 +650,7 @@ describe('useTabsOffset', () => {
       this.disconnect = mockDisconnect
     }) as unknown as typeof ResizeObserver
 
-    const { unmount } = renderHook(() => useTabsOffset())
+    const { unmount } = rtlRenderHook(() => useTabsOffset())
 
     expect(window.ResizeObserver).toHaveBeenCalled()
     expect(mockObserve).toHaveBeenCalledWith(mockHeader)
@@ -639,11 +666,10 @@ describe('useTabsOffset', () => {
     const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
     const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
 
-    const { result, unmount } = renderHook(() => useTabsOffset())
+    const { result, unmount } = rtlRenderHook(() => useTabsOffset())
 
     expect(addEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
 
-    // Trigger resize
     vi.spyOn(mockHeader, 'clientHeight', 'get').mockReturnValue(200)
     act(() => {
       window.dispatchEvent(new Event('resize'))
@@ -691,5 +717,46 @@ describe('useGroupActions com resposta de erro que não é JSON', () => {
 
     expect(alert).toHaveBeenCalledTimes(1)
     expect(alert).toHaveBeenCalledWith('Erro de conexão. Tente novamente.')
+  })
+})
+
+describe('id do grupo nas URLs da API', () => {
+  const RAW_ID = 'a/b?c#d'
+  const ENCODED_ID = 'a%2Fb%3Fc%23d'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useNavigate).mockReturnValue(vi.fn() as unknown as NavigateFunction)
+    vi.mocked(useConfirm).mockReturnValue({
+      confirm: vi.fn().mockResolvedValue(true) as unknown as ReturnType<
+        typeof useConfirm
+      >['confirm'],
+      confirmDialog: null as any,
+    })
+  })
+
+  it('useGroupDetail codifica o id ao buscar o grupo', async () => {
+    mockApiFetch.mockResolvedValueOnce(mockResponse({ group: mockGroup }))
+
+    renderHook(() => useGroupDetail(RAW_ID))
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalled())
+    const url = mockApiFetch.mock.calls[0][0] as string
+    expect(url).toMatch(new RegExp(`/groups/${ENCODED_ID}$`))
+  })
+
+  it('useGroupActions codifica o id ao sair do grupo', async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn(),
+    } as unknown as Response)
+    const { result } = renderHook(() => useGroupActions(RAW_ID, mockUser))
+
+    await act(async () => {
+      await result.current.leaveGroup()
+    })
+
+    const url = vi.mocked(apiFetch).mock.calls[0][0] as string
+    expect(url).toContain(`/groups/${ENCODED_ID}/members/u1`)
   })
 })

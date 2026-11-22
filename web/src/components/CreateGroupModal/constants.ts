@@ -4,12 +4,23 @@ export const PRESET_VALUES: Record<
   Exclude<ScoringPreset, 'custom'>,
   { exact: number; winner: number; penalty: number }
 > = {
-  // penalty = 1 em todos os presets (bônus aditivo, independente do placar exato).
   classic: { exact: 3, winner: 1, penalty: 1 },
   exact_only: { exact: 3, winner: 0, penalty: 1 },
-  // "Só vencedor": sem bônus por placar exato (points_exact = 0). Ativa a UI 1X2
-  // (Casa / Empate / Fora) no palpite.
   winner_only: { exact: 0, winner: 1, penalty: 1 },
+}
+
+interface ScoringDefaults {
+  preset: ScoringPreset
+  exact: number
+  winner: number
+  penalty: number
+  classified: number
+}
+
+export const DEFAULT_SCORING: ScoringDefaults = {
+  preset: 'classic',
+  ...PRESET_VALUES.classic,
+  classified: 0,
 }
 
 export const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {

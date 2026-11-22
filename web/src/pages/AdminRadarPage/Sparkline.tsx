@@ -1,11 +1,5 @@
 import styles from './AdminRadarPage.module.css'
 
-/**
- * Sparkline do interesse diário — a forma da curva importa mais que os valores
- * (torneio em alta sobe; torneio parado achata), por isso não tem eixo nem
- * rótulo. SVG puro, como o resto do admin: uma página de 1 usuário não
- * justifica lib de chart no bundle.
- */
 
 const WIDTH = 72
 const HEIGHT = 20
@@ -21,8 +15,6 @@ export function Sparkline({ series }: { series: { day: string; views: number | n
   const path = points
     .map((p, i) => {
       const x = (i / (points.length - 1)) * WIDTH
-      // Y invertido (SVG cresce pra baixo) e com 1px de folga nas bordas pra
-      // linha não ser cortada no topo/base.
       const y = HEIGHT - 1 - ((p.views - min) / span) * (HEIGHT - 2)
       return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
     })

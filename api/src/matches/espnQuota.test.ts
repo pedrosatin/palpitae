@@ -37,7 +37,6 @@ type ActiveRound = {
 function buildFakeDb(rows: ActiveCompetition[] | ActiveRound[]) {
   return {
     prepare(sql: string) {
-      // A leitura final do poller (jogos encerrados sem pontuação) não acha nada aqui.
       const unscoredReport = sql.includes('GROUP BY competition_id')
       const stmt = {
         bind(..._args: unknown[]) {
@@ -45,6 +44,9 @@ function buildFakeDb(rows: ActiveCompetition[] | ActiveRound[]) {
         },
         async all<T>(): Promise<{ results: T[] }> {
           return { results: (unscoredReport ? [] : rows) as unknown as T[] }
+        },
+        async first(): Promise<null> {
+          return null
         },
       }
       return stmt

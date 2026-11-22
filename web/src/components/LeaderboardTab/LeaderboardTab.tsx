@@ -2,8 +2,20 @@ import { useCallback, useMemo, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers } from '../../hooks/useGroupMembers'
 import { useRoundStandings, type RoundStanding } from '../../hooks/useRoundStandings'
+import {
+  achievedExactMilestones,
+  exactMilestoneBadgeLabel,
+  exactMilestonesTitle,
+  highestExactMilestoneFromHits,
+  type ExactMilestone,
+} from '../../lib/exactMilestones'
+import {
+  UNLIKELY_EXACT_BADGE_LABEL,
+  unlikelyExactBadgeTitle,
+} from '../../lib/unlikelyExact'
 import Avatar from '../Avatar'
 import ErrorState from '../ErrorState'
+import MemberBadge from '../MemberBadge'
 import PredictionsModal from './PredictionsModal'
 import styles from './LeaderboardTab.module.css'
 import type { Member } from './types'
@@ -11,15 +23,12 @@ import type { Member } from './types'
 interface LeaderboardTabProps {
   groupId: string
   currentUserId: string
-  /** Critério de desempate mostrado sob a tabela. */
   tiebreakNote?: string
   onOpenRules?: () => void
 }
 
-/** Rodadas seguidas a partir das quais o selo de sequência aparece. */
 const STREAK_BADGE_MIN = 3
 
-/** Reis da rodada, os membros com a maior pontuação. Sem pontos, ninguém. Empate coroa todos. */
 function roundKings(standings: RoundStanding[]): Set<string> {
   const top = Math.max(0, ...standings.map((standing) => standing.round_points))
   if (top === 0) return new Set()
@@ -33,19 +42,31 @@ function MemberBadges({
   isSelf,
   isKing,
   streak,
+  exactMilestone,
+  exactHits,
+  unlikelyExact,
 }: {
   isOwner: boolean
   isSelf: boolean
   isKing: boolean
   streak: number
+  exactMilestone: ExactMilestone | null
+  exactHits: number
+  unlikelyExact: boolean
 }) {
   const showStreak = streak >= STREAK_BADGE_MIN
-  if (!isOwner && !isSelf && !isKing && !showStreak) return null
+  if (!isOwner && !isSelf && !isKing && !showStreak && !exactMilestone && !unlikelyExact) {
+    return null
+  }
   const streakLabel = `${streak} rodadas seguidas com todos os jogos palpitados`
+  const milestoneTitle = exactMilestone
+    ? exactMilestonesTitle(achievedExactMilestones(exactHits))
+    : ''
+  const unlikelyTitle = unlikelyExactBadgeTitle()
   return (
     <span className={styles.badges}>
-      {isOwner && <span className={styles.ownerBadge}>admin</span>}
-      {isSelf && <span className={styles.youBadge}>você</span>}
+      {isOwner && <MemberBadge variant="owner" className={styles.memberBadge} />}
+      {isSelf && <MemberBadge variant="self" className={styles.memberBadge} />}
       {isKing && <span className={styles.kingBadge}>rei da rodada</span>}
       {showStreak && (
         <span className={styles.streakBadge} title={streakLabel}>
@@ -53,11 +74,22 @@ function MemberBadges({
           <span className="sr-only">{streakLabel}</span>
         </span>
       )}
+      {exactMilestone && (
+        <span className={styles.milestoneBadge} title={milestoneTitle}>
+          <span aria-hidden="true">{exactMilestoneBadgeLabel(exactMilestone)}</span>
+          <span className="sr-only">{milestoneTitle}</span>
+        </span>
+      )}
+      {unlikelyExact && (
+        <span className={styles.unlikelyBadge} title={unlikelyTitle}>
+          <span aria-hidden="true">{UNLIKELY_EXACT_BADGE_LABEL}</span>
+          <span className="sr-only">{unlikelyTitle}</span>
+        </span>
+      )}
     </span>
   )
 }
 
-/** Pontos na rodada. Membro sem linha na resposta fica com o traço. */
 function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
   if (!standing) {
     return (
@@ -70,7 +102,6 @@ function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
   return <>{standing.round_points > 0 ? `+${standing.round_points}` : standing.round_points}</>
 }
 
-/** Seta da variação de posição. 0 e `null` não mostram nada. */
 function PositionChange({ change }: { change: number | null | undefined }) {
   if (!change) return null
   const up = change > 0
@@ -118,7 +149,6 @@ export default function LeaderboardTab({
     return <ErrorState message={error} />
   }
 
-  // Espera as duas respostas para a tabela não ganhar uma coluna depois de aparecer.
   if (loading || roundLoading) {
     return <p className={styles.loading}>Carregando classificação...</p>
   }
@@ -161,7 +191,6 @@ export default function LeaderboardTab({
                 <abbr className={styles.labelShort} title="Pontos" aria-hidden="true">
                   Pts
                 </abbr>
-                {/* Nome completo para leitor de tela, já que a forma curta seria lida como "Pts". */}
                 <span className="sr-only">Pontos</span>
               </th>
               <th className={styles.thExact}>
@@ -201,6 +230,11 @@ export default function LeaderboardTab({
                         isSelf={member.user_id === currentUserId}
                         isKing={kings.has(member.user_id)}
                         streak={standingByUser.get(member.user_id)?.streak ?? 0}
+                        exactMilestone={highestExactMilestoneFromHits(member.exact_hits)}
+                        exactHits={member.exact_hits}
+                        unlikelyExact={
+                          standingByUser.get(member.user_id)?.unlikely_exact === true
+                        }
                       />
                     </div>
                   </div>

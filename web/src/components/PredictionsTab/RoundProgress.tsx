@@ -7,7 +7,6 @@ import styles from './PredictionsTab.module.css'
 interface RoundProgressProps {
   roundMatches: Match[]
   predictions: Map<string, Prediction>
-  /** Hora do relógio da aba, a mesma que trava os cards. */
   now: number
 }
 

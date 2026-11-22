@@ -14,7 +14,6 @@ export function isSessionQuery(sql: string): boolean {
   return sql.includes('FROM revoked_sessions')
 }
 
-/** id da conta → e-mail gravado; conta ausente é conta apagada. */
 type Accounts = Record<string, string> | ((userId: string) => string | undefined)
 
 /**

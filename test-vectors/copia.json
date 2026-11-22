@@ -1,0 +1,94 @@
+{
+  "accepts": [
+    {
+      "name": "placar-para-placar",
+      "input": {
+        "sourcePointsExact": 3,
+        "targetPointsExact": 3
+      },
+      "expected": {
+        "accepts": true
+      }
+    },
+    {
+      "name": "placar-para-so-vencedor",
+      "input": {
+        "sourcePointsExact": 3,
+        "targetPointsExact": 0
+      },
+      "expected": {
+        "accepts": true
+      }
+    },
+    {
+      "name": "so-vencedor-para-so-vencedor",
+      "input": {
+        "sourcePointsExact": 0,
+        "targetPointsExact": 0
+      },
+      "expected": {
+        "accepts": true
+      }
+    },
+    {
+      "name": "so-vencedor-para-placar",
+      "input": {
+        "sourcePointsExact": 0,
+        "targetPointsExact": 3
+      },
+      "expected": {
+        "accepts": false
+      }
+    }
+  ],
+  "scores": [
+    {
+      "name": "destino-so-vencedor-vitoria",
+      "input": {
+        "targetPointsExact": 0,
+        "home": 3,
+        "away": 1
+      },
+      "expected": {
+        "home": 1,
+        "away": 0
+      }
+    },
+    {
+      "name": "destino-so-vencedor-empate",
+      "input": {
+        "targetPointsExact": 0,
+        "home": 2,
+        "away": 2
+      },
+      "expected": {
+        "home": 0,
+        "away": 0
+      }
+    },
+    {
+      "name": "destino-so-vencedor-derrota",
+      "input": {
+        "targetPointsExact": 0,
+        "home": 0,
+        "away": 4
+      },
+      "expected": {
+        "home": 0,
+        "away": 1
+      }
+    },
+    {
+      "name": "destino-placar-mantem-placar",
+      "input": {
+        "targetPointsExact": 3,
+        "home": 3,
+        "away": 1
+      },
+      "expected": {
+        "home": 3,
+        "away": 1
+      }
+    }
+  ]
+}

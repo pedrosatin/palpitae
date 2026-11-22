@@ -12,14 +12,12 @@ describe('createSqliteD1', () => {
   })
 
   it('applies migrations', async () => {
-    // Check if a table created by migrations exists
     const res = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").first()
     expect(res).toBeTruthy()
     expect(res.name).toBe('users')
   })
 
   it('executes run(), first(), all() and binds correctly', async () => {
-    // Insert
     const runRes = await db.prepare("INSERT INTO users (id, email, provider, provider_id) VALUES (?, ?, ?, ?)")
       .bind('test-id-1', 'test@test.com', 'test_provider', 'test_provider_id_1')
       .run()
@@ -27,12 +25,10 @@ describe('createSqliteD1', () => {
     expect(runRes.success).toBe(true)
     expect(runRes.meta.changes).toBe(1)
 
-    // Select first
     const firstRes = await db.prepare("SELECT * FROM users WHERE id = ?").bind('test-id-1').first()
     expect(firstRes.id).toBe('test-id-1')
     expect(firstRes.email).toBe('test@test.com')
 
-    // Select all
     const allRes = await db.prepare("SELECT * FROM users WHERE id = ?").bind('test-id-1').all()
     expect(allRes.success).toBe(true)
     expect(allRes.results.length).toBe(1)
@@ -61,13 +57,11 @@ describe('createSqliteD1', () => {
   it('rolls back batch on error', async () => {
     const stmts = [
       db.prepare("INSERT INTO users (id, email, provider, provider_id) VALUES (?, ?, ?, ?)").bind('err1', 'err1@t.com', 'provider', 'err1'),
-      // syntax error
       db.prepare("INSERT INTO missing_table (id) VALUES (?)").bind('err2')
     ]
 
     await expect(db.batch(stmts)).rejects.toThrow()
 
-    // ensure 'err1' was rolled back
     const countRes = await db.prepare("SELECT COUNT(*) as c FROM users WHERE id = 'err1'").first()
     expect(countRes.c).toBe(0)
   })

@@ -1,10 +1,11 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatClosingDate } from '../../lib/matchTime'
 import { makeMatch } from '../matchFixtures'
 import type { Match, Prediction } from '../MatchCard'
 import PredictionsTab from './PredictionsTab'
+import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => {
@@ -14,7 +15,6 @@ afterEach(() => {
 
 const MIN = 60_000
 const HOUR = 60 * MIN
-/** Margem para o relógio andar durante o teste sem mudar o minuto exibido. */
 const SLACK = 30_000
 const inMs = (ms: number) => new Date(Date.now() + ms + SLACK).toISOString()
 
@@ -88,7 +88,6 @@ describe('PredictionsTab – progresso da rodada', () => {
       screen.getByRole('group', { name: 'Brasil contra Argentina, sem palpite' }),
     ).toBeInTheDocument()
 
-    // Roda os efeitos da montagem, que ligam o relógio, antes de avançar a hora.
     await act(async () => {})
     act(() => {
       vi.advanceTimersByTime(2 * MIN)
@@ -129,7 +128,6 @@ describe('PredictionsTab – progresso da rodada', () => {
     expect(
       screen.getByRole('group', { name: 'Brasil contra Argentina, palpite salvo' }),
     ).toBeInTheDocument()
-    // Os palpites vieram da API uma vez só, na abertura da aba.
     const predictionReads = vi
       .mocked(fetch)
       .mock.calls.filter(([url, init]) => String(url).includes('/predictions?') && !init?.method)

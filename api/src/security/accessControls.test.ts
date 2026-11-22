@@ -17,7 +17,6 @@ import {
 import type { Env } from '../types'
 import { createSqliteD1 } from '../testing/sqliteD1'
 
-// Exercise the production SQL against SQLite, including constraints and batches.
 function database() {
   const { sqlite, db } = createSqliteD1()
   sqlite.exec(`
@@ -93,14 +92,12 @@ async function fixture() {
     )
   const anonymous = (path: string, headers: Record<string, string> = {}, method = 'GET') =>
     worker.fetch(new Request(`https://api.palpitae.com.br${path}`, { method, headers }), env, ctx)
-  // Hits already counted for an identity in the current window.
   const hits = async (identity: string) => {
     const row = sqlite
       .prepare('SELECT hits FROM request_limits WHERE bucket_key = ?')
       .get(await bucketKey(env.JWT_SECRET, identity)) as { hits: number } | undefined
     return row?.hits ?? 0
   }
-  // Fills an identity's bucket up to its limit for the current window.
   const exhaust = async (identity: string, limit: number) => {
     await consumeLimit(db, await bucketKey(env.JWT_SECRET, identity), limit)
     sqlite
@@ -170,7 +167,6 @@ describe('access controls with a real SQL database', () => {
 
       expect(Object.keys(body.open_pickers)).toEqual(['future'])
       expect([...body.open_pickers.future].sort()).toEqual(['member', 'other'])
-      // O palpite alheio em jogo aberto continua fora da resposta.
       expect(body.predictions.map((p) => `${p.user_id}:${p.match_id}`).sort()).toEqual([
         'member:future',
         'other:past',
@@ -396,7 +392,6 @@ describe('access controls with a real SQL database', () => {
         sqlite.prepare("SELECT sessions_valid_after FROM users WHERE id = 'member'").get(),
       ).toEqual({ sessions_valid_after: Date.parse('2026-10-06T12:00:05Z') / 1000 })
 
-      // Current and other-device tokens of the user are rejected afterwards.
       await expect(verifySession(tokens.member, env.JWT_SECRET, db)).rejects.toThrow(
         'Session revoked',
       )
@@ -406,14 +401,12 @@ describe('access controls with a real SQL database', () => {
       expect((await request('/groups')).status).toBe(401)
       expect(await (await request('/auth/me')).json()).toEqual({ authenticated: false })
 
-      // Other users keep their sessions.
       expect((await request('/groups', 'owner')).status).toBe(200)
       await expect(verifySession(tokens.other, env.JWT_SECRET, db)).resolves.toHaveProperty(
         'sub',
         'other',
       )
 
-      // A login issued after the cutoff is accepted.
       vi.setSystemTime(new Date('2026-10-06T12:00:06Z'))
       tokens.member = await signJwt(
         { sub: 'member', email: 'member@example.com', jti: crypto.randomUUID() },
@@ -475,8 +468,8 @@ describe('access controls with a real SQL database', () => {
     expect((await request('/matches?competition_id=competition&noise=one')).status).toBe(200)
     expect((await request('/matches?noise=two&competition_id=competition')).status).toBe(200)
     expect(match.mock.calls.map(([key]) => (key as Request).url)).toEqual([
-      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&scored=',
-      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&scored=',
+      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&matches_version=2',
+      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&matches_version=2',
     ])
     await Promise.all(waitUntil.mock.calls.map(([promise]) => promise))
     expect(fetch).not.toHaveBeenCalled()
@@ -588,14 +581,12 @@ describe('access controls with a real SQL database', () => {
     const { anonymous, env, exhaust, hits } = await fixture()
     await exhaust('read:ip:198.51.100.7', 300)
     const forged = { [CLIENT_IP_HEADER]: '198.51.100.7', [PROXY_SECRET_HEADER]: 'guess' }
-    // Direct access: the forged header is ignored and CF-Connecting-IP counts.
     const direct = await anonymous('/public/invites/nope', {
       ...forged,
       'CF-Connecting-IP': '192.0.2.50',
     })
     expect(direct.status).toBe(404)
     expect(await hits('read:ip:192.0.2.50')).toBe(1)
-    // Through a Worker with a wrong secret: shared anonymous bucket with the higher cap.
     env.PROXY_SHARED_SECRET = 'proxy-secret'
     expect(
       (await anonymous('/public/invites/nope', { ...WORKER_SUBREQUEST, ...forged })).status,
@@ -644,7 +635,6 @@ describe('access controls with a real SQL database', () => {
     const failed = await request('/auth/logout', 'member', 'POST')
     expect(failed.status).toBe(503)
     expect(await failed.json()).not.toHaveProperty('ok')
-    // A cópia do cookie que ficou em outro lugar continua valendo até a revogação gravar.
     await expect(verifySession(tokens.member, env.JWT_SECRET, db)).resolves.toHaveProperty(
       'sub',
       'member',
@@ -696,9 +686,7 @@ describe('follow-up security controls with a real SQL database', () => {
     sqlite.exec(
       "UPDATE matches SET start_time = '2020-06-01T00:00:00Z', status = 'scheduled', postponed = 1 WHERE id = 'future'",
     )
-    // Adiado sem ter começado: segue aberto.
     expect((await request('/predictions', 'member', 'PUT', pick(2))).status).toBe(200)
-    // O sync viu o jogo iniciado: travado para sempre, mesmo adiado e com horário futuro.
     sqlite.exec(
       "UPDATE matches SET locked_at = '2020-06-01T00:10:00Z', start_time = '2099-01-01T00:00:00Z' WHERE id = 'future'",
     )
@@ -708,7 +696,6 @@ describe('follow-up security controls with a real SQL database', () => {
       predictions: [{ match_id: 'future', predicted_home_score: 4, predicted_away_score: 0 }],
     })
     expect(((await bulk.json()) as { locked: string[] }).locked).toEqual(['future'])
-    // E os palpites dos outros continuam revelados no grupo oculto.
     const feed = await request('/predictions/group?group_id=group')
     const body = (await feed.json()) as { predictions: { user_id: string; match_id: string }[] }
     expect(body.predictions.map((p) => `${p.user_id}:${p.match_id}`)).toContain('other:future')
@@ -751,7 +738,6 @@ describe('follow-up security controls with a real SQL database', () => {
       ).invite_code,
     ).toBe(invite_code)
 
-    // Members stay; the old code no longer admits anyone.
     expect((await request('/groups/group')).status).toBe(200)
     expect((await request('/groups/group/members/member', 'member', 'DELETE')).status).toBe(200)
     expect(
@@ -903,7 +889,6 @@ describe('follow-up security controls with a real SQL database', () => {
         }
       ).hits,
     ).toBe(2)
-    // A new window writes again.
     expect(await consumeLimit(db, 'full', 2, 180)).toBe(true)
     expect(changes()).toBe(before + 1)
   })

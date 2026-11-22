@@ -1,4 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { runWithConcurrency } from '../concurrency'
+import { runInBatches } from '../d1Batch'
 import { logError, logEvent } from '../observability/events'
 import { findEntry, RADAR_COUNTRIES } from './articles'
 import { fetchEspnLeaguesAndCounts, type ProviderLeague } from './espnRadar'
@@ -6,20 +8,12 @@ import { fetchPageviews } from './wikipedia'
 
 const PROVIDER = 'espn'
 
-/** Provedor anterior do radar (ADR-014) — conta suspensa, linhas órfãs. */
 const LEGACY_PROVIDER = 'api-football'
 
-/**
- * Dias de pageviews recoletados a cada execução. Não basta pegar "ontem": a
- * Wikimedia consolida com 1-2 dias de atraso, então a janela reprocessa os dias
- * que ainda estavam vazios. O upsert por (radar_id, day) torna isso idempotente.
- */
 const PAGEVIEW_WINDOW_DAYS = 8
 
-/** Requisições simultâneas à Wikimedia — educado com uma API pública e grátis. */
 const PAGEVIEW_CONCURRENCY = 4
 
-/** "YYYY-MM-DD" de `date` deslocado em `offsetDays` (UTC). */
 function isoDay(date: Date, offsetDays = 0): string {
   const d = new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + offsetDays),
@@ -27,7 +21,6 @@ function isoDay(date: Date, offsetDays = 0): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Id determinístico — reexecutar o cron atualiza a linha, nunca duplica. */
 function radarId(externalId: string, season: string): string {
   return `${PROVIDER}:${externalId}:${season}`
 }
@@ -42,13 +35,6 @@ function isRelevant(league: ProviderLeague): boolean {
   return RADAR_COUNTRIES.has(league.country) || findEntry(league.country, league.name) !== undefined
 }
 
-/**
- * Zera `is_current` só onde a coleta desta execução responde pelo estado: todas
- * as ligas do provedor, menos as dos slugs que falharam. Liga de slug com falha
- * mantém o estado do último snapshot válido, em vez de sumir do radar porque a
- * ESPN não respondeu hoje. Slug que saiu do recorte não está em `failed` e é
- * rebaixado normalmente.
- */
 function resetCurrent(db: D1Database, failedSlugs: string[]): D1PreparedStatement {
   if (failedSlugs.length === 0) {
     return db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER)
@@ -140,68 +126,44 @@ async function writePageviews(
   today: string,
   now: Date,
 ): Promise<{ pageviewErrors: number; pageviewRows: number }> {
-  // Interesse do público — só para as competições com artigo curado.
   const from = isoDay(now, -PAGEVIEW_WINDOW_DAYS)
   const pageviewStatements: D1PreparedStatement[] = []
   let pageviewErrors = 0
 
-  await runLimited(
-    mapped.map((league) => async () => {
-      const article = findEntry(league.country, league.name)?.article
-      if (!article) return
-      try {
-        const byDay = await fetchPageviews(article, from, today)
-        for (const [day, views] of byDay) {
-          pageviewStatements.push(
-            db
-              .prepare(
-                `INSERT INTO competition_radar_daily (radar_id, day, pageviews)
-                 VALUES (?, ?, ?)
-                 ON CONFLICT (radar_id, day) DO UPDATE SET pageviews = excluded.pageviews`,
-              )
-              .bind(radarId(league.externalId, league.season), day, views),
-          )
-        }
-      } catch (err) {
-        // Artigo com título errado não pode derrubar o resto do snapshot.
-        pageviewErrors++
-        logError(ae, 'radar_sync_error', `[radar] Pageviews falhou para "${article}":`, err, {
-          blobs: ['wikipedia', article],
-        })
+  await runWithConcurrency(PAGEVIEW_CONCURRENCY, mapped, async (league) => {
+    const article = findEntry(league.country, league.name)?.article
+    if (!article) return
+    try {
+      const byDay = await fetchPageviews(article, from, today)
+      for (const [day, views] of byDay) {
+        pageviewStatements.push(
+          db
+            .prepare(
+              `INSERT INTO competition_radar_daily (radar_id, day, pageviews)
+               VALUES (?, ?, ?)
+               ON CONFLICT (radar_id, day) DO UPDATE SET pageviews = excluded.pageviews`,
+            )
+            .bind(radarId(league.externalId, league.season), day, views),
+        )
       }
-    }),
-    PAGEVIEW_CONCURRENCY,
-  )
-
-  if (pageviewStatements.length > 0) {
-    const batches = []
-    for (let i = 0; i < pageviewStatements.length; i += 100) {
-      const chunk = pageviewStatements.slice(i, i + 100)
-      batches.push(db.batch(chunk))
-    }
-    await Promise.all(batches)
-  }
-
-  return { pageviewErrors, pageviewRows: pageviewStatements.length }
-}
-
-/** Executa \`tasks\` com um teto de concorrência, ignorando as que falharem. */
-async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
-  const queue = [...tasks]
-  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
-    for (let task = queue.shift(); task; task = queue.shift()) {
-      await task()
+    } catch (err) {
+      // Artigo com título errado não pode derrubar o resto do snapshot.
+      pageviewErrors++
+      logError(ae, 'radar_sync_error', `[radar] Pageviews falhou para "${article}":`, err, {
+        blobs: ['wikipedia', article],
+      })
     }
   })
-  await Promise.all(workers)
+
+  await runInBatches(db, pageviewStatements)
+
+  return { pageviewErrors, pageviewRows: pageviewStatements.length }
 }
 
 /** Resultado de uma execução — o script do Actions usa para sinalizar coleta parcial. */
 export type RadarSyncResult = {
   status: 'ok' | 'partial' | 'error'
-  /** Slugs da ESPN sem resposta; as ligas deles mantêm o snapshot anterior. */
   failedSlugs: string[]
-  /** Artigos da Wikipédia cujos pageviews não foram atualizados. */
   pageviewErrors: number
 }
 
@@ -262,9 +224,6 @@ export async function syncRadar(
   }
 
   if (leagues.length === 0) {
-    // Nenhuma liga corrente é indistinguível de coleta quebrada (ex.: a ESPN
-    // mudou o formato da resposta). Gravar aqui seria aplicar um snapshot
-    // vazio por cima do bom — o mesmo fail-closed da falha geral.
     logError(
       ae,
       'radar_sync_error',
@@ -287,7 +246,6 @@ export async function syncRadar(
   const status = failedSlugs.length > 0 || pageviewErrors > 0 ? 'partial' : 'ok'
   logEvent(ae, 'radar_sync_run', {
     blobs: [status],
-    // competições, mapeadas, linhas de pageviews, duração
     doubles: [leagues.length, mapped.length, pageviewRows, Date.now() - startedAt],
   })
 

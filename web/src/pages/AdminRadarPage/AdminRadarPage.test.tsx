@@ -1,6 +1,7 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import AdminRadarPage from './AdminRadarPage'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -50,8 +51,6 @@ function mockFetch(body: unknown, status = 200) {
   return vi.fn(async () => ({ ok: status === 200, status, json: async () => body }))
 }
 
-// Competições pequenas de enchimento: o veredito compara com a MEDIANA do
-// interesse, então uma amostra de duas linhas não exercitaria a régua de verdade.
 const filler = [200, 250, 300].map((views, i) =>
   item({
     id: `filler-${i}`,
@@ -72,13 +71,12 @@ const defaultBody = {
 describe('AdminRadarPage', () => {
   it('lista competições com interesse, jogos e demanda interna', async () => {
     vi.stubGlobal('fetch', mockFetch(defaultBody))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
 
     const liberta = (await screen.findByText('CONMEBOL Libertadores')).closest('tr') as HTMLElement
     expect(within(liberta).getByText('Em andamento')).toBeInTheDocument()
     expect(within(liberta).getByText('4 hoje')).toBeInTheDocument()
     expect(within(liberta).getByText('+25%')).toBeInTheDocument()
-    // Interesse bem acima da mediana e sem suporte → chamada pra ação.
     expect(within(liberta).getByText('Candidata forte')).toBeInTheDocument()
 
     const serieA = screen.getByText('Serie A').closest('tr') as HTMLElement
@@ -88,14 +86,14 @@ describe('AdminRadarPage', () => {
 
   it('mostra acesso restrito no 403', async () => {
     vi.stubGlobal('fetch', mockFetch({}, 403))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
 
     expect(await screen.findByText('Acesso restrito ao administrador.')).toBeInTheDocument()
   })
 
   it('filtra por competição não suportada', async () => {
     vi.stubGlobal('fetch', mockFetch(defaultBody))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
     await screen.findByText('CONMEBOL Libertadores')
 
     await userEvent.click(screen.getByLabelText('Só não suportadas'))
@@ -106,7 +104,7 @@ describe('AdminRadarPage', () => {
 
   it('busca por nome ou país', async () => {
     vi.stubGlobal('fetch', mockFetch(defaultBody))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
     await screen.findByText('CONMEBOL Libertadores')
 
     await userEvent.type(screen.getByLabelText('Buscar competição'), 'brazil')
@@ -118,7 +116,7 @@ describe('AdminRadarPage', () => {
   it('esconde competição encerrada por padrão e mostra ao ver todas', async () => {
     const encerrada = item({ id: 'x', name: 'Copa Antiga', status: 'finished' })
     vi.stubGlobal('fetch', mockFetch({ ...defaultBody, items: [item(), encerrada] }))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
     await screen.findByText('CONMEBOL Libertadores')
 
     expect(screen.queryByText('Copa Antiga')).not.toBeInTheDocument()
@@ -136,19 +134,17 @@ describe('AdminRadarPage', () => {
       item({ id: 'n', name: 'Nations League', status: 'upcoming', startsOn: emSeisMeses }),
     ]
     vi.stubGlobal('fetch', mockFetch({ ...defaultBody, items: [item(), ...futuras] }))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
     await screen.findByText('CONMEBOL Libertadores')
 
-    // Em andamento por padrão: as futuras estão escondidas.
     expect(screen.queryByText('Premier League')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'A começar' }))
 
     expect(screen.getByText('estreia em 3 dias')).toBeInTheDocument()
     expect(screen.getByText('estreia em 6 meses')).toBeInTheDocument()
-    // Em andamento sai de cena, e a estreia mais próxima manda na ordem.
     expect(screen.queryByText('CONMEBOL Libertadores')).not.toBeInTheDocument()
-    const rows = screen.getAllByRole('row').slice(1) // pula o cabeçalho
+    const rows = screen.getAllByRole('row').slice(1)
     expect(rows[0]).toHaveTextContent('Premier League')
   })
 
@@ -163,7 +159,7 @@ describe('AdminRadarPage', () => {
       pageviewsSeries: [],
     })
     vi.stubGlobal('fetch', mockFetch({ ...defaultBody, items: [item(), semArtigo] }))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
 
     expect(await screen.findByText('Sem sinal de interesse')).toBeInTheDocument()
     expect(screen.getByText('sem artigo')).toBeInTheDocument()
@@ -172,7 +168,7 @@ describe('AdminRadarPage', () => {
   it('avisa quando o snapshot está velho (cron parado)', async () => {
     const old = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 19).replace('T', ' ')
     vi.stubGlobal('fetch', mockFetch({ ...defaultBody, lastSync: old }))
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
 
     expect(await screen.findByText(/o cron do radar pode estar parado/)).toBeInTheDocument()
   })
@@ -195,7 +191,6 @@ function radarBody(name: string, days: number) {
   return { ...defaultBody, days, items: [item({ id: `id-${name}`, name })] }
 }
 
-// Fetch por período: cada `days` tem a sua resposta, controlada pelo teste.
 function fetchByDays(byDays: Record<string, () => Promise<unknown>>) {
   return vi.fn((url: string) => byDays[daysOf(url) ?? '']())
 }
@@ -209,13 +204,12 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
     vi.stubGlobal(
       'fetch',
       fetchByDays({
-        // O cabeçalho do período de 30 dias chega, o corpo demora.
         '30': async () => ({ ok: true, status: 200, json: () => corpo30.promise }),
         '7': async () => okResponse(radarBody('Liga dos 7 dias', 7)),
       }),
     )
     const user = userEvent.setup()
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
 
     await user.click(screen.getByRole('button', { name: '7d' }))
     expect(await screen.findByText('Liga dos 7 dias')).toBeInTheDocument()
@@ -237,7 +231,7 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
       }),
     )
     const user = userEvent.setup()
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
 
     await user.click(screen.getByRole('button', { name: '7d' }))
     expect(await screen.findByText('Liga dos 7 dias')).toBeInTheDocument()
@@ -258,7 +252,7 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
       }),
     )
     const user = userEvent.setup()
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
     expect(await screen.findByText('Liga dos 30 dias')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '7d' }))
@@ -277,7 +271,7 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
     })
     vi.stubGlobal('fetch', fetchFake)
     const user = userEvent.setup()
-    render(<AdminRadarPage />)
+    renderWithQuery(<AdminRadarPage />)
     await screen.findByText('Liga dos 30 dias')
     await user.click(screen.getByRole('button', { name: '7d' }))
     await screen.findByText(/Falha ao carregar o radar/)
@@ -299,7 +293,7 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
       }),
     )
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const { unmount } = render(<AdminRadarPage />)
+    const { unmount } = renderWithQuery(<AdminRadarPage />)
     await waitFor(() => expect(fetch).toHaveBeenCalled())
 
     unmount()
@@ -308,5 +302,43 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
 
     expect(consoleError).not.toHaveBeenCalled()
     consoleError.mockRestore()
+  })
+})
+
+describe('AdminRadarPage · acessibilidade das pílulas', () => {
+  it('anuncia o grupo e a opção ativa no período e no filtro de status', async () => {
+    vi.stubGlobal('fetch', mockFetch(defaultBody))
+    const user = userEvent.setup()
+    renderWithQuery(<AdminRadarPage />)
+
+    await screen.findByText('CONMEBOL Libertadores')
+
+    const period = screen.getByRole('group', { name: 'Período' })
+    expect(within(period).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(period).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'false')
+
+    const statusGroup = screen.getByRole('group', { name: 'Filtrar por status' })
+    expect(within(statusGroup).getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(statusGroup).getByRole('button', { name: 'A começar' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(statusGroup).getByRole('button', { name: 'Todas' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+
+    await user.click(within(statusGroup).getByRole('button', { name: 'Todas' }))
+    expect(within(statusGroup).getByRole('button', { name: 'Todas' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(statusGroup).getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 })

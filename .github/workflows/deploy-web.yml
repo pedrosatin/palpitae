@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'web/**'
+      - 'test-vectors/**'
       - '.github/workflows/deploy-web.yml'
   push:
     branches:
@@ -11,16 +12,29 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-web.yml'
+  # Verificacao manual da web (typecheck, suite inteira, build e CSP), que o CI
+  # fazia antes; nao publica, porque o deploy so roda no push.
+  workflow_dispatch:
 
 # Na PR roda so o job de testes (inclui build e csp:verify); o deploy so no push.
+# No push, o job de testes envia o dist verificado como artefato e o deploy
+# publica esse mesmo dist, sem reinstalar o projeto nem refazer o build.
+# Este workflow e o unico que verifica a web (typecheck, testes, build e CSP); o
+# CI (ci.yml) fica com lint, API e scripts. A web nao importa codigo nem
+# configuracao da raiz ou da API; o package.json e o lockfile da raiz so servem
+# ao lint, que fica no CI. Os vetores em test-vectors/ entram só no filtro do
+# pull_request: uma mudanca so no JSON precisa rodar a web no PR, mas no push
+# para main nao dispara deploy (nao ha artefato de produto a publicar). O build
+# consulta o historico do git e a selecao de testes considera este workflow.
 # Travado no versionamento: nenhum job aqui escreve no repositorio.
 permissions:
   contents: read
 
 # Deploy so pra main: se dois pushes entrarem juntos, o mais novo cancela
-# o anterior e a producao termina no ultimo commit.
+# o anterior e a producao termina no ultimo commit. O disparo manual tem grupo
+# proprio, para nao cancelar um deploy em andamento na mesma ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual-' || '' }}${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,9 +46,13 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # O lastmod do sitemap usa git log; checkout raso cai sempre na data de hoje.
+          # O dist daqui e o que vai para producao.
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -46,8 +64,19 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      # No PR o checkout é o merge commit do PR com a base: HEAD^1 é a ponta da
+      # base, e o diff dele é o que o PR traz. Roda só os testes que esse diff
+      # alcança (scripts/test-changed.sh). No push, ou se o checkout não for um
+      # merge commit, roda a suíte inteira.
       - name: Run tests
-        run: npm test
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+            bash scripts/test-changed.sh HEAD^1
+          else
+            npm test
+          fi
 
       - name: Build
         run: npm run build
@@ -60,37 +89,67 @@ jobs:
       - name: Verify CSP
         run: npm run csp:verify
 
+      # So o push envia o dist: artefato de PR nunca chega ao job de deploy.
+      # O caminho e relativo ao workspace (o working-directory nao vale aqui).
+      - name: Upload dist
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: web/dist
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
   deploy:
     name: Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: test
-    if: github.event_name == 'push'
+    # Condicao explicita: so push na main publica. O download abaixo le apenas
+    # artefatos deste mesmo run, entao nada vindo de PR chega aqui.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     defaults:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v7
-        with:
-          # O lastmod do sitemap usa git log; checkout raso cai sempre na data de hoje.
-          fetch-depth: 0
+      # Checkout raso: o deploy precisa de functions/ (Pages Functions, compiladas
+      # pelo wrangler), dos scripts e do lockfile. O git tambem da ao wrangler o
+      # commit do deploy. O sitemap ja vem pronto no artefato.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Download dist
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: web/dist
 
-      - name: Build
-        run: npm run build
-        env:
-          VITE_TBBC_SITE_KEY: ${{ vars.VITE_TBBC_SITE_KEY }}
+      # Barra um artefato incompleto antes de publicar. O csp:verify so usa
+      # modulos do Node e leva menos de um segundo.
+      - name: Check dist
+        run: |
+          test -s dist/index.html
+          test -s dist/_headers
+          test -s dist/_redirects
+          test -s dist/sitemap.xml
+          npm run csp:verify
+
+      # So o wrangler e a arvore dele, com as versoes e integridades do
+      # web/package-lock.json, num diretorio fora do repositorio: sem React nem
+      # Vite, e sem sujar o git que o wrangler le.
+      - name: Install Wrangler
+        run: |
+          node scripts/wrangler-lock.mjs "$RUNNER_TEMP/wrangler"
+          npm ci --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund
+          echo "$RUNNER_TEMP/wrangler/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy dist --project-name=palpitae-web --branch=main
+        run: wrangler pages deploy dist --project-name=palpitae-web --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

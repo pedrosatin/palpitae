@@ -51,7 +51,6 @@ async function fixture() {
              ('m2','competition','2','football-data','away','home','2026-05-01T21:00:00Z',
               'finished',2,2,'38','2026-05-01T23:00:00.000Z');
   `)
-  // Conta as consultas da lista de jogos: um HIT do cache não chega nelas.
   let listQueries = 0
   const countedDb = {
     ...db,
@@ -87,7 +86,6 @@ async function fixture() {
       env,
       ctx,
     )
-    // Deixa o cache.put do waitUntil terminar antes da próxima requisição.
     await Promise.all(pending.splice(0))
     return response
   }
@@ -131,7 +129,6 @@ describe('GET /matches com cache de borda', () => {
 
     expect((await getMatches()).status).toBe(200)
 
-    // A sincronização grava o placar novo e devolve o jogo à fila de pontuação.
     sqlite.exec("UPDATE matches SET home_score = 3, scored_at = NULL WHERE id = 'm1'")
     await scoreUnprocessedMatches('competition', db)
 
@@ -146,8 +143,24 @@ describe('GET /matches com cache de borda', () => {
     const { getMatches } = await fixture()
 
     const miss = await getMatches()
-    expect(miss.headers.get('Cache-Control')).toBe('public, max-age=60')
+    expect(miss.headers.get('Cache-Control')).toBe('private, max-age=60')
     const hit = await getMatches()
-    expect(hit.headers.get('Cache-Control')).toBe('public, max-age=60')
+    expect(hit.headers.get('Cache-Control')).toBe('private, max-age=60')
   })
+})
+
+it('correção sem repontuação nunca recupera uma entrada antiga do cache', async () => {
+  stubEdgeCache()
+  const { sqlite, getMatches } = await fixture()
+  await getMatches()
+  sqlite.exec("UPDATE matches SET home_score = 3, scored_at = NULL WHERE id = 'm2'")
+  let body = (await (await getMatches()).json()) as MatchesBody
+  expect(body.matches.find((m) => m.id === 'm2')?.home_score).toBe(3)
+  sqlite.exec(
+    "UPDATE matches SET home_score = 4, scored_at = '2026-05-02T00:00:00Z' WHERE id = 'm2'",
+  )
+  await getMatches()
+  sqlite.exec("UPDATE matches SET home_score = 5, scored_at = NULL WHERE id = 'm2'")
+  body = (await (await getMatches()).json()) as MatchesBody
+  expect(body.matches.find((m) => m.id === 'm2')?.home_score).toBe(5)
 })

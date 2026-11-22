@@ -1,9 +1,5 @@
-/* ─── Card button wrapper ────────────────────────────────────────────────── */
-
 .card {
   padding: 0;
-  /* Card preenche a altura da célula do grid para que nomes de 1 vs 2 linhas
-     não desalinhem o bloco de baixo entre cards vizinhos. */
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -24,19 +20,12 @@
   font-family: var(--font-family-base);
 }
 
-/* Bloco inferior (stats ou pódio) cola no rodapé, independente da altura do
-   título. Mantém a base alinhada entre cards da mesma linha. */
 .stats,
 .podium {
   margin-top: auto;
 }
 
-/* ─── Header ────────────────────────────────────────────────────────────── */
-
 .header {
-  /* Título em cima, badges sempre numa linha própria logo abaixo. Com as badges
-     ao lado do título, nomes curtos e longos davam cards de estrutura diferente
-     na mesma linha do grid. Empilhadas, ficam na mesma posição em todo card. */
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -48,7 +37,6 @@
   font-weight: var(--font-weight-semibold);
   margin: 0;
   min-width: 0;
-  /* Nome sem espaços maior que o card quebra em vez de vazar. */
   overflow-wrap: anywhere;
   color: var(--color-text-primary);
 }
@@ -68,8 +56,6 @@
   font-weight: var(--font-weight-semibold);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
-  /* O nome do campeonato aparece inteiro. Se não couber na largura do card,
-     quebra entre palavras. */
   white-space: normal;
   overflow-wrap: break-word;
   min-width: 0;
@@ -86,8 +72,6 @@
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
-
-/* ─── Stats ─────────────────────────────────────────────────────────────── */
 
 .stats {
   display: grid;
@@ -121,9 +105,6 @@
   color: var(--color-primary);
 }
 
-/* Linha de status da rodada, abaixo dos stats e dentro do mesmo link do card.
-   Todo card em andamento tem uma. Só a pendência ganha a cor da marca; ao vivo,
-   rodada completa e sem jogos ficam discretos. */
 .status {
   margin: 0;
   padding: var(--space-3) var(--space-4);
@@ -158,9 +139,6 @@
   vertical-align: 0.05em;
 }
 
-/* ─── Finished (encerrado) ──────────────────────────────────────────────────
-   Campeonato acabou → o card vira arquivo: quieto e dessaturado. O único estouro
-   é a coroa do campeão em lime. Nenhuma cor nova entra na marca. */
 
 .finished {
   border-color: var(--color-border);
@@ -175,15 +153,11 @@
   color: var(--color-text-secondary);
 }
 
-/* A badge de competição é lime-cheia no card ativo; num card mudo ela gritaria,
-   então vira contorno discreto. */
 .finished .badge {
   background-color: transparent;
   border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
 }
-
-/* ─── Podium (top-3 do grupo encerrado) ─────────────────────────────────── */
 
 .podium {
   list-style: none;
@@ -224,7 +198,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Coroa: a única cor de marca no card encerrado. */
 .podiumRow[data-champion] {
   color: var(--color-primary);
 }
@@ -233,7 +206,6 @@
   font-weight: var(--font-weight-bold);
 }
 
-/* "Você" fora do pódio: destacado por peso e separado por uma régua acima. */
 .podiumRow[data-you] .podiumName {
   font-weight: var(--font-weight-bold);
 }
@@ -244,9 +216,6 @@
   border-top: 1px solid var(--color-border);
 }
 
-/* ─── Rodapé do card encerrado: compartilhar resultado ──────────────────────
-   Fora do link principal (botão aninhado é HTML inválido). Discreto — o
-   convite a divulgar não deve competir com o pódio. */
 
 .finishedFooter {
   padding: 0 var(--space-5) var(--space-5);

@@ -1,26 +1,42 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
-import { invalidateApiCache } from '../../lib/api-cache'
 import { isListOf, isRecord, UNEXPECTED_RESPONSE } from '../../lib/responseShape'
-import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
-import { fetchGroupsList } from '../../lib/groupsList'
-import { isMatchLocked } from '../../lib/predictionDrafts'
+import {
+  applyDefaultRoundFromMatches,
+  competitionMatchesQueryOptions,
+  matchesQueryErrorMessage,
+} from '../../lib/competitionMatches'
+import { invalidateGroupPredictions } from '../../lib/groupPredictions'
+import { groupsListQueryOptions, invalidateGroupsList } from '../../lib/groupsList'
+import { isMatchLocked, savedBase } from '../../lib/predictionDrafts'
+import {
+  applyPredictionUpdates,
+  predictionBase,
+  rollbackPredictions,
+  type PredictionMap,
+} from '../../lib/predictionOptimistic'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
+import { acceptsFrom } from '../../lib/predictionCopy'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 import { usePredictionsReplicate } from './usePredictionsReplicate'
 
-type PredictionMap = Map<string, Prediction>
-
-/** Intervalo do relógio da aba. O "fecha em ..." mostra minutos. */
 const TICK_MS = 30_000
+const SAVE_TIMEOUT_MS = 10_000
 
-/** Grupo de origem → jogos abertos que o usuário palpitou lá. `null`: API antiga, sem o campo. */
 type ImportSources = Record<string, string[]> | null
 type PredictionsResponse = {
   predictions: Prediction[]
@@ -34,8 +50,7 @@ type SiblingGroup = {
   points_exact?: number
 }
 
-/** Palpites do usuário no grupo por jogo, com o marcador e as origens da importação. */
-async function fetchGroupPredictions(groupId: string): Promise<{
+async function fetchOwnPredictions(groupId: string): Promise<{
   predictions: PredictionMap
   importCompleted: boolean
   importSources: ImportSources
@@ -57,10 +72,6 @@ async function fetchGroupPredictions(groupId: string): Promise<{
   }
 }
 
-/**
- * Importa os palpites de `sourceId` para `groupId`. Erro da API vira exceção com a
- * mensagem dela; falha de rede, com o aviso de conexão.
- */
 async function postPredictionsImport(
   sourceId: string,
   groupId: string,
@@ -82,10 +93,6 @@ async function postPredictionsImport(
   return { imported: data.imported ?? 0, skipped: data.locked_skipped ?? 0 }
 }
 
-/**
- * Aviso depois da importação. Com palpite importado, o aviso "Palpites importados
- * de <grupo>." já confirma o sucesso. Aqui fica só o que ele não diz.
- */
 function importResultMessage(imported: number, skipped: number): string {
   const skippedMsg =
     skipped === 0
@@ -96,10 +103,6 @@ function importResultMessage(imported: number, skipped: number): string {
   return [imported > 0 ? '' : 'Nenhum palpite importado.', skippedMsg].filter(Boolean).join(' ')
 }
 
-/**
- * Grupo escolhido no seletor. Sem escolha válida, vale o primeiro de `options`,
- * o grupo com mais palpites faltando.
- */
 function pickImportSource(options: { id: string }[], id: string): string {
   return options.some((g) => g.id === id) ? id : (options[0]?.id ?? '')
 }
@@ -109,18 +112,17 @@ function usePredictionsFetch(
   competitionId: string,
   requestedRound: string | null | undefined,
   onRequestedRoundApplied: (() => void) | undefined,
+  confirmedRef: MutableRefObject<PredictionMap>,
 ) {
-  const [matches, setMatches] = useState<Match[]>([])
+  const matchesQuery = useQuery(competitionMatchesQueryOptions(competitionId))
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
   const [importCompleted, setImportCompleted] = useState(false)
   const [importSources, setImportSources] = useState<ImportSources>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [predictionsLoading, setPredictionsLoading] = useState(true)
+  const [predictionsError, setPredictionsError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
-  const [defaultRound, setDefaultRound] = useState<string | null>(null)
-  // A rodada do link fica fora das dependências da busca. Quando o `?rodada=` sai
-  // da URL, a aba não busca de novo nem volta para a rodada padrão.
   const requested = useRef({ round: requestedRound, onApplied: onRequestedRoundApplied })
+  const appliedDefaultRoundKey = useRef<string | null>(null)
   useEffect(() => {
     requested.current = { round: requestedRound, onApplied: onRequestedRoundApplied }
   })
@@ -129,47 +131,54 @@ function usePredictionsFetch(
     let active = true
     setImportCompleted(false)
     setImportSources(null)
-    setLoading(true)
-    setError(null)
+    setPredictionsLoading(true)
+    setPredictionsError(null)
 
-    Promise.all([fetchCompetitionMatches(competitionId), fetchGroupPredictions(groupId)])
-      .then(([matchesData, predictionsData]) => {
+    fetchOwnPredictions(groupId)
+      .then((predictionsData) => {
         if (!active) return
         setImportCompleted(predictionsData.importCompleted)
         setImportSources(predictionsData.importSources)
-        setMatches(matchesData.matches)
-        setDefaultRound(matchesData.default_round ?? null)
+        confirmedRef.current = predictionsData.predictions
         setPredictions(predictionsData.predictions)
-
-        const { round, onApplied } = requested.current
-        applyDefaultRoundFromMatches(
-          matchesData.matches,
-          matchesData.default_round,
-          setRoundIndex,
-          round,
-        )
-        if (round) onApplied?.()
       })
       .catch((e: Error) => {
-        if (active) setError(e.message)
+        if (active) setPredictionsError(e.message)
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) setPredictionsLoading(false)
       })
     return () => {
       active = false
     }
-  }, [groupId, competitionId])
+  }, [groupId, confirmedRef])
+
+  useEffect(() => {
+    if (!matchesQuery.data || matchesQuery.isFetching) return
+    const key = `${groupId}:${competitionId}`
+    if (appliedDefaultRoundKey.current === key) return
+    appliedDefaultRoundKey.current = key
+    const { round, onApplied } = requested.current
+    applyDefaultRoundFromMatches(
+      matchesQuery.data.matches,
+      matchesQuery.data.default_round,
+      setRoundIndex,
+      round,
+    )
+    if (round) onApplied?.()
+  }, [groupId, competitionId, matchesQuery.data, matchesQuery.isFetching])
+
+  const matchesError = matchesQueryErrorMessage(matchesQuery.error, matchesQuery.isError)
 
   return {
-    matches,
+    matches: matchesQuery.data?.matches ?? [],
     predictions,
     setPredictions,
-    loading,
-    error,
+    loading: matchesQuery.isPending || predictionsLoading,
+    error: matchesError ?? predictionsError,
     roundIndex,
     setRoundIndex,
-    defaultRound,
+    defaultRound: matchesQuery.data?.default_round ?? null,
     importCompleted,
     setImportCompleted,
     importSources,
@@ -177,11 +186,6 @@ function usePredictionsFetch(
   }
 }
 
-/**
- * Junta a listagem `fetched` ao que está na tela. Os jogos de `savedSince` foram
- * salvos depois que a listagem foi pedida: o palpite da tela é mais novo que o
- * dela e fica. Nos outros jogos vale a listagem.
- */
 function mergeFetchedPredictions(
   fetched: PredictionMap,
   current: PredictionMap,
@@ -213,7 +217,6 @@ function deriveImportOptions(
     (importSources?.[id] ?? []).filter((matchId) => open.has(matchId) && !predictions.has(matchId))
       .length
   const withMissing = otherGroups.map((g) => ({ id: g.id, name: g.name, missing: missing(g.id) }))
-  // API antiga, sem `import_sources`: vale só o marcador de importação concluída.
   if (importSources === null) {
     return { importPending: !importCompleted && withMissing.length > 0, importOptions: withMissing }
   }
@@ -224,55 +227,52 @@ function deriveImportOptions(
   }
 }
 
-/** Outros grupos do usuário na mesma competição, de onde a importação traz palpites. */
 function useSiblingGroups(
   groupId: string,
   competitionId: string,
   userId: string | undefined,
 ): SiblingGroup[] {
-  const [siblings, setSiblings] = useState<SiblingGroup[]>([])
-
-  useEffect(() => {
-    let active = true
-    setSiblings([])
-    // Vindo do painel, a lista já está no cache em memória e não há nova busca.
-    fetchGroupsList(userId)
-      .then((data) => {
-        if (!active) return
-        // Sem pré-seleção: o padrão é o primeiro de `importOptions`, o grupo com mais
-        // palpites faltando.
-        setSiblings(
-          data.groups.filter((g) => g.competition_id === competitionId && g.id !== groupId),
-        )
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [groupId, competitionId, userId])
-
-  return siblings
+  const groupsQuery = useQuery(groupsListQueryOptions(userId))
+  return (groupsQuery.data?.groups ?? []).filter(
+    (g) => g.competition_id === competitionId && g.id !== groupId,
+  )
 }
 
-function usePredictionsImport(
-  groupId: string,
-  competitionId: string,
-  userId: string | undefined,
-  matches: Match[],
-  predictions: PredictionMap,
-  setPredictions: Dispatch<SetStateAction<PredictionMap>>,
-  importCompleted: boolean,
-  setImportCompleted: Dispatch<SetStateAction<boolean>>,
-  importSources: ImportSources,
-  setImportSources: Dispatch<SetStateAction<ImportSources>>,
-  pointsExact: number,
-) {
+type ImportInput = {
+  groupId: string
+  competitionId: string
+  userId: string | undefined
+  matches: Match[]
+  predictions: PredictionMap
+  setPredictions: Dispatch<SetStateAction<PredictionMap>>
+  confirmedRef: MutableRefObject<PredictionMap>
+  importCompleted: boolean
+  setImportCompleted: Dispatch<SetStateAction<boolean>>
+  importSources: ImportSources
+  setImportSources: Dispatch<SetStateAction<ImportSources>>
+  pointsExact: number
+}
+
+function usePredictionsImport({
+  groupId,
+  competitionId,
+  userId,
+  matches,
+  predictions,
+  setPredictions,
+  confirmedRef,
+  importCompleted,
+  setImportCompleted,
+  importSources,
+  setImportSources,
+  pointsExact,
+}: ImportInput) {
+  const queryClient = useQueryClient()
   const scope = useRef({ active: true })
   const siblings = useSiblingGroups(groupId, competitionId, userId)
-  // Grupo "só vencedor" não é origem para grupo de placar exato: a API recusa, porque
-  // o 1x0 do botão não é um placar palpitado.
-  const otherGroups = siblings.filter((g) => !(pointsExact > 0 && g.points_exact === 0))
-  // Jogos salvos enquanto a listagem pedida depois da importação não chega.
+  const otherGroups = siblings.filter((g) =>
+    acceptsFrom({ points_exact: g.points_exact ?? 3 }, { points_exact: pointsExact }),
+  )
   const savedDuringRefresh = useRef<Set<string> | null>(null)
   function noteSaved(matchIds: string[]) {
     for (const id of matchIds) savedDuringRefresh.current?.add(id)
@@ -280,8 +280,6 @@ function usePredictionsImport(
   const [importExpanded, setImportExpanded] = useState(false)
   const [importSourceId, setImportSourceId] = useState<string>('')
   const [importing, setImporting] = useState(false)
-  // Grupo da última importação feita nesta visita. A API guarda só o marcador
-  // `import_completed`, então ao recarregar a origem não é mais conhecida.
   const [importedFromName, setImportedFromName] = useState<string | null>(null)
   const [importFeedback, setImportFeedback] = useState<{
     ok: boolean
@@ -315,8 +313,6 @@ function usePredictionsImport(
   async function handleImport() {
     const current = scope.current
     const sourceId = selectedSourceId
-    // O seletor de pendências só preenche o que falta, inclusive na primeira
-    // importação. O seletor completo, aberto pelo link, sobrescreve.
     const onlyMissing = importSources !== null && !importExpanded
     if (!sourceId || !current.active) return
     trackEvent('click_predictions_importar')
@@ -330,18 +326,20 @@ function usePredictionsImport(
         setImportCompleted(true)
         setImportedFromName(otherGroups.find((g) => g.id === sourceId)?.name ?? null)
         setImportExpanded(false)
-        // Import altera pending_predictions do grupo alvo na home.
-        invalidateApiCache('groups:')
+        invalidateGroupsList(queryClient)
+        invalidateGroupPredictions(queryClient)
       }
       if (msg) setImportFeedback({ ok: true, message: msg })
       const savedSince = new Set<string>()
       savedDuringRefresh.current = savedSince
       try {
-        const refreshed = await fetchGroupPredictions(groupId)
+        const refreshed = await fetchOwnPredictions(groupId)
         if (current.active) {
-          // O importado muda o palpite salvo, e `usePredictionDrafts` descarta o
-          // rascunho digitado sobre o valor anterior. O palpite salvo enquanto a
-          // listagem chegava fica.
+          confirmedRef.current = mergeFetchedPredictions(
+            refreshed.predictions,
+            confirmedRef.current,
+            savedSince,
+          )
           setPredictions((prev) => mergeFetchedPredictions(refreshed.predictions, prev, savedSince))
           if (refreshed.importSources) setImportSources(refreshed.importSources)
         }
@@ -393,6 +391,27 @@ export function usePredictionsTab(
   onRequestedRoundApplied?: () => void,
   pointsExact = 3,
 ) {
+  const queryClient = useQueryClient()
+  const confirmedRef = useRef<PredictionMap>(new Map())
+  const saveSeqRef = useRef<Map<string, number>>(new Map())
+  const cardControllersRef = useRef<Map<string, AbortController>>(new Map())
+  const scopeSeqRef = useRef(0)
+  const [cardErrors, setCardErrors] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    scopeSeqRef.current += 1
+    confirmedRef.current = new Map()
+    saveSeqRef.current.clear()
+    for (const controller of cardControllersRef.current.values()) controller.abort()
+    cardControllersRef.current.clear()
+    setCardErrors(new Map())
+    return () => {
+      scopeSeqRef.current += 1
+      for (const controller of cardControllersRef.current.values()) controller.abort()
+      cardControllersRef.current.clear()
+    }
+  }, [groupId])
+
   const {
     matches,
     predictions,
@@ -406,17 +425,31 @@ export function usePredictionsTab(
     setImportCompleted,
     importSources,
     setImportSources,
-  } = usePredictionsFetch(groupId, competitionId, requestedRound, onRequestedRoundApplied)
+  } = usePredictionsFetch(
+    groupId,
+    competitionId,
+    requestedRound,
+    onRequestedRoundApplied,
+    confirmedRef,
+  )
 
-  // Um relógio só para o cabeçalho, os cards e os rascunhos. Ele também vira no
-  // início de cada jogo, e o card trava no mesmo instante que a API.
+  const allMatchesRef = useRef(matches)
+  allMatchesRef.current = matches
+
   const now = useNow(
     TICK_MS,
     matches.map((m) => m.start_time),
   )
 
-  const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
-    usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions, now)
+  const {
+    unsavedDrafts,
+    unsavedRounds,
+    handleDraftChange,
+    handlePenaltyDraftChange,
+    clearSubmittedDrafts,
+    rebaseDrafts,
+    hasRawDraft,
+  } = usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions, now)
 
   const {
     importExpanded,
@@ -432,19 +465,20 @@ export function usePredictionsTab(
     importedFromName,
     handleImport,
     noteSaved,
-  } = usePredictionsImport(
+  } = usePredictionsImport({
     groupId,
     competitionId,
     userId,
     matches,
     predictions,
     setPredictions,
+    confirmedRef,
     importCompleted,
     setImportCompleted,
     importSources,
     setImportSources,
     pointsExact,
-  )
+  })
 
   const {
     roundKeys,
@@ -482,10 +516,21 @@ export function usePredictionsTab(
     { groupId, competitionId, userId, round: selectedRound, pointsExact },
     siblings,
   )
-  // A replicação pertence à rodada dos jogos salvos. Um "Salvar todos" pode terminar
-  // depois que a tela passou para outra rodada.
   function replicateSaved(matchIds: string[]) {
     void replicate(matchIds, matches.find((m) => m.id === matchIds[0])?.round ?? selectedRound)
+  }
+
+  function clearCardErrors(matchIds: string[]) {
+    if (matchIds.length === 0) return
+    setCardErrors((prev) => {
+      let nextMap: Map<string, string> | null = null
+      for (const id of matchIds) {
+        if (!prev.has(id)) continue
+        nextMap ??= new Map(prev)
+        nextMap.delete(id)
+      }
+      return nextMap ?? prev
+    })
   }
 
   const {
@@ -496,35 +541,119 @@ export function usePredictionsTab(
     pendingCount,
     handleSaveAll,
     handleSaved,
-  } = usePredictionsBulkSave(
+    markHasSaved,
+  } = usePredictionsBulkSave({
     groupId,
     roundMatches,
     predictions,
     setPredictions,
+    confirmedRef,
+    saveSeqRef,
+    scopeSeqRef,
     selectedRound,
-    matches,
+    allMatches: matches,
     unsavedDrafts,
-    (matchIds) => {
+    clearSubmittedDrafts,
+    rebaseDrafts,
+    onClearCardErrors: clearCardErrors,
+    onBulkSaved: (matchIds) => {
       noteSaved(matchIds)
       replicateSaved(matchIds)
     },
-  )
+  })
 
-  // Com a opção marcada, o palpite salvo no card vai também para os outros grupos.
+  async function handleCardSave(
+    matchId: string,
+    homeScore: number,
+    awayScore: number,
+    penWinner: 'home' | 'away' | null,
+  ): Promise<boolean> {
+    const scopeSeq = scopeSeqRef.current
+    const seq = (saveSeqRef.current.get(matchId) ?? 0) + 1
+    saveSeqRef.current.set(matchId, seq)
+    const nextBase = predictionBase(homeScore, awayScore, penWinner)
+    clearCardErrors([matchId])
+    clearSubmittedDrafts([{ matchId, nextBase }])
+    const update = [{ matchId, home: homeScore, away: awayScore, penaltyWinner: penWinner }]
+    setPredictions((prev) => applyPredictionUpdates(prev, update, allMatchesRef.current))
+
+    cardControllersRef.current.get(matchId)?.abort()
+    const controller = new AbortController()
+    cardControllersRef.current.set(matchId, controller)
+    const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
+    let res: Response | null = null
+    try {
+      res = await apiFetch(buildApiUrl('/predictions'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group_id: groupId,
+          match_id: matchId,
+          predicted_home_score: homeScore,
+          predicted_away_score: awayScore,
+          predicted_penalty_winner: penWinner,
+        }),
+        signal: controller.signal,
+      })
+    } catch {
+    } finally {
+      clearTimeout(timeout)
+      if (cardControllersRef.current.get(matchId) === controller) {
+        cardControllersRef.current.delete(matchId)
+      }
+    }
+
+    if (scopeSeqRef.current !== scopeSeq) return false
+
+    if (!res || !res.ok) {
+      const message = !res
+        ? CONNECTION_ERROR
+        : (((await res.json().catch(() => ({}))) as { error?: string }).error ??
+          'Erro ao salvar palpite')
+      if (scopeSeqRef.current !== scopeSeq) return false
+      if (saveSeqRef.current.get(matchId) === seq) {
+        rebaseDrafts([
+          {
+            matchId,
+            fromBase: nextBase,
+            toBase: savedBase(confirmedRef.current.get(matchId)),
+          },
+        ])
+        setPredictions((prev) =>
+          rollbackPredictions(prev, [matchId], confirmedRef.current, allMatchesRef.current),
+        )
+        setCardErrors((prev) => new Map(prev).set(matchId, message))
+      }
+      return false
+    }
+
+    if (saveSeqRef.current.get(matchId) !== seq) return false
+
+    confirmedRef.current = applyPredictionUpdates(confirmedRef.current, update, allMatchesRef.current)
+    void invalidateGroupsList(queryClient)
+    void invalidateGroupPredictions(queryClient)
+    noteSaved([matchId])
+    markHasSaved()
+    replicateSaved([matchId])
+    return true
+  }
+
   function handleSavedAndReplicate(
     matchId: string,
     home: number,
     away: number,
     penaltyWinner: 'home' | 'away' | null,
   ) {
+    confirmedRef.current = applyPredictionUpdates(
+      confirmedRef.current,
+      [{ matchId, home, away, penaltyWinner }],
+      allMatchesRef.current,
+    )
     noteSaved([matchId])
     handleSaved(matchId, home, away, penaltyWinner)
     replicateSaved([matchId])
   }
 
-  // Usa `isMatchLocked`, a regra de `collectRoundDrafts`. Sem jogo aberto na rodada
-  // exibida, a barra "Salvar todos" sai da tela. Ela fica enquanto um envio está em
-  // andamento, mostra o erro dele e leva a confirmação de "Aplicar também em".
   const hasOpenMatch = roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id), now))
   const showSaveBar =
     hasOpenMatch || savingAll || bulkError !== null || replicating || replicateFeedback.length > 0
@@ -569,6 +698,9 @@ export function usePredictionsTab(
     importedFromName,
     handleImport,
     handleSaved: handleSavedAndReplicate,
+    handleCardSave,
+    hasRawDraft,
+    cardErrors,
     replicateTargets,
     replicateOverflow,
     replicateEnabled,

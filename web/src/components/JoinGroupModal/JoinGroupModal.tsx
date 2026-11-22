@@ -18,13 +18,10 @@ interface JoinGroupModalProps {
   isOpen: boolean
   onClose: () => void
   onJoined: (group: JoinedGroup) => void
-  /** Pre-fill the invite code (e.g. from a share link) */
   initialCode?: string
-  /** Envia `initialCode` assim que o modal abre, uma única vez. */
   autoSubmit?: boolean
 }
 
-/** Só quem abriu `/convite/<código>` passou pela página que conta aberturas. */
 function joinEntryMethod(fromLink: boolean, inviteCode: string): JoinGroupEntryMethod {
   if (!fromLink) return 'codigo'
   return wasInviteDocumentOpened(inviteCode) ? 'convite_link' : 'convite_antigo'
@@ -60,8 +57,6 @@ export default function JoinGroupModal({
     setSubmitting(true)
 
     const invite_code = parseInviteCode(rawCode)
-    // Veio pelo link quando o código enviado é o mesmo que chegou na URL;
-    // se o usuário apagou e digitou outro, conta como código.
     const fromLink = initialCode !== '' && parseInviteCode(initialCode) === invite_code
     const entry_method = joinEntryMethod(fromLink, invite_code)
 
@@ -102,7 +97,7 @@ export default function JoinGroupModal({
   }, [isOpen, autoSubmit])
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Entrar em grupo">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Entrar em grupo" analyticsId="entrar_grupo">
       {joined ? (
         <SuccessView joined={joined} onClose={handleClose} />
       ) : (

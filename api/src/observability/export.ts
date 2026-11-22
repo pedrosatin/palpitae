@@ -1,53 +1,52 @@
 import type { Env } from '../types'
 import { runAeSqlStrict } from './aeSql'
 
-/**
- * Cold path — arquiva um dia de eventos do Analytics Engine no R2 como NDJSON,
- * com retenção ILIMITADA (o AE só guarda ~3 meses). Roda num cron diário (00:05 UTC)
- * e exporta o dia ANTERIOR. Ver `docs/observability.md`.
- *
- * Desenho: o AE é o staging (escrita barata, sem latência); este export "congela"
- * tudo em R2 1x/dia. Um arquivo/dia ⇒ ~365 escritas/ano, irrisório no free tier
- * (10 GB, egress zero, não expira). Reaproveita o cron que já existe — sem Queues.
- *
- * Cada arquivo leva um manifesto em `customMetadata` (`events`, `rows`, `complete`).
- * Só `complete: '1'` encerra o dia; os demais são reconsultados pelo backfill e
- * substituídos quando a nova coleta não perde linhas.
- */
 
 const DATASET = 'palpitae_events'
 
-// Linhas por consulta. A SQL API do Analytics Engine corta o resultado (~10k
-// linhas) silenciosamente; com o teto explícito, página cheia significa "pode
-// haver mais" e a coleta continua a partir do último segundo lido.
 const ROW_LIMIT = 10000
 
-// Teto de páginas por dia (30 mil linhas, cerca de 120 vezes o maior dia de
-// 2026): o dia inteiro fica em memória antes do put, e o Worker tem 128 MB.
-// Dia que passa disso é gravado truncado e reconsultado a cada execução.
 const MAX_PAGES = 3
 
-// Um dia só é dado como completo quando exportado ao menos 24 h depois de
-// terminar. O export das 00:05 é provisório e vira definitivo no cron seguinte,
-// que reconsulta o dia e pega linhas que a SQL API ainda não devolvia.
+const DAY_ROW_CAP = MAX_PAGES * ROW_LIMIT
+
+const VOLUME_EVENT_TYPES = [
+  'oauth_error',
+  'matches_cache',
+  'request_perf',
+  'provider_http_attempt',
+  'poller_run',
+] as const
+
+const VOLUME_TYPE_SET: ReadonlySet<string> = new Set(VOLUME_EVENT_TYPES)
+
+const MAX_BUSINESS_PAGES = 2
+
 const SETTLE_MS = 24 * 60 * 60 * 1000
 
-// Backfill (#4): teto de exports por execução do cron, p/ não estourar tempo/CPU.
 const MAX_EXPORTS_PER_RUN = 10
 
-// A partir de quantos dias atrás uma coleta completa com MENOS linhas que o
-// arquivo fecha o dia com o corpo arquivado. Perto do fim da retenção do AE
-// (~90 dias) a coleta só tende a encolher; antes disso, a diferença pode ser
-// passageira e o dia continua aberto para a próxima execução.
 const CLOSE_KEPT_FROM_DAYS_BACK = 80
 
 const DATE_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
 
-/** Manifesto de completude gravado em `customMetadata` de cada arquivo diário. */
-type Manifest = { events: string; rows: string; complete: '1' | '0' }
+type Manifest = {
+  events: string
+  rows: string
+  complete: '1' | '0'
+  truncatedTypes?: string
+}
 
-/** Um dia coletado do AE, pronto para gravar. */
-type DayExport = { key: string; body: string; rows: number; complete: boolean; manifest: Manifest }
+type Row = Record<string, unknown>
+
+type DayExport = {
+  key: string
+  body: string
+  rows: number
+  businessRows: number
+  complete: boolean
+  manifest: Manifest
+}
 
 /** Limites UTC do dia e a chave R2 correspondente. Exportado para testes. */
 export function dayBounds(day: Date): {
@@ -75,67 +74,148 @@ export function dayBounds(day: Date): {
   }
 }
 
+function isVolumeRow(row: Row): boolean {
+  return VOLUME_TYPE_SET.has(String(row.blob1))
+}
+
 function isConfigured(env: Env): env is Env & { EVENTS: R2Bucket } {
   return Boolean(env.EVENTS && env.CF_ACCOUNT_ID && env.AE_SQL_TOKEN)
 }
 
 function assertDateTime(value: string): void {
-  // A SQL API do Analytics Engine é ClickHouse-like e não aceita bind params:
-  // todo instante interpolado na consulta passa por esta validação.
   if (!DATE_TIME.test(value)) {
     throw new Error(`Instante inválido para a consulta do export: ${value}`)
   }
 }
 
-function pageSql(cursor: string, to: string): string {
+const VOLUME_SQL_LIST = VOLUME_EVENT_TYPES.map((type) => `'${type}'`).join(', ')
+
+function rangeSql(cursor: string, to: string): string {
   assertDateTime(cursor)
   assertDateTime(to)
+  return `WHERE timestamp >= toDateTime('${cursor}') AND timestamp < toDateTime('${to}')`
+}
+
+function pageSql(cursor: string, to: string): string {
+  return `SELECT * FROM ${DATASET} ${rangeSql(cursor, to)} ORDER BY timestamp ASC LIMIT ${ROW_LIMIT}`
+}
+
+function businessPageSql(cursor: string, to: string): string {
   return (
-    `SELECT * FROM ${DATASET} ` +
-    `WHERE timestamp >= toDateTime('${cursor}') AND timestamp < toDateTime('${to}') ` +
-    `ORDER BY timestamp ASC ` +
-    `LIMIT ${ROW_LIMIT}`
+    `SELECT * FROM ${DATASET} ${rangeSql(cursor, to)} ` +
+    `AND blob1 NOT IN (${VOLUME_SQL_LIST}) ORDER BY timestamp ASC LIMIT ${ROW_LIMIT}`
+  )
+}
+
+function volumeTypesSql(cursor: string, to: string): string {
+  return (
+    `SELECT blob1 AS event_type FROM ${DATASET} ${rangeSql(cursor, to)} ` +
+    `AND blob1 IN (${VOLUME_SQL_LIST}) GROUP BY blob1`
   )
 }
 
 /**
- * Lê todas as linhas de [from, to) em páginas de ROW_LIMIT. Página cheia não é
- * o fim: as linhas do último segundo dela são descartadas e a próxima página
- * começa nesse segundo, para que nenhum segundo fique dividido entre páginas.
- * `truncated` indica que sobrou dado sem ler (um único segundo com mais de
- * ROW_LIMIT linhas ou MAX_PAGES esgotado).
+ * Lê todas as linhas de [from, to) em páginas de ROW_LIMIT e entrega cada página
+ * a `onPage`. Página cheia não é o fim: as linhas do último segundo dela são
+ * descartadas e a próxima página começa nesse segundo, para que nenhum segundo
+ * fique dividido entre páginas. `truncated` indica que sobrou dado sem ler (um
+ * único segundo com mais de ROW_LIMIT linhas ou `maxPages` esgotado). Nesse caso,
+ * `cursor` é o primeiro segundo não lido: as páginas entregues têm tudo o que veio
+ * antes dele e nada dele em diante. Cada página custa uma chamada ao AE.
  */
-async function collectRows(
+async function collectPages(
   env: Env,
+  sqlFor: (cursor: string, to: string) => string,
   from: string,
   to: string,
-): Promise<{ rows: Record<string, unknown>[]; truncated: boolean }> {
-  const rows: Record<string, unknown>[] = []
+  maxPages: number,
+  onPage: (rows: Row[]) => void,
+): Promise<{ truncated: boolean; cursor: string }> {
   let cursor = from
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const batch = await runAeSqlStrict(env, pageSql(cursor, to))
+  for (let page = 0; page < maxPages; page++) {
+    const batch = await runAeSqlStrict(env, sqlFor(cursor, to))
     if (batch.length < ROW_LIMIT) {
-      rows.push(...batch)
-      return { rows, truncated: false }
+      onPage(batch)
+      return { truncated: false, cursor }
     }
     const last = String(batch[batch.length - 1].timestamp)
     const settled = batch.filter((row) => String(row.timestamp) !== last)
     if (settled.length === 0) break
-    rows.push(...settled)
+    onPage(settled)
     cursor = last
   }
-  return { rows, truncated: true }
+  return { truncated: true, cursor }
 }
 
-/** Coleta `day` (UTC) no AE e monta o arquivo e o manifesto, sem gravar. */
+/**
+ * Tira de `rows`, em ordem de tempo, as `excess` linhas de volume mais recentes e
+ * anota o tipo de cada uma em `dropped`. As demais linhas ficam na mesma ordem.
+ * Se há menos de `excess` linhas de volume, tira todas.
+ */
+function dropLatestVolume(rows: Row[], excess: number, dropped: Set<string>): Row[] {
+  let cut = rows.length
+  let remaining = excess
+  while (cut > 0 && remaining > 0) {
+    cut--
+    if (isVolumeRow(rows[cut])) {
+      dropped.add(String(rows[cut].blob1))
+      remaining--
+    }
+  }
+  return rows.slice(0, cut).concat(rows.slice(cut).filter((row) => !isVolumeRow(row)))
+}
+
+async function collectRows(
+  env: Env,
+  from: string,
+  to: string,
+): Promise<{ rows: Row[]; businessTruncated: boolean; truncatedTypes: string[] }> {
+  let earlier: Row[] = []
+  const ordered = await collectPages(env, pageSql, from, to, MAX_PAGES, (page) => {
+    earlier.push(...page)
+  })
+  if (!ordered.truncated) {
+    return { rows: earlier, businessTruncated: false, truncatedTypes: [] }
+  }
+
+  const later: Row[] = []
+  const truncated = new Set<string>()
+  let businessDropped = false
+  const business = await collectPages(env, businessPageSql, ordered.cursor, to, MAX_BUSINESS_PAGES, (page) => {
+    later.push(...page)
+    const excess = earlier.length + later.length - DAY_ROW_CAP
+    if (excess > 0) earlier = dropLatestVolume(earlier, excess, truncated)
+    const room = DAY_ROW_CAP - earlier.length
+    if (later.length > room) {
+      later.length = room
+      businessDropped = true
+    }
+  })
+  const unread = await runAeSqlStrict(env, volumeTypesSql(ordered.cursor, to))
+  for (const row of unread) truncated.add(String(row.event_type))
+
+  // As linhas de `later` começam no cursor e as de `earlier` terminam antes dele:
+  // a concatenação já está em ordem de tempo.
+  return {
+    rows: earlier.concat(later),
+    businessTruncated: business.truncated || businessDropped,
+    truncatedTypes: VOLUME_EVENT_TYPES.filter((type) => truncated.has(type)),
+  }
+}
+
 async function buildDayExport(env: Env, day: Date, now: Date): Promise<DayExport> {
   const { from, to, key } = dayBounds(day)
-  const { rows, truncated } = await collectRows(env, from, to)
+  const { rows, businessTruncated, truncatedTypes } = await collectRows(env, from, to)
 
-  if (truncated) {
+  if (businessTruncated) {
     console.warn(
       `[export] ${key}: ${rows.length} linhas lidas e ainda havia mais — ` +
         'arquivo marcado como incompleto.',
+    )
+  } else if (truncatedTypes.length > 0) {
+    console.warn(
+      `[export] ${key}: ${rows.length} linhas lidas; tipos de volume cortados no teto: ` +
+        `${truncatedTypes.join(', ')}.`,
     )
   }
 
@@ -145,7 +225,9 @@ async function buildDayExport(env: Env, day: Date, now: Date): Promise<DayExport
   // é o que alimenta a série histórica do dashboard além da janela do AE.
   const events = rows.reduce((sum, r) => sum + Number(r._sample_interval ?? 1), 0)
   const settled = now.getTime() - Date.parse(`${to.replace(' ', 'T')}Z`) >= SETTLE_MS
-  const complete = !truncated && settled
+  // Corte só em tipos de volume não mantém o dia aberto: reconsultar não traria
+  // as linhas que sobraram, só repetiria o custo em chamadas ao AE.
+  const complete = !businessTruncated && settled
 
   // Dia sem eventos vira um NDJSON vazio (zero registros, arquivo válido): o
   // manifesto distingue esse dia de uma coleta que falhou, que não grava nada.
@@ -154,8 +236,14 @@ async function buildDayExport(env: Env, day: Date, now: Date): Promise<DayExport
     key,
     body,
     rows: rows.length,
+    businessRows: rows.filter((r) => !isVolumeRow(r)).length,
     complete,
-    manifest: { events: String(events), rows: String(rows.length), complete: complete ? '1' : '0' },
+    manifest: {
+      events: String(events),
+      rows: String(rows.length),
+      complete: complete ? '1' : '0',
+      ...(truncatedTypes.length > 0 ? { truncatedTypes: truncatedTypes.join(',') } : {}),
+    },
   }
 }
 
@@ -184,17 +272,27 @@ export async function exportEventsToR2(env: Env, day: Date, now = new Date()): P
   )
 }
 
-/** Conta linhas e eventos do NDJSON já arquivado. */
-function countArchived(body: string): { rows: number; events: number } {
-  const lines = body.split('\n').filter((l) => l.trim() !== '')
-  const events = lines.reduce((sum, line) => {
-    const row = JSON.parse(line) as Record<string, unknown>
-    return sum + Number(row._sample_interval ?? 1)
-  }, 0)
-  return { rows: lines.length, events }
+type Counted = { rows: number; events: number; businessRows: number }
+
+function countArchived(body: string): Counted {
+  const counted: Counted = { rows: 0, events: 0, businessRows: 0 }
+  for (const line of body.split('\n')) {
+    if (line.trim() === '') continue
+    const row = JSON.parse(line) as Row
+    counted.rows++
+    counted.events += Number(row._sample_interval ?? 1)
+    if (!isVolumeRow(row)) counted.businessRows++
+  }
+  return counted
 }
 
-/** Troca o objeto só se ele ainda for o lido no `head` (mesmo etag). */
+function shouldReplace(fresh: DayExport, counted: Counted): boolean {
+  if (fresh.businessRows !== counted.businessRows) {
+    return fresh.businessRows > counted.businessRows
+  }
+  return fresh.rows > counted.rows || (fresh.complete && fresh.rows >= counted.rows)
+}
+
 async function replaceIfUnchanged(
   bucket: R2Bucket,
   key: string,
@@ -211,16 +309,16 @@ async function replaceIfUnchanged(
 }
 
 /**
- * Reconsulta um dia já arquivado sem manifesto completo e troca o arquivo só se
- * a coleta nova não perde linhas: mais linhas, ou completa com ao menos as
- * mesmas. A troca é condicionada ao etag lido no `head` — se o objeto mudou no
- * meio do caminho, o R2 recusa e o arquivo atual fica. Falha na consulta ou no
- * upload lança antes de tocar no objeto, que continua o mesmo.
+ * Reconsulta um dia já arquivado sem manifesto completo e troca o arquivo quando
+ * `shouldReplace` aprova a coleta nova. A troca é condicionada ao etag lido no
+ * `head`. Se o objeto mudou no meio do caminho, o R2 recusa e o arquivo atual
+ * fica. Falha na consulta ou no upload lança antes de tocar no objeto, que
+ * continua o mesmo.
  *
- * Se a coleta nova, já completa, tem MENOS linhas, o corpo arquivado fica. Perto
- * do fim da retenção do AE (`nearRetentionEnd`), o arquivo é o melhor registro
- * que vai existir do dia, e o manifesto contado do próprio NDJSON passa a dizer
- * que o dia está fechado. Antes disso (amostragem na leitura, por exemplo), o
+ * Se a coleta nova, já completa, é recusada (menos eventos de negócio, ou os
+ * mesmos e menos linhas), o corpo arquivado fica. Perto do fim da retenção do AE
+ * (`nearRetentionEnd`), o arquivo é o melhor registro que vai existir do dia, e o
+ * manifesto contado do próprio NDJSON passa a dizer que o dia está fechado. Antes disso (amostragem na leitura, por exemplo), o
  * dia continua com `complete: '0'` e é reconsultado na próxima execução.
  */
 async function repairDay(
@@ -238,7 +336,7 @@ async function repairDay(
   const counted = countArchived(archived)
 
   const fresh = await buildDayExport(env, day, now)
-  if (fresh.rows > counted.rows || (fresh.complete && fresh.rows >= counted.rows)) {
+  if (shouldReplace(fresh, counted)) {
     if (await replaceIfUnchanged(bucket, key, fresh.body, fresh.manifest, existing.etag)) {
       console.info(
         `[export] ${key}: reparado de ${counted.rows} para ${fresh.rows} linhas, ` +
@@ -249,7 +347,8 @@ async function repairDay(
   }
 
   console.warn(
-    `[export] ${key}: nova coleta tem ${fresh.rows} linhas e o arquivo tem ${counted.rows} — mantido.`,
+    `[export] ${key}: nova coleta tem ${fresh.rows} linhas (${fresh.businessRows} de negócio) e o ` +
+      `arquivo tem ${counted.rows} (${counted.businessRows} de negócio); arquivo mantido.`,
   )
   // Fora do fim da retenção, ou com coleta nova provisória ou truncada, o dia
   // fica aberto e volta na próxima execução. Só regrava agora para fechar o dia
@@ -260,6 +359,7 @@ async function repairDay(
     events: String(counted.events),
     rows: String(counted.rows),
     complete: close ? '1' : '0',
+    ...(meta.truncatedTypes ? { truncatedTypes: meta.truncatedTypes } : {}),
   }
   await replaceIfUnchanged(bucket, key, archived, manifest, existing.etag)
 }

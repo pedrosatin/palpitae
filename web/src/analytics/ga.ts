@@ -43,18 +43,13 @@ export function getStoredConsent(): Consent | null {
       const parts = value.split(':')
       if (parts.length === 2) {
         const timestamp = parseInt(parts[1], 10)
-        // O banner reaparece a cada 30 dias para quem recusou.
-        // Re-pedir com muita frequência (ex: 3 dias) é considerado "Consent Fatigue" e
-        // pode ir contra o princípio de "consentimento livre" da LGPD/GDPR.
         const EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
         if (Date.now() - timestamp < EXPIRY_MS) {
           return 'denied'
         }
-        // Expirou: limpa o storage para mostrar o banner de novo na próxima montagem
         localStorage.removeItem(CONSENT_KEY)
         return null
       }
-      // Fallback para o valor antigo (apenas 'denied')
       return 'denied'
     }
     return null
@@ -69,7 +64,6 @@ export function setConsent(consent: Consent): void {
   currentConsent = consent
   window[`ga-disable-${config.gaMeasurementId}`] = consent === 'denied'
   try {
-    // Quando o usuário nega, salvamos o timestamp para podermos pedir novamente no futuro
     const valueToStore = consent === 'denied' ? `denied:${Date.now()}` : consent
     localStorage.setItem(CONSENT_KEY, valueToStore)
   } catch {
@@ -79,8 +73,6 @@ export function setConsent(consent: Consent): void {
   if (consent === 'denied') {
     clearGaCookies()
     if (previousConsent === 'granted' && window.google_tag_manager && getStoredConsent() === 'denied') {
-      // A recarga encerra os eventos automáticos do cliente já carregado. A nova
-      // página restaura denied e ga-disable antes de qualquer chamada do gtag.
       window.location.reload()
       return
     }
@@ -109,13 +101,9 @@ export function initGa(): void {
   window[`ga-disable-${config.gaMeasurementId}`] = currentConsent === 'denied'
   window.dataLayer = window.dataLayer || []
   window.gtag = function gtag() {
-    // O GTM exige estritamente o objeto `arguments` nativo. Se usarmos rest parameters
-    // (...args), um Array é criado e o GTM ignora silenciosamente os eventos.
-    // eslint-disable-next-line prefer-rest-params
     window.dataLayer.push(arguments)
   }
 
-  // Consent Mode v2 — nega tudo por padrão até o opt-in explícito (LGPD)
   window.gtag('consent', 'default', {
     ad_storage: 'denied',
     ad_user_data: 'denied',
@@ -123,7 +111,6 @@ export function initGa(): void {
     analytics_storage: 'denied',
   })
 
-  // Restaura o consentimento concedido numa visita anterior
   if (currentConsent === 'granted') {
     window.gtag('consent', 'update', { analytics_storage: 'granted' })
   } else if (currentConsent === 'denied') {
@@ -131,15 +118,9 @@ export function initGa(): void {
   }
 
   window.gtag('js', new Date())
-  // Só `set`: o que vai no `config` tem precedência sobre `set` e prenderia os
-  // eventos seguintes na página do primeiro carregamento.
   window.gtag('set', firstLoadPage())
   window.gtag('config', config.gaMeasurementId)
 
-  // Carrega o gtag.js fora do caminho crítico de renderização: o stub acima já
-  // enfileira os hits em dataLayer, então o script real pode chegar depois do
-  // load/idle sem perder nenhum evento — apenas adia ~165 KiB que não são
-  // necessários para pintar a página (reduz o "JS não utilizado" do PageSpeed).
   loadGtagScript()
 }
 
@@ -182,8 +163,76 @@ export function trackPageView(page: GaPage, referrer: string): void {
   window.gtag?.('event', 'page_view', params)
 }
 
+export type EventParamValue = string | number | boolean
+export type EventParams = Record<string, EventParamValue>
+
+/**
+ * Parâmetros permitidos por evento no GA4.
+ * Chaves fora desta lista e parâmetros enviados para eventos sem entrada na
+ * tabela são descartados antes de chamar `gtag`, para evitar envio acidental de
+ * texto livre ou dado pessoal.
+ */
+export const EVENT_ALLOWED_PARAMS: Record<string, readonly string[]> = {
+  click_modal_fechar: ['modal'],
+  entrar_origem: ['origem'],
+  login: ['method', 'origem'],
+  share_invite: ['method', 'context'],
+  join_group: ['entry_method'],
+  join_request: [],
+  approve_join_request: [],
+  submit_criar_grupo: ['origem'],
+  click_create_group_preset_selecionado: ['preset'],
+  click_create_group_ajuda_pontuacao: ['campo'],
+  click_group_picks_ver_quem_palpitou: ['open'],
+  change_group_picks_rodada: ['round'],
+  click_group_picks_rodada_anterior: ['round'],
+  click_group_picks_proxima_rodada: ['round'],
+  click_leaderboard_rodada_anterior: ['round'],
+  click_leaderboard_proxima_rodada: ['round'],
+  change_leaderboard_rodada: ['round'],
+  click_matchcard_salvar: ['match_id'],
+  click_matchcard_resultado: ['match_id', 'outcome'],
+  click_prediction_penalty_winner: ['match_id', 'winner'],
+  change_predictions_rodada: ['round'],
+  click_predictions_rodada_adiada: ['round'],
+  click_predictions_rodada_anterior: ['round'],
+  click_predictions_proxima_rodada: ['round'],
+  click_predictions_salvar_todos: ['count', 'round'],
+  change_predictions_aplicar_outros_grupos: ['enabled'],
+  click_predictions_aplicar_outros_grupos: ['groups'],
+  click_standings_ver_grupo: ['group'],
+  click_admin_metrics_filtro_campeonato: ['filter', 'value'],
+  click_admin_metrics_arquivo_mes: ['month'],
+  click_admin_metrics_periodo: ['days'],
+  click_admin_radar_periodo: ['days'],
+  click_admin_radar_ordenar: ['sort'],
+  click_admin_radar_filtrar_status: ['status'],
+  click_dashboard_encerrados_toggle: ['open'],
+  click_group_detail_abrir_convite: ['open'],
+  click_group_detail_tab: ['tab'],
+  click_landing_guia: ['guia'],
+  click_settings_toggle_lembretes: ['enabled'],
+  click_settings_confirmar_lembretes: ['enabled'],
+}
+
+function filterEventParams(name: string, params?: EventParams): EventParams | undefined {
+  if (!params || !Object.hasOwn(EVENT_ALLOWED_PARAMS, name)) return undefined
+  const allowed = EVENT_ALLOWED_PARAMS[name]
+  if (allowed.length === 0) return undefined
+
+  const filtered: EventParams = {}
+  let hasKeys = false
+  for (const key of allowed) {
+    if (Object.hasOwn(params, key) && params[key] !== undefined) {
+      filtered[key] = params[key]
+      hasKeys = true
+    }
+  }
+  return hasKeys ? filtered : undefined
+}
+
 /** Dispara um evento customizado para o GA4. No-op sem GA ou com consentimento negado. */
-export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
+export function trackEvent(name: string, params?: EventParams): void {
   if ((currentConsent ?? getStoredConsent()) === 'denied') return
-  window.gtag?.('event', name, params)
+  window.gtag?.('event', name, filterEventParams(name, params))
 }

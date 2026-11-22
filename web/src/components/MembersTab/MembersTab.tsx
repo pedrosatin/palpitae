@@ -1,21 +1,40 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers, type GroupMember } from '../../hooks/useGroupMembers'
 import { apiFetch } from '../../lib/api'
+import { invalidateGroupMembers } from '../../lib/groupMembers'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { useConfirm } from '../ConfirmModal'
 import Avatar from '../Avatar'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
+import MemberBadge from '../MemberBadge'
+import JoinRequestsList from './JoinRequestsList'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
   groupId: string
   currentUserId: string
   onMemberRemoved?: (userId: string) => void
+  onJoinRequestDecided?: (action: 'approve' | 'reject') => void
+}
+
+function invalidateAfterMembershipChange(
+  queryClient: ReturnType<typeof useQueryClient>,
+  groupId: string,
+) {
+  void queryClient.invalidateQueries({
+    queryKey: groupPredictionsQueryKey(groupId),
+    refetchType: 'none',
+  })
+  void invalidateGroupsList(queryClient)
 }
 
 function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
+  const queryClient = useQueryClient()
   const { members, setMembers, loading, error } = useGroupMembers(groupId)
   const [removing, setRemoving] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
@@ -31,7 +50,10 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
     if (!ok) return
     setRemoving(targetUserId)
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/members/${targetUserId}`), {
+      const url = buildApiUrl(
+        `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(targetUserId)}`,
+      )
+      const res = await apiFetch(url, {
         method: 'DELETE',
       })
       if (!res.ok) {
@@ -39,6 +61,7 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
         throw new Error(body.error ?? 'Erro ao remover membro')
       }
       setMembers((prev) => prev.filter((m) => m.user_id !== targetUserId))
+      invalidateAfterMembershipChange(queryClient, groupId)
       onMemberRemoved?.(targetUserId)
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Erro ao remover membro')
@@ -64,8 +87,10 @@ function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemPro
         <Avatar name={member.display_name} src={member.avatar_url} />
         <div className={styles.info}>
           <span className={styles.name}>{member.display_name}</span>
-          {member.role === 'owner' && <span className={styles.badge}>admin</span>}
-          {member.user_id === currentUserId && <span className={styles.badgeYou}>você</span>}
+          {member.role === 'owner' && <MemberBadge variant="owner" className={styles.badge} />}
+          {member.user_id === currentUserId && (
+            <MemberBadge variant="self" className={styles.badge} />
+          )}
         </div>
       </div>
 
@@ -83,11 +108,25 @@ function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemPro
   )
 }
 
-export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: MembersTabProps) {
+export default function MembersTab({
+  groupId,
+  currentUserId,
+  onMemberRemoved,
+  onJoinRequestDecided,
+}: MembersTabProps) {
+  const queryClient = useQueryClient()
   const { members, loading, error, removing, confirmDialog, removeMember } = useMembers(
     groupId,
     onMemberRemoved,
   )
+
+  function handleDecided(action: 'approve' | 'reject') {
+    if (action === 'approve') {
+      void invalidateGroupMembers(queryClient, groupId)
+      invalidateAfterMembershipChange(queryClient, groupId)
+    }
+    onJoinRequestDecided?.(action)
+  }
 
   if (loading) {
     return <p className={styles.loading}>Carregando membros...</p>
@@ -99,6 +138,7 @@ export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: 
 
   return (
     <div className={styles.root}>
+      <JoinRequestsList groupId={groupId} onDecided={handleDecided} />
       <p className={styles.hint}>
         {members.length} {members.length === 1 ? 'membro' : 'membros'} neste grupo
       </p>

@@ -40,7 +40,6 @@ function isPenaltyWinner(value: unknown): value is PenaltyWinner {
   return value === 'home' || value === 'away' || value === null
 }
 
-/** Entrada válida e digitada dentro do prazo. `at` é a hora da digitação, e regravar não a renova. */
 function readEntry<T>(
   raw: unknown,
   isValue: (value: unknown) => value is T,

@@ -1,33 +1,35 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
-import { hasPilotAccess } from '../auth/permissions'
+import { googleSubOf, hasPilotAccess } from '../auth/permissions'
+import { notBannedSql } from '../groups/ranking'
 import { lockedSql } from '../matches/locking'
-import { roundLabel } from '../matches/rounds'
-import { isoSeconds } from '../matches/sync'
+import { isoSeconds } from '../matches/matchUpsert'
 import { hashUserId, logEvent } from '../observability/events'
 import type { Env } from '../types'
 import { EmailError, sendEmail } from './email'
+import {
+  MailjetError,
+  type MailjetCredentials,
+  isTransientMailjetError,
+  sendMailjetEmail,
+} from './mailjet'
+import {
+  type Digest,
+  type DigestGroup,
+  type DigestRound,
+  MAX_DIGEST_GROUPS,
+  REMINDER_TIME_ZONE,
+  buildEmailHtml,
+  buildEmailText,
+  reminderSubject,
+} from './reminderEmail'
 import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
-
-// O dia do lembrete é o de Brasília. O fuso vem da base do `Intl`; assim, se o
-// horário de verão voltar, o dia não muda.
-const REMINDER_TIME_ZONE = 'America/Sao_Paulo'
 const DAY_MS = 24 * 60 * 60 * 1000
 const SEND_LOG_RETENTION_DAYS = 7
 
-// Os envios saem em sequência, um por vez. Um 429 de limite por segundo ou um 5xx
-// passageiro merece nova tentativa, porque o cron só roda uma vez por dia. Outro 4xx
-// é permanente (endereço inválido, por exemplo) e falha na hora.
 const MAX_SEND_ATTEMPTS = 3
 
-// O plano da conta Cloudflare não está confirmado (docs/architecture/
-// capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
-// subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
-// consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
-// segurança do `scheduled`) e deixa 1 de folga. Sobram 45 subrequests para os `fetch`
-// ao Resend, contando cada reenvio, e para as revalidações de descadastro. É o padrão
-// do teto; `REMINDER_FETCH_BUDGET` o substitui (`reminderFetchBudget`).
 const SUBREQUEST_LIMIT = 50
 const D1_SUBREQUESTS = 4
 const SUBREQUEST_MARGIN = 1
@@ -50,18 +52,32 @@ export function reminderFetchBudget(raw: string | undefined): number {
   return RESEND_FETCH_BUDGET
 }
 
-// Por quanto tempo a última leitura de descadastro vale durante o lote. A reserva lê
-// a preferência, e uma tentativa de envio que começa depois desse prazo relê antes de
-// chamar o Resend. Na prática custa uma consulta a cada 5 s de lote: um lote cheio,
-// com envios um por vez, gasta de 1 a 3 vagas do teto nessas releituras. Reler antes
-// de cada envio custaria um subrequest por destinatário e cortaria pela metade quem
-// cabe no teto.
 const UNSUB_RECHECK_MS = 5_000
 
-/** Contador dos subrequests desta execução que não são as consultas fixas. */
+const D1_RETRY_MS = 250
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Roda a operação do D1 e, se ela falhar, repete uma vez depois de `D1_RETRY_MS`.
+ * `canRetry` é consultado depois da falha e pode impedir a nova tentativa. Lança o
+ * erro da última tentativa.
+ */
+async function withD1Retry<T>(
+  operation: () => Promise<T>,
+  canRetry: () => boolean = () => true,
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (err) {
+    if (!canRetry()) throw err
+    await sleep(D1_RETRY_MS)
+    return operation()
+  }
+}
+
 type FetchBudget = { used: number; max: number }
 
-/** O teto de subrequests chegou. Quem não enviou volta para a próxima execução. */
 class SubrequestBudgetError extends Error {
   constructor() {
     super('Teto de subrequests da execução atingido')
@@ -89,7 +105,7 @@ class UnsubCheckError extends Error {
  * Confere o descadastro de quem ainda vai receber. A leitura vale por
  * `UNSUB_RECHECK_MS`. Vencido o prazo, uma consulta só relê todos os pendentes e
  * desconta um subrequest do saldo. Ela só roda se sobrar saldo para a consulta e um
- * envio.
+ * envio. Se a consulta falhar, ela é repetida uma vez nas mesmas condições de saldo.
  */
 class UnsubGuard {
   private readonly subscribed: Set<string>
@@ -99,37 +115,38 @@ class UnsubGuard {
     private readonly db: D1Database,
     userIds: string[],
     private readonly budget: FetchBudget,
+    readAt: number,
   ) {
-    // A reserva acabou de ler a preferência de todos.
+    // A reserva leu a preferência de todos. `readAt` é o início dela, o instante mais
+    // antigo em que a leitura pode ter acontecido.
     this.subscribed = new Set(userIds)
-    this.checkedAt = Date.now()
+    this.checkedAt = readAt
   }
 
-  /** Lança `UnsubscribedError` se o usuário saiu da lista depois da última leitura. */
   async assertSubscribed(userId: string): Promise<void> {
     if (Date.now() - this.checkedAt >= UNSUB_RECHECK_MS) await this.recheck()
     if (!this.subscribed.has(userId)) throw new UnsubscribedError()
   }
 
-  /** O usuário saiu da fila, com ou sem envio. A próxima leitura não o inclui. */
   done(userId: string): void {
     this.subscribed.delete(userId)
   }
 
   private async recheck(): Promise<void> {
-    if (this.budget.max - this.budget.used < 2) throw new SubrequestBudgetError()
-    this.budget.used++
+    if (!this.canRead()) throw new SubrequestBudgetError()
+    let startedAt = 0
     let rows: { id: string }[]
-    const startedAt = Date.now()
     try {
-      const result = await this.db
-        .prepare(
-          `SELECT id FROM users
-           WHERE id IN (SELECT value FROM json_each(?)) AND email_unsubscribed_at IS NULL`,
-        )
-        .bind(JSON.stringify([...this.subscribed]))
-        .all<{ id: string }>()
-      rows = result.results
+      // A nova tentativa desconta do saldo como a primeira. Sem saldo para ela e um
+      // envio, a falha encerra a fila.
+      rows = await withD1Retry(
+        () => {
+          this.budget.used++
+          startedAt = Date.now()
+          return this.readSubscribed()
+        },
+        () => this.canRead(),
+      )
     } catch (err) {
       throw new UnsubCheckError(err)
     }
@@ -137,9 +154,47 @@ class UnsubGuard {
     for (const id of this.subscribed) if (!still.has(id)) this.subscribed.delete(id)
     this.checkedAt = startedAt
   }
+
+  private canRead(): boolean {
+    return this.budget.max - this.budget.used >= 2
+  }
+
+  private async readSubscribed(): Promise<{ id: string }[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id FROM users
+         WHERE id IN (SELECT value FROM json_each(?)) AND email_unsubscribed_at IS NULL`,
+      )
+      .bind(JSON.stringify([...this.subscribed]))
+      .all<{ id: string }>()
+    return results
+  }
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Falha que vale nova tentativa: 429 de limite por segundo, 5xx e erro de rede
+ * (status 0 ou erro que não vem do Resend). Cota esgotada e outros 4xx são permanentes.
+ */
+function isTransientEmailError(err: unknown): boolean {
+  const emailError = err instanceof EmailError ? err : undefined
+  const status = emailError?.status ?? 0
+  return !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
+}
+
+/**
+ * Erro do Resend depois de ao menos uma falha passageira na mesma chamada.
+ * A tentativa anterior pode ter sido aceita (timeout/5xx/rede); o status final
+ * não autoriza fallback nem reenvio às cegas.
+ */
+export class UncertainResendError extends Error {
+  readonly cause: unknown
+
+  constructor(cause: unknown) {
+    super('Resend incerto após tentativa passageira')
+    this.name = 'UncertainResendError'
+    this.cause = cause
+  }
+}
 
 /**
  * Envia um e-mail, repetindo em 429 de limite por segundo e em 5xx ou erro de rede,
@@ -147,6 +202,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * outros 4xx falham na primeira tentativa. Cada tentativa gasta o saldo de `fetch` da
  * execução, e sem saldo lança `SubrequestBudgetError`. Lança o erro quando as tentativas acabam,
  * e quem chama contabiliza a falha e segue.
+ *
+ * Se alguma tentativa passageira precedeu o erro final, lança `UncertainResendError`
+ * envolvendo a causa: o Resend pode ter aceitado antes da falha visível.
  *
  * `beforeAttempt` roda antes de cada tentativa, inclusive dos reenvios, e cancela o
  * envio lançando erro. É o último ponto em que o descadastro ainda impede o e-mail.
@@ -160,26 +218,30 @@ async function sendWithRetry(
   budget: FetchBudget,
   beforeAttempt: () => Promise<void>,
 ): Promise<void> {
+  let hadTransient = false
   for (let attempt = 1; ; attempt++) {
-    // Cada tentativa é um `fetch`. Sem saldo, para antes de chamar a rede.
-    if (budget.used >= budget.max) throw new SubrequestBudgetError()
+    if (budget.used >= budget.max) {
+      if (hadTransient) throw new UncertainResendError(new SubrequestBudgetError())
+      throw new SubrequestBudgetError()
+    }
     await beforeAttempt()
     budget.used++
     try {
       await sendEmail(apiKey, msg)
       return
     } catch (err) {
-      const emailError = err instanceof EmailError ? err : undefined
-      const status = emailError?.status ?? 0
-      const transient = !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
-      if (!transient || attempt >= MAX_SEND_ATTEMPTS) throw err
-      if (budget.used >= budget.max) throw new SubrequestBudgetError()
-      await sleep(emailError?.retryAfterMs ?? 500 * 2 ** (attempt - 1))
+      if (!isTransientEmailError(err) || attempt >= MAX_SEND_ATTEMPTS) {
+        if (hadTransient) throw new UncertainResendError(err)
+        throw err
+      }
+      hadTransient = true
+      if (budget.used >= budget.max) throw new UncertainResendError(new SubrequestBudgetError())
+      const retryAfterMs = err instanceof EmailError ? err.retryAfterMs : undefined
+      await sleep(retryAfterMs ?? 500 * 2 ** (attempt - 1))
     }
   }
 }
 
-/** Configuração do link de descadastro. Sem ela o e-mail sai sem o link. */
 type UnsubConfig = {
   secret: string
   apiBaseUrl: string
@@ -188,6 +250,8 @@ type UnsubConfig = {
 type PendingRow = {
   user_id: string
   email: string
+  provider: string | null
+  provider_id: string | null
   group_id: string
   group_name: string
   competition_id: string
@@ -200,40 +264,7 @@ type PendingRow = {
   away_team: string
   home_logo: string | null
   away_logo: string | null
-  /** Último dia com lembrete enviado ao usuário, nos 7 dias guardados. */
   last_sent: string | null
-}
-
-type DigestMatch = {
-  home: string
-  away: string
-  homeLogo: string | null
-  awayLogo: string | null
-  startTime: string
-}
-
-type DigestRound = {
-  competitionId: string
-  round: string | null
-  matches: DigestMatch[]
-}
-
-type DigestGroup = {
-  groupId: string
-  groupName: string
-  competitionName: string
-  rounds: DigestRound[]
-}
-
-/** E-mail de um usuário com os jogos sem palpite do dia, por grupo e rodada. */
-type Digest = {
-  userId: string
-  email: string
-  groups: DigestGroup[]
-  /** Jogos distintos. O mesmo jogo sem palpite em dois grupos conta uma vez. */
-  matchIds: Set<string>
-  firstStart: string
-  lastSent: string | null
 }
 
 /**
@@ -245,6 +276,9 @@ type Digest = {
  * remarcado tem `postponed = 0` e entra no dia novo, mesmo em rodada que ficou para
  * trás (ADR-019).
  *
+ * Quem tem registro em `group_bans` do grupo fica de fora, pelo mesmo filtro das
+ * outras leituras (`notBannedSql`), mesmo que sobre uma linha em `group_members`.
+ *
  * Os `CROSS JOIN` fixam a ordem. A consulta parte dos jogos do dia pelo índice de
  * `start_time`, e cada junção seguinte é uma busca por chave. Binds em
  * `pendingMatchesBinds`.
@@ -255,6 +289,8 @@ type Digest = {
 export const PENDING_MATCHES_SQL = `SELECT
          u.id         AS user_id,
          u.email      AS email,
+         u.provider   AS provider,
+         u.provider_id AS provider_id,
          g.id         AS group_id,
          g.name       AS group_name,
          c.id         AS competition_id,
@@ -281,6 +317,7 @@ export const PENDING_MATCHES_SQL = `SELECT
          AND m.postponed = 0
          AND NOT ${lockedSql('m')}
          AND u.email_unsubscribed_at IS NULL
+         AND ${notBannedSql('gm')}
          AND NOT EXISTS (
            SELECT 1 FROM predictions p
            WHERE p.user_id = u.id AND p.group_id = g.id AND p.match_id = m.id
@@ -292,11 +329,8 @@ export const PENDING_MATCHES_SQL = `SELECT
        ORDER BY m.start_time ASC`
 
 type ReminderDay = {
-  /** Dia em Brasília, YYYY-MM-DD. */
   date: string
-  /** Meia-noite seguinte em Brasília, em UTC. */
   endIso: string
-  /** Linhas de `email_reminder_sends` anteriores a este dia são apagadas. */
   retentionCutoff: string
 }
 
@@ -311,7 +345,6 @@ const REMINDER_ZONE_FORMAT = new Intl.DateTimeFormat('en-US', {
   hourCycle: 'h23',
 })
 
-/** Relógio de Brasília no instante, lido como se fosse UTC. */
 function zonedWallClockMs(instantMs: number): number {
   const instant = new Date(instantMs)
   const parts: Record<string, number> = {}
@@ -330,17 +363,10 @@ function zonedWallClockMs(instantMs: number): number {
   )
 }
 
-/** Dia em Brasília no instante, YYYY-MM-DD. */
 function zonedDate(instantMs: number): string {
   return new Date(zonedWallClockMs(instantMs)).toISOString().slice(0, 10)
 }
 
-/**
- * Primeiro instante do dia seguinte em Brasília. A meia-noite usa o deslocamento de
- * agora e, se ele mudar até lá, o de depois da mudança. Fica o menor candidato que já
- * cai no dia seguinte. No início do horário de verão a meia-noite não existe e o dia
- * acaba quando 00:00 vira 01:00. No fim, a hora repetida ainda conta como dia anterior.
- */
 function nextZonedMidnightMs(nowMs: number, date: string): number {
   const next = new Date(Date.parse(`${date}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10)
   const wallMidnight = Date.parse(`${next}T00:00:00Z`)
@@ -359,23 +385,22 @@ function reminderDay(nowMs: number): ReminderDay {
   }
 }
 
-/** Binds na ordem exigida por `PENDING_MATCHES_SQL`. */
 function pendingMatchesBinds(nowIso: string, day: ReminderDay): string[] {
   return [nowIso, day.endIso, nowIso, day.date]
 }
 
-/**
- * Agrupa as linhas por usuário, grupo e rodada. A rodada faz parte da chave porque
- * um grupo pode ter, no mesmo dia, jogo da rodada atual e jogo remarcado de rodada
- * antiga, e cada um precisa do próprio link. As linhas chegam em ordem de horário,
- * então grupos e rodadas ficam na ordem do primeiro jogo.
- */
 function buildDigests(rows: PendingRow[]): Digest[] {
-  const digests = new Map<string, Digest>()
+  const digests = new Map<
+    string,
+    {
+      digest: Digest
+      groups: Map<string, { group: DigestGroup; rounds: Map<string | null, DigestRound> }>
+    }
+  >()
   for (const row of rows) {
-    let digest = digests.get(row.user_id)
-    if (!digest) {
-      digest = {
+    let entry = digests.get(row.user_id)
+    if (!entry) {
+      const digest: Digest = {
         userId: row.user_id,
         email: row.email,
         groups: [],
@@ -383,24 +408,29 @@ function buildDigests(rows: PendingRow[]): Digest[] {
         firstStart: row.start_time,
         lastSent: row.last_sent,
       }
-      digests.set(row.user_id, digest)
+      entry = { digest, groups: new Map() }
+      digests.set(row.user_id, entry)
     }
+    const { digest, groups } = entry
 
-    let group = digest.groups.find((g) => g.groupId === row.group_id)
-    if (!group) {
-      group = {
+    let indexedGroup = groups.get(row.group_id)
+    if (!indexedGroup) {
+      const group: DigestGroup = {
         groupId: row.group_id,
         groupName: row.group_name,
         competitionName: row.competition_name,
         rounds: [],
       }
       digest.groups.push(group)
+      indexedGroup = { group, rounds: new Map() }
+      groups.set(row.group_id, indexedGroup)
     }
 
-    let round = group.rounds.find((r) => r.round === row.round)
+    let round = indexedGroup.rounds.get(row.round)
     if (!round) {
       round = { competitionId: row.competition_id, round: row.round, matches: [] }
-      group.rounds.push(round)
+      indexedGroup.group.rounds.push(round)
+      indexedGroup.rounds.set(row.round, round)
     }
 
     round.matches.push({
@@ -412,16 +442,9 @@ function buildDigests(rows: PendingRow[]): Digest[] {
     })
     digest.matchIds.add(row.match_id)
   }
-  return [...digests.values()]
+  return [...digests.values()].map(({ digest }) => digest)
 }
 
-/**
- * Ordem da fila de envio quando o teto não cobre todos. Primeiro quem recebeu o
- * lembrete há mais tempo, ou não recebeu nos últimos 7 dias. Quem ficou de fora num
- * dia não tem linha desse dia e passa à frente de quem recebeu. Sem essa regra a fila
- * seguiria só o horário do primeiro jogo, e quem joga à noite ficaria de fora todo dia.
- * No empate vale o jogo que fecha primeiro e, por fim, o id, para a ordem ser estável.
- */
 function byQueueOrder(a: Digest, b: Digest): number {
   const lastSent = (a.lastSent ?? '').localeCompare(b.lastSent ?? '')
   if (lastSent !== 0) return lastSent
@@ -430,25 +453,22 @@ function byQueueOrder(a: Digest, b: Digest): number {
   return a.userId < b.userId ? -1 : 1
 }
 
-/**
- * Linhas de competição em piloto ficam só para quem tem acesso ao piloto, o mesmo
- * critério da lista de grupos. Quem saiu de `PILOT_EMAILS` continua membro do grupo,
- * mas não abre o link.
- */
 function withPilotAccess(rows: PendingRow[], access: PilotAccess): PendingRow[] {
   const allowed = new Map<string, boolean>()
   return rows.filter((row) => {
     if (row.competition_visibility !== 'pilot') return true
     let ok = allowed.get(row.user_id)
     if (ok === undefined) {
-      ok = hasPilotAccess(row.email, access)
+      ok = hasPilotAccess(
+        { email: row.email, googleSub: googleSubOf(row.provider, row.provider_id) },
+        access,
+      )
       allowed.set(row.user_id, ok)
     }
     return ok
   })
 }
 
-/** Rodadas distintas nos e-mails, para o evento agregado do cron. */
 function countRounds(digests: Digest[]): number {
   const rounds = new Set<string>()
   for (const digest of digests) {
@@ -459,26 +479,15 @@ function countRounds(digests: Digest[]): number {
   return rounds.size
 }
 
-/**
- * Reserva o envio do dia em uma gravação só e devolve os usuários reservados por
- * esta execução. Outra execução no mesmo dia não recebe esses usuários, e a chave
- * primária garante isso mesmo com disparos simultâneos.
- *
- * A gravação é única porque cada consulta ao D1 conta no
- * limite de subrequests do Worker junto com os envios ao Resend. O plano Free tem
- * 50 por invocação. A consequência é que uma invocação interrompida no meio deixa
- * os restantes sem e-mail naquele dia. Perder um aviso é melhor do que repetir.
- *
- * A reserva relê o descadastro na mesma gravação. Quem saiu da lista depois da
- * consulta dos pendentes não é reservado.
- */
 async function claimRecipients(
   db: D1Database,
   userIds: string[],
   day: ReminderDay,
 ): Promise<Set<string>> {
   const [, claim] = await db.batch<{ user_id: string }>([
-    db.prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?').bind(day.retentionCutoff),
+    db
+      .prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?')
+      .bind(day.retentionCutoff),
     db
       .prepare(
         `INSERT INTO email_reminder_sends (user_id, reminder_date)
@@ -495,26 +504,42 @@ async function claimRecipients(
 
 /**
  * Devolve a reserva de quem não recebeu, para que uma nova execução no mesmo dia
- * possa enviar. Uma falha aqui só vai para o log, porque o envio do dia já terminou.
+ * possa enviar. Uma falha tem uma nova tentativa, que usa a vaga de folga do teto de
+ * subrequests. Se a falha persistir, ela só vai para o log e a execução segue até o
+ * evento final, porque o envio do dia já terminou.
  */
 async function releaseClaims(db: D1Database, userIds: string[], day: ReminderDay): Promise<void> {
   if (userIds.length === 0) return
   try {
-    await db
-      .prepare(
-        `DELETE FROM email_reminder_sends
-         WHERE reminder_date = ? AND user_id IN (SELECT value FROM json_each(?))`,
-      )
-      .bind(day.date, JSON.stringify(userIds))
-      .run()
+    await withD1Retry(() =>
+      db
+        .prepare(
+          `DELETE FROM email_reminder_sends
+           WHERE reminder_date = ? AND user_id IN (SELECT value FROM json_each(?))`,
+        )
+        .bind(day.date, JSON.stringify(userIds))
+        .run(),
+    )
   } catch (err) {
-    console.error('[roundReminder] Falha ao liberar envios não concluídos:', err)
+    console.error(
+      `[roundReminder] Falha ao liberar ${userIds.length} reserva(s) depois de 2 tentativas. Uma nova execução hoje não envia para essas pessoas:`,
+      err,
+    )
   }
 }
 
 function failureReason(err: unknown): string {
   if (err instanceof SubrequestBudgetError) return 'subrequest_budget'
   if (err instanceof UnsubCheckError) return 'unsub_check_failed'
+  if (err instanceof MailjetError) return `mailjet_http_${err.status}`
+  if (err instanceof UncertainResendError) {
+    const cause = err.cause
+    if (cause instanceof EmailError) {
+      return cause.quotaExceeded ? 'quota_exceeded' : `http_${cause.status}`
+    }
+    if (cause instanceof SubrequestBudgetError) return 'subrequest_budget'
+    return 'unknown'
+  }
   if (!(err instanceof EmailError)) return 'unknown'
   return err.quotaExceeded ? 'quota_exceeded' : `http_${err.status}`
 }
@@ -522,13 +547,35 @@ function failureReason(err: unknown): string {
 /**
  * Motivo que encerra a fila: toda tentativa seguinte falharia, ou sairia sem a
  * leitura de descadastro. `null` deixa a fila seguir.
+ *
+ * Com Mailjet configurado, cota do Resend não encerra a fila: o desvio ao
+ * fallback cobre o restante.
  */
-function stopReason(err: unknown): string | null {
-  if (err instanceof EmailError && err.quotaExceeded) return 'quota_exceeded'
+function stopReason(err: unknown, mailjetConfigured: boolean): string | null {
+  if (err instanceof UncertainResendError) {
+    return stopReason(err.cause, mailjetConfigured)
+  }
+  if (err instanceof EmailError && err.quotaExceeded) {
+    return mailjetConfigured ? null : 'quota_exceeded'
+  }
   if (err instanceof SubrequestBudgetError || err instanceof UnsubCheckError) {
     return failureReason(err)
   }
   return null
+}
+
+function reminderCorrelationId(userId: string, reminderDate: string): string {
+  return `lembrete-diario/${userId}/${reminderDate}`
+}
+
+function isDefinitiveResendRefusal(err: unknown): err is EmailError {
+  if (!(err instanceof EmailError)) return false
+  if (err.status === 409) return false
+  return !isTransientEmailError(err)
+}
+
+function marksResendUnavailable(err: EmailError): boolean {
+  return err.quotaExceeded || err.status === 401 || err.status === 403
 }
 
 type DispatchOptions = {
@@ -539,22 +586,52 @@ type DispatchOptions = {
   unsub: UnsubConfig | undefined
   ae: AnalyticsEngineDataset | undefined
   day: ReminderDay
-  /** Saldo de `fetch` ao Resend e revalidações. Os testes reduzem para exercitar o teto. */
   fetchBudget?: number
+  pendingClaims: Set<string>
+  claimStartedAt: number
+  /**
+   * Fallback Mailjet. Ausente = comportamento idêntico ao da main (só Resend).
+   * Só entra após recusa definitiva do Resend, e só para quem ainda não teve
+   * tentativa no dia nesta execução.
+   */
+  mailjet?: MailjetCredentials
 }
 
 type DispatchResult = {
   sent: number
   matchesListed: number
   failedUserIds: string[]
-  /** Descadastraram depois da reserva e não receberam. */
   unsubscribedUserIds: string[]
 }
 
 /**
+ * Um envio pelo Mailjet. Conta no teto de subrequests. Sem nova tentativa: a
+ * Mailjet não tem idempotência como a do Resend.
+ */
+async function sendViaMailjetOnce(
+  creds: MailjetCredentials,
+  msg: Parameters<typeof sendEmail>[1],
+  customId: string,
+  budget: FetchBudget,
+  beforeAttempt: () => Promise<void>,
+): Promise<'accepted' | 'uncertain'> {
+  if (budget.used >= budget.max) throw new SubrequestBudgetError()
+  await beforeAttempt()
+  budget.used++
+  try {
+    await sendMailjetEmail(creds, msg, customId)
+    return 'accepted'
+  } catch (err) {
+    if (isTransientMailjetError(err)) return 'uncertain'
+    throw err
+  }
+}
+
+/**
  * Envia um e-mail por usuário, sem endereço compartilhado. Uma falha não derruba
- * os demais. Cota esgotada, teto de subrequests ou falha na leitura de descadastro
- * encerram a fila. Quem fica de fora volta em `failedUserIds`, e quem descadastrou
+ * os demais. Cota esgotada (sem Mailjet), teto de subrequests ou falha na leitura
+ * de descadastro encerram a fila. Com Mailjet, cota do Resend desvia o restante
+ * ao fallback. Quem fica de fora volta em `failedUserIds`, e quem descadastrou
  * durante o lote volta em `unsubscribedUserIds`.
  */
 async function dispatchDigests(
@@ -568,14 +645,17 @@ async function dispatchDigests(
     ae,
     day,
     fetchBudget = RESEND_FETCH_BUDGET,
+    pendingClaims,
+    claimStartedAt,
+    mailjet,
   }: DispatchOptions,
 ): Promise<DispatchResult> {
-  // Criado logo depois da reserva, que leu o descadastro de todos.
   const budget: FetchBudget = { used: 0, max: fetchBudget }
   const guard = new UnsubGuard(
     db,
     digests.map((digest) => digest.userId),
     budget,
+    claimStartedAt,
   )
 
   // Hash e token saem em paralelo antes dos envios. O try/catch por usuário impede
@@ -599,6 +679,13 @@ async function dispatchDigests(
   let sent = 0
   let matchesListed = 0
   let stopped: string | null = null
+  let resendUnavailable = false
+  /**
+   * Quem já teve tentativa nesta execução. Cada destinatário passa uma vez pelo
+   * laço, então isto é só defesa contra mudança futura no laço: quem impede o
+   * segundo e-mail do dia é a reserva em `email_reminder_sends`.
+   */
+  const attempted = new Set<string>()
   const failedUserIds: string[] = []
   const unsubscribedUserIds: string[] = []
 
@@ -609,6 +696,15 @@ async function dispatchDigests(
       logEvent(ae, 'email_reminder_failed', {
         blobs: [hashedId, day.date, reason],
         doubles: [matchCount],
+      })
+    }
+    const recordSent = () => {
+      pendingClaims.delete(digest.userId)
+      sent++
+      matchesListed += matchCount
+      logEvent(ae, 'email_reminder_sent', {
+        blobs: [hashedId, day.date],
+        doubles: [matchCount, Math.min(digest.groups.length, MAX_DIGEST_GROUPS)],
       })
     }
 
@@ -632,34 +728,96 @@ async function dispatchDigests(
           }
         : undefined
 
-      await sendWithRetry(
-        resendApiKey,
-        {
-          to: digest.email,
-          subject,
-          html: buildEmailHtml({ digest, subject, appUrl, unsubUrl }),
-          text: buildEmailText({ digest, subject, appUrl, unsubUrl }),
-          headers,
-          // Se a resposta se perder, a nova tentativa não gera um segundo e-mail.
-          idempotencyKey: `lembrete-diario/${digest.userId}/${day.date}`,
-        },
-        budget,
-        () => guard.assertSubscribed(digest.userId),
-      )
-      sent++
-      matchesListed += matchCount
-      // user_hash do id, nunca o e-mail cru (regra LGPD).
-      logEvent(ae, 'email_reminder_sent', {
-        blobs: [hashedId, day.date],
-        doubles: [matchCount, digest.groups.length],
-      })
+      const correlationId = reminderCorrelationId(digest.userId, day.date)
+      const msg = {
+        to: digest.email,
+        subject,
+        html: buildEmailHtml({ digest, subject, appUrl, unsubUrl }),
+        text: buildEmailText({ digest, subject, appUrl, unsubUrl }),
+        headers,
+        idempotencyKey: correlationId,
+      }
+      const beforeAttempt = () => guard.assertSubscribed(digest.userId)
+
+      const tryMailjet = async (): Promise<boolean> => {
+        if (!mailjet) return false
+        if (attempted.has(digest.userId)) return false
+        attempted.add(digest.userId)
+        const outcome = await sendViaMailjetOnce(
+          mailjet,
+          msg,
+          correlationId,
+          budget,
+          beforeAttempt,
+        )
+        if (outcome === 'accepted') {
+          recordSent()
+          return true
+        }
+        pendingClaims.delete(digest.userId)
+        recordFailure('mailjet_uncertain')
+        return true
+      }
+
+      if (mailjet && resendUnavailable) {
+        if (attempted.has(digest.userId)) {
+          recordFailure('quota_exceeded')
+          continue
+        }
+        const handled = await tryMailjet()
+        if (!handled) recordFailure('quota_exceeded')
+        continue
+      }
+
+      try {
+        await sendWithRetry(resendApiKey, msg, budget, beforeAttempt)
+        recordSent()
+      } catch (err) {
+        if (err instanceof UncertainResendError) {
+          attempted.add(digest.userId)
+          const cause = err.cause
+          if (
+            cause instanceof UnsubscribedError ||
+            cause instanceof SubrequestBudgetError ||
+            cause instanceof UnsubCheckError
+          ) {
+            throw cause
+          }
+          throw err
+        }
+        if (
+          err instanceof UnsubscribedError ||
+          err instanceof SubrequestBudgetError ||
+          err instanceof UnsubCheckError
+        ) {
+          throw err
+        }
+
+        if (!isDefinitiveResendRefusal(err)) {
+          attempted.add(digest.userId)
+          throw err
+        }
+
+        if (marksResendUnavailable(err)) resendUnavailable = true
+
+        if (!mailjet || attempted.has(digest.userId)) throw err
+
+        const handled = await tryMailjet()
+        if (!handled) throw err
+      }
     } catch (err) {
       if (err instanceof UnsubscribedError) {
         unsubscribedUserIds.push(digest.userId)
       } else {
         recordFailure(failureReason(err))
-        stopped = stopReason(err)
-        console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
+        stopped = stopReason(err, Boolean(mailjet))
+        if (err instanceof MailjetError) {
+          console.error(
+            `[roundReminder] Falha ao enviar para ${hashedId}: Mailjet status=${err.status}`,
+          )
+        } else {
+          console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
+        }
       }
     } finally {
       guard.done(digest.userId)
@@ -669,13 +827,16 @@ async function dispatchDigests(
   return { sent, matchesListed, failedUserIds, unsubscribedUserIds }
 }
 
-type PilotAccess = Pick<Env, 'ADMIN_EMAIL' | 'PILOT_EMAILS'>
+type PilotAccess = Pick<Env, 'ADMIN_EMAIL' | 'ADMIN_GOOGLE_SUB' | 'PILOT_EMAILS'>
 
 export type ReminderOptions = {
-  /** Teto de `fetch` da execução. Padrão `RESEND_FETCH_BUDGET`. */
   fetchBudget?: number
-  /** Quem vê competição em piloto. Sem ele, grupo de competição em piloto não gera lembrete. */
   pilotAccess?: PilotAccess
+  /**
+   * Fallback Mailjet. Sem as duas credenciais o cron se comporta como na main:
+   * só Resend, falha libera a reserva, sem desvio.
+   */
+  mailjet?: MailjetCredentials
 }
 
 /**
@@ -683,6 +844,11 @@ export type ReminderOptions = {
  * de hoje ainda aberto e sem palpite. O e-mail lista só esses jogos, por grupo e
  * rodada. Quem palpitou todos os jogos do dia ou cancelou os lembretes não recebe.
  * Vale no máximo um e-mail por usuário por dia (`email_reminder_sends`, ADR-020).
+ *
+ * Com `mailjet`, recusa definitiva do Resend na 1ª tentativa (4xx/cota/401/403,
+ * sem passageiro antes) desvia ao Mailjet uma vez, só para quem ainda não teve
+ * tentativa nesta execução. Timeout, 5xx, rede, 409 e falha após passageiro
+ * nunca caem no fallback. Sem credenciais, o comportamento é o da main.
  *
  * `nowMs` existe para os testes fixarem o dia.
  */
@@ -693,12 +859,10 @@ export async function sendRoundReminders(
   appUrl: string = APP_URL,
   unsub?: UnsubConfig,
   nowMs: number = Date.now(),
-  { fetchBudget, pilotAccess = {} }: ReminderOptions = {},
+  { fetchBudget, pilotAccess = {}, mailjet }: ReminderOptions = {},
 ): Promise<void> {
   const startedAt = Date.now()
 
-  // Sem chave, todo envio voltaria 401 e seria contado como lembrete perdido.
-  // Melhor pular a execução e expor o erro de configuração.
   if (!resendApiKey.trim()) {
     console.error('[roundReminder] RESEND_API_KEY ausente: nenhum lembrete enviado.')
     logEvent(ae, 'cron_round_reminder_misconfig', { blobs: ['no_api_key'] })
@@ -718,23 +882,35 @@ export async function sendRoundReminders(
     return
   }
 
+  // Antes do batch: a latência da gravação conta no prazo da leitura de descadastro.
+  const claimStartedAt = Date.now()
   const claimed = await claimRecipients(
     db,
     digests.map((digest) => digest.userId),
     day,
   )
-  const recipients = digests.filter((digest) => claimed.has(digest.userId)).sort(byQueueOrder)
-
-  // Sem apiBaseUrl o e-mail sai sem o link, e o `.replace` não quebra o lote.
-  const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
-
-  const { sent, matchesListed, failedUserIds, unsubscribedUserIds } = await dispatchDigests(
-    recipients,
-    { db, resendApiKey, appUrl, apiBaseUrl, unsub, ae, day, fetchBudget },
-  )
-  // Quem descadastrou no meio do lote também devolve a reserva. A consulta dos
-  // pendentes já não o traz, e se ele reativar no mesmo dia uma nova execução envia.
-  await releaseClaims(db, [...failedUserIds, ...unsubscribedUserIds], day)
+  let recipients: Digest[] = []
+  let result: DispatchResult
+  try {
+    recipients = digests.filter((digest) => claimed.has(digest.userId)).sort(byQueueOrder)
+    const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
+    result = await dispatchDigests(recipients, {
+      db,
+      resendApiKey,
+      appUrl,
+      apiBaseUrl,
+      unsub,
+      ae,
+      day,
+      fetchBudget,
+      pendingClaims: claimed,
+      claimStartedAt,
+      mailjet,
+    })
+  } finally {
+    await releaseClaims(db, [...claimed], day)
+  }
+  const { sent, matchesListed, failedUserIds, unsubscribedUserIds } = result
 
   const failed = failedUserIds.length
   const rounds = countRounds(recipients)
@@ -753,146 +929,4 @@ export async function sendRoundReminders(
       total_ms: Date.now() - startedAt,
     }),
   )
-}
-
-// Um formatter por módulo. O cron formata por jogo e por destinatário.
-const TIME_BRT_FORMAT = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: 'America/Sao_Paulo',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
-/** Horário do jogo em Brasília, "19:30". O palpite fecha nesse horário (ADR-004). */
-export function formatTimeBRT(isoUtc: string): string {
-  return TIME_BRT_FORMAT.format(new Date(isoUtc))
-}
-
-function reminderSubject(matchCount: number, firstStart: string): string {
-  const time = formatTimeBRT(firstStart)
-  return matchCount === 1
-    ? `1 jogo sem palpite hoje. Fecha às ${time}`
-    : `${matchCount} jogos sem palpite hoje. O primeiro fecha às ${time}`
-}
-
-/**
- * Link da aba Palpitar na rodada dos jogos listados. A rodada vai explícita porque
- * o jogo remarcado de rodada antiga nunca está na rodada padrão do grupo (ADR-019).
- */
-function predictionsUrl(appUrl: string, groupId: string, round: string | null): string {
-  const query = round ? `?rodada=${encodeURIComponent(round)}` : ''
-  return `${appUrl}/grupos/${groupId}${query}`
-}
-
-/**
- * Escapa os cinco caracteres com significado em HTML. Nomes de grupo, rodada e time
- * vêm do banco e podem ter `"`, `'` ou `&`. O nome do grupo é escrito pelo usuário.
- */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-/**
- * Escudo do time em <img>. Sem logo, devolve string vazia.
- *
- * Muitos escudos do football-data.org são SVG, que Gmail e Outlook não renderizam
- * e trocam pelo `alt`. O nome do time aparece ao lado, então o layout não quebra.
- */
-function crestImg(url: string | null, alt: string): string {
-  if (!url || !/^https?:\/\//i.test(url)) return ''
-  return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="20" height="20" style="vertical-align: middle; border: 0;">`
-}
-
-interface EmailTemplateOptions {
-  digest: Digest
-  subject: string
-  appUrl: string
-  unsubUrl?: string
-}
-
-/**
- * Cada jogo ocupa duas linhas. A primeira tem "escudo mandante x visitante escudo" em
- * colunas de largura fixa. A segunda tem o horário, centralizado igual em todos os blocos.
- * O escudo e o nome ficam num `span` sem quebra, então nunca se separam.
- */
-function matchRowHtml(match: DigestMatch): string {
-  const nowrap = 'white-space: nowrap;'
-  return `
-      <tr>
-        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="${nowrap}">${escapeHtml(match.home)}&nbsp;${crestImg(match.homeLogo, match.home)}</span></td>
-        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
-        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="${nowrap}">${crestImg(match.awayLogo, match.away)}&nbsp;${escapeHtml(match.away)}</span></td>
-      </tr>
-      <tr>
-        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha ${escapeHtml(formatTimeBRT(match.startTime))}</td>
-      </tr>`
-}
-
-function groupBlockHtml(group: DigestGroup, appUrl: string): string {
-  // Link de texto simples, sem botão colorido nem UTM. E-mail que parece mensagem
-  // pessoal tem menos chance de cair na aba Promoções do Gmail.
-  const rounds = group.rounds
-    .map((round) => {
-      const url = predictionsUrl(appUrl, group.groupId, round.round)
-      return `
-    <p style="margin: 8px 0 0; color: #6b7280;">${escapeHtml(roundLabel(round.round ?? ''))}</p>
-    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin: 8px 0;">${round.matches.map(matchRowHtml).join('')}</table>
-    <p style="margin: 4px 0 0;"><a href="${escapeHtml(url)}" style="color: #16a34a; font-weight: bold;">Fazer meus palpites &rarr;</a></p>`
-    })
-    .join('')
-
-  return `
-    <h3 style="margin: 24px 0 0; font-size: 16px;">${escapeHtml(group.groupName)}</h3>
-    <p style="margin: 2px 0 0; color: #6b7280;">${escapeHtml(group.competitionName)}</p>${rounds}`
-}
-
-function buildEmailHtml({ digest, subject, appUrl, unsubUrl }: EmailTemplateOptions): string {
-  const groups = digest.groups.map((group) => groupBlockHtml(group, appUrl)).join('')
-
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(subject)}</title>
-</head>
-<body style="margin: 0; padding: 0; background: #f3f4f6;">
-  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
-    <div style="padding: 8px 0 16px;">
-      <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
-    </div>
-    <h2 style="margin: 0 0 4px;">${escapeHtml(subject)}</h2>
-    <p style="color: #6b7280; margin-top: 0;">Cada palpite fecha no horário do jogo.</p>${groups}
-    <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
-      Você está recebendo este e-mail porque participa de um grupo no Palpitae.${
-        unsubUrl
-          ? `<br>Não quer mais estes lembretes? <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280;">Cancelar inscrição</a>.`
-          : ''
-      }
-    </p>
-  </div>
-</body>
-</html>`
-}
-
-/** Versão em texto puro, para clientes que preferem text/plain. */
-function buildEmailText({ digest, subject, appUrl, unsubUrl }: EmailTemplateOptions): string {
-  const lines = [subject, 'Cada palpite fecha no horário do jogo.']
-  for (const group of digest.groups) {
-    lines.push('', group.groupName, group.competitionName)
-    for (const round of group.rounds) {
-      lines.push(roundLabel(round.round ?? ''))
-      for (const match of round.matches) {
-        lines.push(`${match.home} vs ${match.away}, fecha ${formatTimeBRT(match.startTime)}`)
-      }
-      lines.push(`Fazer meus palpites: ${predictionsUrl(appUrl, group.groupId, round.round)}`)
-    }
-  }
-  lines.push('', 'Você está recebendo este e-mail porque participa de um grupo no Palpitae.')
-  if (unsubUrl) lines.push(`Cancelar inscrição: ${unsubUrl}`)
-  return lines.join('\n')
 }

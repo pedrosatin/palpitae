@@ -39,7 +39,6 @@ export default function NextDeadlineBanner({
 
   const { match } = banner
   const pendingText = pendingCountText(banner.totalPending, banner.groupsWithPending)
-  // Rótulo sem concordância é rodada desconhecida, com o código cru do provedor.
   const roundLabel = match && roundName(match.round_label, match.round_agreement)?.label
 
   return (

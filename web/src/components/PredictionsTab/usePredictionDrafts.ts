@@ -7,17 +7,12 @@ import {
   roundsWithDrafts,
   savedBase,
   type DraftEntries,
+  type DraftEntry,
   type PenaltyWinner,
 } from '../../lib/predictionDrafts'
 import { emptyDrafts, readStoredDrafts, writeStoredDrafts } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 
-/**
- * Início mais recente até `now`, ou 0. O travamento por horário só muda nesses
- * instantes, e com este valor a poda dos rascunhos recalcula só quando um jogo
- * começa. Gravar o storage a cada tique do relógio sobrescreveria o rascunho de
- * outra aba aberta no mesmo grupo.
- */
 function lastStartUpTo(matches: Match[], now: number): number {
   let last = 0
   for (const match of matches) {
@@ -47,11 +42,8 @@ export function usePredictionDrafts(
   const [entries, setEntries] = useState<DraftEntries>(() =>
     storageKey ? readStoredDrafts(storageKey) : emptyDrafts(),
   )
-  // Antes de os jogos chegarem, tudo pareceria desconhecido e o storage seria apagado.
   const matchesLoaded = matches.length > 0
 
-  // Sem esta limpeza, o rascunho velho voltaria se o salvo retornasse ao valor
-  // da base, por exemplo numa segunda importação.
   useEffect(() => {
     if (matchesLoaded) setEntries((prev) => dropStaleDrafts(prev, predictions))
   }, [matchesLoaded, predictions])
@@ -86,5 +78,71 @@ export function usePredictionDrafts(
     }))
   }
 
-  return { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange }
+  function clearSubmittedDrafts(submitted: Array<{ matchId: string; nextBase: string }>) {
+    if (submitted.length === 0) return
+    setEntries((prev) => {
+      let drafts: Map<string, DraftEntry<{ home: string; away: string }>> | null = null
+      let penaltyDrafts: Map<string, DraftEntry<PenaltyWinner>> | null = null
+      for (const { matchId, nextBase } of submitted) {
+        const d = prev.drafts.get(matchId)
+        if (d && d.base !== nextBase) {
+          drafts ??= new Map(prev.drafts)
+          drafts.delete(matchId)
+        }
+        const p = prev.penaltyDrafts.get(matchId)
+        if (p && p.base !== nextBase) {
+          penaltyDrafts ??= new Map(prev.penaltyDrafts)
+          penaltyDrafts.delete(matchId)
+        }
+      }
+      if (!drafts && !penaltyDrafts) return prev
+      return {
+        drafts: drafts ?? prev.drafts,
+        penaltyDrafts: penaltyDrafts ?? prev.penaltyDrafts,
+      }
+    })
+  }
+
+  function rebaseDrafts(rebases: Array<{ matchId: string; fromBase: string; toBase: string }>) {
+    if (rebases.length === 0) return
+    setEntries((prev) => {
+      let drafts: Map<string, DraftEntry<{ home: string; away: string }>> | null = null
+      let penaltyDrafts: Map<string, DraftEntry<PenaltyWinner>> | null = null
+      for (const { matchId, fromBase, toBase } of rebases) {
+        const d = prev.drafts.get(matchId)
+        if (d && d.base === fromBase) {
+          drafts ??= new Map(prev.drafts)
+          drafts.set(matchId, { ...d, base: toBase })
+        }
+        const p = prev.penaltyDrafts.get(matchId)
+        if (p && p.base === fromBase) {
+          penaltyDrafts ??= new Map(prev.penaltyDrafts)
+          penaltyDrafts.set(matchId, { ...p, base: toBase })
+        }
+      }
+      if (!drafts && !penaltyDrafts) return prev
+      return {
+        drafts: drafts ?? prev.drafts,
+        penaltyDrafts: penaltyDrafts ?? prev.penaltyDrafts,
+      }
+    })
+  }
+
+  function hasRawDraft(matchId: string) {
+    const currentBase = savedBase(predictions.get(matchId))
+    return (
+      entries.drafts.get(matchId)?.base === currentBase ||
+      entries.penaltyDrafts.get(matchId)?.base === currentBase
+    )
+  }
+
+  return {
+    unsavedDrafts,
+    unsavedRounds,
+    handleDraftChange,
+    handlePenaltyDraftChange,
+    clearSubmittedDrafts,
+    rebaseDrafts,
+    hasRawDraft,
+  }
 }

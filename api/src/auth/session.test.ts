@@ -81,7 +81,6 @@ describe('verifySession', () => {
 
   it('throws if token issued exactly at cutoff (valid_after)', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, SECRET, 3600)
-    // We decode token to get exact iat
     const [, body] = token.split('.')
     const payload = JSON.parse(atob(body!.replace(/-/g, '+').replace(/_/g, '/')))
     const iat = payload.iat
@@ -124,7 +123,6 @@ describe('revokeAllSessions', () => {
       'UPDATE users SET sessions_valid_after = MAX(COALESCE(sessions_valid_after, 0), ?) WHERE id = ?'
     )
 
-    // Bind args: timestamp, userId
     const bindArgs = mockBind.mock.calls[0]
     expect(bindArgs[0]).toBeTypeOf('number')
     expect(bindArgs[0]).toBeCloseTo(Math.floor(Date.now() / 1000), -1)

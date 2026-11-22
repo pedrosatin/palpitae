@@ -1,23 +1,17 @@
-import { renderHook, waitFor, act } from '@testing-library/react'
+import { waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePredictionsTab } from './usePredictionsTab'
 import * as ga from '../../analytics/ga'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { groupsListQueryKey } from '../../lib/groupsList'
 import { makeMatch } from '../matchFixtures'
+import { createTestQueryClient, renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({
   trackEvent: vi.fn(),
 }))
-vi.mock('../../lib/api-cache', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../lib/api-cache')>()
-  return {
-    ...actual,
-    invalidateApiCache: vi.fn(),
-  }
-})
 
 const mockTrackEvent = vi.mocked(ga.trackEvent)
-const mockInvalidate = vi.mocked(invalidateApiCache)
 
 function mockFetch(
   matches: ReturnType<typeof makeMatch>[],
@@ -75,7 +69,6 @@ describe('usePredictionsTab', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockTrackEvent.mockClear()
-    mockInvalidate.mockClear()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -111,7 +104,7 @@ describe('usePredictionsTab', () => {
     expect(result.current.predictions.size).toBe(1)
     expect(result.current.predictions.get('m1')?.predicted_home_score).toBe(1)
     expect(result.current.roundKeys).toEqual(['1', '2'])
-    expect(result.current.selectedRound).toBe('1') // explicitly set default_round
+    expect(result.current.selectedRound).toBe('1')
   })
 
   it('navigates between rounds', async () => {
@@ -144,7 +137,14 @@ describe('usePredictionsTab', () => {
   it('handles draft changes and saving', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches, [], [], '1')
-    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    queryClient.setQueryData(groupPredictionsQueryKey('g1'), {
+      self_user_id: 'u1',
+      members: [],
+      predictions: [],
+    })
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -183,13 +183,16 @@ describe('usePredictionsTab', () => {
       count: 1,
       round: '1',
     })
-    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(groupPredictionsQueryKey('g1'))?.isInvalidated).toBe(true)
   })
 
   it('does not invalidate groups cache when bulk save fails', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches, [], [], '1')
-    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -215,12 +218,14 @@ describe('usePredictionsTab', () => {
     })
 
     expect(result.current.bulkError).toBe('Falha ao salvar')
-    expect(mockInvalidate).not.toHaveBeenCalled()
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(false)
   })
 
   it('handles import', async () => {
     mockFetch([], [], [{ id: 'g2', name: 'Other Group', competition_id: 'c1' }])
-    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false)
@@ -251,11 +256,10 @@ describe('usePredictionsTab', () => {
         }),
       }),
     )
-    // O aviso com o grupo de origem confirma o sucesso, sem uma segunda mensagem.
     expect(result.current.importCompleted).toBe(true)
     expect(result.current.importedFromName).toBe('Other Group')
     expect(result.current.importFeedback).toBeNull()
-    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
   })
 
   it('Salvar todos inclui adiado com horário passado como último pendente e invalida groups', async () => {
@@ -270,7 +274,9 @@ describe('usePredictionsTab', () => {
       }),
     ]
     mockFetch(matches, [], [], '2')
-    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -301,7 +307,7 @@ describe('usePredictionsTab', () => {
         }),
       }),
     )
-    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
   })
 
   it('Salvar todos ignora adiado com locked_at', async () => {
@@ -317,7 +323,9 @@ describe('usePredictionsTab', () => {
       }),
     ]
     mockFetch(matches, [], [], '2')
-    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -334,6 +342,79 @@ describe('usePredictionsTab', () => {
       expect.stringContaining('/predictions/bulk'),
       expect.anything(),
     )
-    expect(mockInvalidate).not.toHaveBeenCalled()
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(false)
+  })
+
+  it('refetch das partidas não volta a rodada escolhida para a padrão', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    mockFetch(matches, [], [], '1')
+    const { result, queryClient } = renderHook(() => usePredictionsTab('g1', 'c1'))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('1')
+
+    act(() => {
+      result.current.next()
+    })
+    expect(result.current.selectedRound).toBe('2')
+
+    mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '1')
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })
+    })
+    await waitFor(() => expect(result.current.matches[1].status).toBe('live'))
+
+    expect(result.current.selectedRound).toBe('2')
+  })
+
+  it('com cache velho, a rodada padrão vem da resposta nova', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(
+      ['matches', 'c1'],
+      { matches, default_round: '1' },
+      { updatedAt: Date.now() - 60_000 },
+    )
+    mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '2')
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'), { queryClient })
+
+    await waitFor(() => expect(result.current.matches[1]?.status).toBe('live'))
+    expect(result.current.selectedRound).toBe('2')
+  })
+
+  it('aplica ?rodada= só na primeira carga e o refetch mantém a rodada escolhida', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ]
+    mockFetch(matches, [], [], '1')
+    const onApplied = vi.fn()
+    const { result, queryClient } = renderHook(() =>
+      usePredictionsTab('g1', 'c1', undefined, '2', onApplied),
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.selectedRound).toBe('2')
+    expect(onApplied).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      result.current.prev()
+    })
+    expect(result.current.selectedRound).toBe('1')
+
+    mockFetch([matches[0], { ...matches[1], status: 'live' }], [], [], '1')
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['matches', 'c1'] })
+    })
+    await waitFor(() => expect(result.current.matches[1].status).toBe('live'))
+
+    expect(result.current.selectedRound).toBe('1')
+    expect(onApplied).toHaveBeenCalledTimes(1)
   })
 })

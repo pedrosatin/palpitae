@@ -1,25 +1,5 @@
-/**
- * GA4 + Consent Mode v2 for the static /guias/* pages.
- *
- * The guides are plain HTML without the React bundle, so they can't call
- * `initGa()` (src/analytics/ga.ts) or mount `CookieConsent`. This module emits a
- * small inline equivalent that must stay in sync with those two files:
- *
- * - same localStorage key and value format (`granted` / `denied:<timestamp>`,
- *   with the 30-day re-prompt for `denied` and the legacy plain `denied`);
- * - `consent default` (all denied) is pushed before `js`/`config`, so no hit
- *   leaves the page without the default registered first;
- * - a stored `granted` is restored right after the default;
- * - gtag.js is injected after `load`, on idle, like the app;
- * - the banner opens for a new choice or through the preferences button.
- *
- * With an empty measurement id nothing is emitted (no script, no banner), same
- * as the app in local dev.
- *
- * The inline script and the guides' <style> are allowed by sha256 hash in the CSP
- * of public/_headers. Any change to them (or to the measurement id) needs a new
- * hash there; `npm run csp:verify` after the build prints it.
- */
+
+import { PRIVACY_PATH } from './privacy'
 
 const CONSENT_KEY = 'palpitae:analytics-consent'
 const DENIED_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
@@ -42,12 +22,13 @@ export function normalizeGaId(raw: string, warn: (msg: string) => void = console
   return ''
 }
 
-/** Only a well-formed GA4 id is embedded in the inline script. */
 function validId(gaId: string): boolean {
   return GA_ID_RE.test(gaId)
 }
 
-/** Banner styles, mirroring components/CookieConsent with the app's tokens. */
+/** Banner styles, mirroring components/CookieConsent with the app's tokens.
+ *  O link da política de privacidade fica sublinhado para não depender da cor
+ *  (auditoria `link-in-text-block` do Lighthouse). */
 export const CONSENT_CSS = `
 html{scroll-padding-bottom:var(--consent-banner-height,0px)}
 body{padding-bottom:var(--consent-banner-height,0px)}
@@ -56,6 +37,8 @@ body{padding-bottom:var(--consent-banner-height,0px)}
 #cookie-preferences{background:transparent;border:0;color:#a3a3a3;font:inherit;font-size:.875rem;text-decoration:underline;min-height:44px;cursor:pointer}
 .consent[hidden]{display:none}
 .consent p{margin:0;color:#a3a3a3;font-size:.875rem;line-height:1.5}
+.consent p a{text-decoration:underline;text-underline-offset:3px}
+.consent p a:focus-visible{outline:2px solid #49f21b;outline-offset:2px}
 .consent .actions{display:flex;flex-shrink:0;gap:8px}
 .consent button{min-height:44px;padding:8px 16px;border-radius:9999px;font:inherit;font-size:.875rem;font-weight:600;cursor:pointer}
 .consent .reject{background:transparent;border:1px solid #2a2a2a;color:#a3a3a3}
@@ -105,5 +88,5 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 /** Preferences button and banner markup; the banner opens with no stored choice or on the button click. */
 export function consentBanner(gaId: string): string {
   if (!validId(gaId)) return ''
-  return `<div class="cookie-preferences"><button id="cookie-preferences" type="button" aria-expanded="false">Preferências de cookies</button></div><div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
+  return `<div class="cookie-preferences"><button id="cookie-preferences" type="button" aria-expanded="false">Preferências de cookies</button></div><div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide. Detalhes na <a href="${PRIVACY_PATH}">política de privacidade</a>.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
 }

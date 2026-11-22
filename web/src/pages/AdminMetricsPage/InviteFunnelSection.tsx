@@ -1,4 +1,5 @@
-import { formatSince } from './ProviderOpsSection'
+import { CollectionNotice } from './CollectionNotice'
+import { formatCount } from './format'
 import styles from './AdminMetricsPage.module.css'
 
 /**
@@ -14,7 +15,13 @@ export interface InviteFunnelResponse {
   days: number
   opens: number
   joins: number
-  joinsByMethod: { convite_link: number; convite_antigo: number; codigo: number; unknown: number }
+  joinsByMethod: {
+    convite_link: number
+    convite_antigo: number
+    codigo: number
+    request?: number
+    unknown: number
+  }
   newMembers: number
   existingMembers: number
   unclassifiedJoins: number
@@ -24,48 +31,9 @@ export interface InviteFunnelResponse {
   avgSampleInterval: number
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-export function formatCount(n: number): string {
-  return Math.round(n).toLocaleString('pt-BR')
-}
-
-/** Só `convite_link` passou pela página que conta aberturas: link antigo fica fora da taxa. */
 function linkConversion(data: InviteFunnelResponse): string {
   if (data.opens <= 0) return '—'
   return `${Math.round((data.joinsByMethod.convite_link / data.opens) * 100)}%`
-}
-
-function isNewerThanPeriod(ts: string, days: number): boolean {
-  const first = new Date(`${ts.replace(' ', 'T')}Z`).getTime()
-  return Number.isFinite(first) && first > Date.now() - days * DAY_MS
-}
-
-export function CollectionNotice({
-  subject,
-  since,
-  days,
-}: {
-  subject: string
-  since: string | null
-  days: number
-}) {
-  if (!since) {
-    return (
-      <p className={styles.samplingWarning}>
-        {subject}: nenhum registro ainda. A coleta é recente ou o deploy não chegou ao Worker. Isso
-        é falta de dado, não zero.
-      </p>
-    )
-  }
-  if (isNewerThanPeriod(since, days)) {
-    return (
-      <p className={styles.samplingWarning}>
-        {subject}: a coleta começou em {formatSince(since)}; antes disso não há dados.
-      </p>
-    )
-  }
-  return null
 }
 
 function isInviteFunnel(data: InviteFunnelResponse | null): data is InviteFunnelResponse {

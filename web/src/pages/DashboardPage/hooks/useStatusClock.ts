@@ -6,7 +6,6 @@ import {
   type RoundStatusFields,
 } from '../../../lib/dashboardStatus'
 
-/** Renova os horários curtos ("hoje 18:30") sem esperar um início de jogo. */
 const TICK_MS = 60_000
 /** Folga depois do horário: menor e maior. Espalha os painéis abertos no tempo. */
 export const REFRESH_DELAY_MIN_MS = 3_000
@@ -39,7 +38,6 @@ export function useStatusClock(
   const now = useNow(TICK_MS, boundaries)
   const passed = lastPassedBoundary(boundaries, now)
   const handledRef = useRef<number | null>(null)
-  // Horários que estavam no futuro na renderização anterior.
   const futureRef = useRef<Set<number>>(new Set())
   const refreshRef = useRef(refresh)
   refreshRef.current = refresh
@@ -73,7 +71,6 @@ export function useStatusClock(
         later(() => attempt(retries - 1), REFRESH_RETRY_MS)
       })
     }
-    // Visto no futuro e cruzado com a tela aberta: cabe a segunda tentativa.
     const retries = futureRef.current.has(passed) ? 1 : 0
     later(() => attempt(retries), refreshDelay())
   }, [passed])

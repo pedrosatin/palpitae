@@ -27,23 +27,16 @@ export interface GroupWithStats {
   competition_name: string | null
   competition_type?: 'league' | 'cup' | null
   competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
-  /** Pontos do placar exato. Zero é grupo "só vencedor". */
   points_exact?: number
   created_at: string
   member_count: number
-  /** Posição no ranking. `null` quando o usuário não tem linha no `leaderboard` do grupo. */
   user_position: number | null
   user_points: number
   pending_predictions: number
-  /** Jogo sem palpite que fecha primeiro. */
   next_deadline?: DeadlineMatch | null
-  /** Próximo jogo aberto, com ou sem palpite. */
   next_match_at?: string | null
-  /** Rótulo da rodada padrão, como "Rodada 35". */
   current_round_label?: string | null
-  /** Concordância do rótulo, para "Rodada 35 completa" ou "Semifinais completas". */
   current_round_agreement?: RoundAgreement | null
-  /** Último jogo aberto da rodada padrão. */
   round_ends_at?: string | null
   live_matches?: number
   podium?: PodiumEntry[] | null
@@ -101,7 +94,6 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
   const isFinished = group.competition_status === 'finished'
   const [shareOpen, setShareOpen] = useState(false)
-  // Grupo encerrado mostra o pódio e não tem linha de status.
   const status = isFinished ? null : groupRoundStatus(group)
   const nowMs = Date.now()
   const statusText = status ? groupRoundStatusText(status, nowMs) : null

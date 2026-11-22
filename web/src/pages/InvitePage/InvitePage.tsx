@@ -6,7 +6,19 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { markInviteAccepted, normalizeInviteCode } from '../../lib/invite'
 import { describeScoring, type InvitePreview } from '../../lib/invitePreview'
 import styles from './InvitePage.module.css'
-import { useInvitePreview } from './useInvitePreview'
+import { type InviteState, useInvitePreview } from './useInvitePreview'
+
+function inviteTitle(state: InviteState): string {
+  switch (state.status) {
+    case 'ready':
+      return `Convite para ${state.preview.groupName}`
+    case 'invalid':
+      return 'Convite inválido'
+    case 'loading':
+    case 'unavailable':
+      return 'Convite'
+  }
+}
 
 /**
  * Página de convite para quem ainda não tem sessão (`/convite/:code`).
@@ -24,13 +36,7 @@ export default function InvitePage() {
 function InviteContent({ code }: { code: string | null }) {
   const state = useInvitePreview(code)
 
-  useDocumentTitle(
-    state.status === 'ready'
-      ? `Convite para ${state.preview.groupName}`
-      : state.status === 'invalid'
-        ? 'Convite inválido'
-        : 'Convite',
-  )
+  useDocumentTitle(inviteTitle(state))
 
   if (state.status === 'invalid' || !code) return <InvalidInvite code={code} />
 
@@ -55,9 +61,7 @@ function InviteContent({ code }: { code: string | null }) {
           <GoogleLoginButton
             label="Entrar com Google e participar"
             redirect={`?convite=${encodeURIComponent(code)}`}
-            onBeforeRedirect={
-              state.status === 'ready' ? () => markInviteAccepted(code) : undefined
-            }
+            onBeforeRedirect={state.status === 'ready' ? () => markInviteAccepted(code) : undefined}
           />
           {state.status === 'ready' && (
             <p className={styles.hint}>Depois do login, você já entra no grupo.</p>
@@ -101,11 +105,6 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   )
 }
 
-/**
- * Código trocado, de grupo excluído ou que nunca existiu. O link de login cobre
- * quem tem acesso a um grupo de campeonato em piloto, que a rota pública trata
- * como inexistente. Depois do login, a entrada segue pelo modal do Dashboard.
- */
 function InvalidInvite({ code }: { code: string | null }) {
   return (
     <InviteShell>

@@ -140,6 +140,18 @@ describe('csp-verify', () => {
     ])
   })
 
+  it('ignores <style> and <script> inside HTML comments', () => {
+    const html = page(
+      `<!-- <style>fantasma{color:red}</style> --><style>${STYLE}</style>` +
+        '<!-- <script>fantasma()</script> --><!-- style="no comentário" -->',
+    ).content
+    const scan = scanHtml(html)
+    expect(scan.inlineStyles).toEqual([STYLE])
+    expect(scan.inlineScripts).toEqual([])
+    expect(scan.inlineAttributes).toEqual([])
+    expect(verifyPolicy(policy(), [{ path: 'index.html', content: html }])).toEqual([])
+  })
+
   it('keeps the committed policy in sync with the inline scripts of index.html', () => {
     const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8')
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
@@ -148,7 +160,6 @@ describe('csp-verify', () => {
       committed?.header,
     )
     const errors = verifyPolicy(committed!.value, [{ path: 'index.html', content: html }])
-    // O Vite reescreve o <style> inline no build; esse hash só o csp:verify confere.
     expect(errors.filter((error) => !error.includes('<style>'))).toEqual([])
   })
 })

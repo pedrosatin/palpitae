@@ -1,8 +1,3 @@
-/**
- * Saídas de uma imagem gerada no cliente. Servem ao cartão de fim de campeonato e ao
- * cartão da rodada.
- */
-
 /** Baixa o arquivo pelo navegador. */
 export function downloadBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
@@ -10,8 +5,6 @@ export function downloadBlob(blob: Blob, name: string): void {
   a.href = url
   a.download = name
   a.click()
-  // Revoga no próximo tick. Revogar antes de o navegador iniciar o download
-  // interrompe o salvamento em alguns browsers.
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 

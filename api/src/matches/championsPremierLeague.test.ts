@@ -196,7 +196,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
         fakeExecutionCtx,
       )
 
-    // 1. A migration 0018 já cadastrou as duas competições com o gate de pênaltis e o tipo certos.
     const compsBeforeRes = await request('/competitions')
     expect(compsBeforeRes.status).toBe(200)
     const compsBefore = (await compsBeforeRes.json()) as {
@@ -223,7 +222,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
       has_penalty_phases: false,
     })
 
-    // 2. Sincroniza jogos agendados de CL e PL duas vezes seguidas e verifica ausência de duplicatas.
     stubFootballDataApi(false)
     for (const code of ['CL', 'PL', '2001', '2021']) {
       const syncRes = await request('/matches/sync', {
@@ -277,7 +275,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
     expect(teamCount.total).toBe(4)
     expect(matchCount.total).toBe(5)
 
-    // 3. Cria um grupo em cada competição e verifica competition_type no detalhe do grupo.
     const createClGroupRes = await request('/groups', {
       method: 'POST',
       body: JSON.stringify({
@@ -324,7 +321,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
       competition_type: 'league',
     })
 
-    // 4. Lista partidas e confere fases, rótulos e decides_on_penalties apenas na FINAL da Champions.
     const clMatchesRes = await request(`/matches?competition_id=${clComp!.id}`)
     expect(clMatchesRes.status).toBe(200)
     const { matches: clMatches } = (await clMatchesRes.json()) as {
@@ -397,7 +393,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
       },
     ])
 
-    // 5. Envia palpites nos jogos da Champions e da Premier League, com pênaltis no empate da final.
     const clLeagueMatch = clMatches.find((m) => m.phase === 'LEAGUE_STAGE')!
     const clPlayoffMatch = clMatches.find((m) => m.phase === 'PLAYOFFS')!
     const clFinalMatch = clMatches.find((m) => m.phase === 'FINAL')!
@@ -461,7 +456,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
     })
     expect(predPlRes.status).toBe(200)
 
-    // 6. Finaliza e pontua as partidas via POST /matches/sync e confere ranking e palpites.
     stubFootballDataApi(true)
     for (const code of ['CL', 'PL']) {
       const finishSyncRes = await request('/matches/sync', {
@@ -471,7 +465,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
       expect(finishSyncRes.status).toBe(200)
     }
 
-    // Champions soma 1 ponto na Rodada 1, 3 pontos nos Playoffs e 4 pontos na Final com pênaltis, total de 8 pontos e 2 placares exatos.
     const clMembersRes = await request(`/groups/${clGroup.id}/members`)
     expect(clMembersRes.status).toBe(200)
     const { members: clMembers } = (await clMembersRes.json()) as {
@@ -500,7 +493,6 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
       penalty_points: 1,
     })
 
-    // Premier League soma 3 pontos e 1 placar exato no 2x0 da Rodada 1.
     const plMembersRes = await request(`/groups/${plGroup.id}/members`)
     expect(plMembersRes.status).toBe(200)
     const { members: plMembers } = (await plMembersRes.json()) as {

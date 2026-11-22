@@ -69,6 +69,13 @@ que não começou, mesmo depois do horário original, o palpite reabre até o no
 horário. Os palpites revelados entre o horário original e esse sync voltam a ficar
 ocultos para os outros membros. O placar de um palpite vai de 0 a 99.
 
+A escrita do palpite confere a trava no mesmo comando que grava. `PUT /predictions`,
+`PUT /predictions/bulk`, `POST /predictions/import` e `POST /predictions/replicate`
+usam `INSERT … SELECT … WHERE NOT lockedSql(…)` com o relógio do banco, então um
+palpite não entra se o kickoff passou entre a leitura do handler e a gravação. Quando
+a gravação altera zero linhas, o `PUT` único responde 422 e o `bulk` inclui o jogo em
+`locked`.
+
 ## Sessões
 
 O logout registra o hash SHA-256 da sessão em `revoked_sessions` até seu vencimento.
@@ -121,8 +128,10 @@ cookie:
   todo pedido repassado pelo proxy.
 
 Hosts fora de `palpitae.com.br` não recebem o cookie: as previews
-`*.palpitae-web.pages.dev` e o endereço `workers.dev` da API ficam em outro domínio
-registrável. Em 12/11/2026, dos nomes consultados, só `palpitae.com.br` e
+`*.palpitae-web.pages.dev` ficam em outro domínio registrável. O endereço
+`workers.dev` da API estava no mesmo caso, e o `wrangler.toml` agora o mantém
+desligado, como descreve a seção
+[Proteção de borda](#proteção-de-borda-cloudflare-rate-limiting). Em 12/11/2026, dos nomes consultados, só `palpitae.com.br` e
 `api.palpitae.com.br` resolviam no DNS, e não há registro wildcard; `www`, `staging` e `app` não existiam. A visão de produto prevê um app por
 competição em subdomínio (`brasileirao.palpitae.com.br`), e esses hosts também
 receberiam o cookie.
@@ -137,12 +146,54 @@ terceiros ou rode código fora deste repositório, reavalie essa decisão: o hos
 novo receberia o cookie de sessão de todo usuário logado. Um registro DNS que
 aponte para serviço desativado (CNAME órfão) tem o mesmo efeito.
 
+### Admin amarrado ao `sub` do Google
+
+`ADMIN_EMAIL` define quem é admin: métricas, radar, sync manual de partidas,
+promoção de competição e acesso do admin a competições em piloto, inclusive no
+e-mail de lembrete. Sem `ADMIN_GOOGLE_SUB`, só o e-mail identifica a conta, então um
+e-mail reciclado que passe a ser de outra pessoa herdaria o papel.
+
+`ADMIN_GOOGLE_SUB` fecha essa brecha. Com a variável definida, a conta só é admin
+se o e-mail for o `ADMIN_EMAIL` e o `users.provider_id` dela for esse valor, com
+`users.provider = 'google'`, já que o `provider_id` de outro provedor não é um `sub`
+do Google. Quem tem o e-mail certo e outro `sub` recebe 403 nas rotas de admin e
+perde o acesso do admin ao piloto. Sem a variável, ou com ela vazia, vale só o
+e-mail, como antes. O e-mail continua sem diferenciar caixa, e espaços ou quebra de
+linha nas pontas do `ADMIN_EMAIL` e do `ADMIN_GOOGLE_SUB` são ignorados. As rotas
+usam `isAdminUser` e `hasPilotAccess` sobre a identidade que `verifySession` lê na
+mesma consulta que valida a sessão. O lembrete diário, que não passa por sessão, usa
+`hasPilotAccess` com `provider` e `provider_id` trazidos na consulta de jogos pendentes.
+
+O `sub` é um identificador estável da conta Google. Ele não autentica ninguém, porém
+identifica o admin e por isso fica fora de arquivos versionados. Para descobrir o
+valor sem expô-lo, rode no D1 remoto uma consulta de leitura e copie o resultado
+direto para o prompt do segredo:
+
+```bash
+cd api
+npx wrangler d1 execute palpitae --remote --config ./wrangler.toml \
+  --command "SELECT provider_id FROM users WHERE lower(email) = lower('<ADMIN_EMAIL>') AND provider = 'google'"
+npx wrangler secret put ADMIN_GOOGLE_SUB --config ./wrangler.toml
+```
+
+O comando de `secret put` pede o valor no prompt, então ele não vai para arquivo nem
+para o histórico do shell. Não cole o `<SUB>` em issue, PR, commit ou log. Se a
+consulta não devolver linha, a conta admin ainda não entrou por Google e o `sub`
+aparece depois do primeiro login. Para desligar a amarração, apague o segredo com
+`npx wrangler secret delete ADMIN_GOOGLE_SUB --config ./wrangler.toml`.
+
 ## Content-Security-Policy do site
 
-O `web/public/_headers` envia `Content-Security-Policy` em todas as páginas do
-Pages, inclusive no HTML devolvido pela Function de convite. O navegador bloqueia o
-que a política não libera e registra a violação no console. A política não tem
-endpoint de relatório.
+O `web/public/_headers` envia `Content-Security-Policy` e os demais cabeçalhos de
+segurança em todos os assets do Pages. A Function de convite
+(`web/functions/convite/[code].ts`) reescreve o HTML que `ASSETS.fetch` devolve, e
+esse shell já traz os cabeçalhos do `_headers`. Para não depender disso, a Function
+fixa os mesmos valores a partir de `web/functions/_securityHeaders.ts` em toda
+resposta, inclusive 404, redirect e erro do asset. O teste
+`web/tests/functions/conviteHeaders.test.ts` lê a regra `/*` do `_headers` e exige
+cada valor nessas respostas. Mudar a política pede atualizar os dois arquivos. O
+navegador bloqueia o que a política não libera e registra a violação no console. A
+política não tem endpoint de relatório.
 
 A política passou de Report-Only para enforcing depois de uma navegação logada sem
 nenhuma violação: home, três grupos (abas Palpitar, Tabela, Ranking e rodada),
@@ -203,10 +254,18 @@ até 100 palpites por requisição. As quotas usam uma janela fixa de 60 segundo
 | Início e callback de OAuth | 30 | 300 |
 | Leituras | 300 | 3000 |
 | Escritas | 60 | 600 |
+| Revogação com sessão válida | 10 por token | Não se aplica |
 
 A identidade de cada requisição é uma só:
 
-- Sessão válida: o contador do usuário (`user:<id>`). O IP não entra.
+- Sessão válida nas demais rotas usa o contador do usuário `user:<id>`.
+- `POST /auth/logout` e `POST /auth/logout-all` com sessão válida compartilham
+  a categoria `revocation`, com 10 tentativas por minuto por hash SHA-256 do
+  token apresentado. A chave do contador passa pelo HMAC como as demais.
+  O token cru fica fora das chaves e dos logs. O saldo de revogação independe
+  das escritas da conta e dos outros tokens dela. A comparação de caminho é
+  exata, com distinção de maiúsculas e sem barra final. Sem sessão válida,
+  essas rotas usam o balde anônimo de escrita descrito abaixo.
 - Sem sessão, vinda do proxy do Pages (ou da Function de preview de convite) com o
   segredo correto: o IP do visitante repassado em `X-Palpitae-Client-IP`.
 - Sem sessão, vinda de um Worker sem o segredo correto (header `CF-Worker` ou
@@ -258,13 +317,47 @@ Ao exceder a quota, a API responde 429 com `Retry-After`. Se o contador falhar
 (D1 indisponível), leituras GET/HEAD seguem sem contagem e escritas e OAuth
 respondem 503. As duas situações registram `security_storage_error`.
 
+Cada usuário com sessão válida também tem um orçamento diário de linhas do D1, de
+250 mil lidas e 5 mil escritas, que vira à 00:00 UTC (ADR-022). O limitador soma o
+`rows_read` e o `rows_written` que o D1 informa nas consultas da sessão e do
+handler e guarda o total em `request_limits`. As consultas do próprio limitador
+ficam fora da conta, e a linha de escrita só é gravada quando a requisição
+escreveu. Uma requisição só de leitura grava 4 linhas no D1, 2 do contador por
+minuto e 2 do balde de leitura, sem gastar o orçamento de escrita. A cota de 100
+mil escritas do Workers Free comporta 25 mil dessas requisições por dia. Uma
+requisição que escreve `w` linhas cobra `w + 4` do orçamento de escrita. Com o
+orçamento esgotado, a API responde 429 com `Retry-After` até a virada, antes do
+balde por minuto. Nas escritas em lote de `POST /predictions/replicate`,
+`POST /predictions/import` e `PUT /predictions/bulk`, o handler confere o número
+de instruções planejadas contra o saldo restante de escrita antes do `db.batch`
+e recusa com 429 sem gravar nada quando o lote ultrapassa o saldo. A conta é de 1
+unidade por instrução, e uma instrução que insere uma linha nova grava até 4
+linhas com os índices, então um lote aceito pode gravar até cerca de 4 vezes o
+saldo restante. O desconto final segue vindo do `rows_written` real medido após
+o handler. O `import` aceita no máximo 1.000 instruções planejadas por requisição,
+como o `replicate`, e o `bulk` segue limitado a 100 palpites. Logout e
+logout-all ficam fora dessa recusa. `D1_DAILY_ROWS_READ_PER_USER` e
+`D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. A decisão de ficar no
+Workers Free, o risco aceito e o gatilho para migrar ao Paid estão no
+[ADR-022](architecture/decisions.md).
+
 Mutações com cabeçalho Origin aceitam somente o frontend (`FRONTEND_URL`) e a
 origem da API. Previews do Pages (`*.pages.dev`) recebem 403 em mutações. Clientes
 de servidor sem Origin continuam permitidos conforme autenticação da rota. O link
 de unsubscribe exige seu token HMAC próprio.
 
+Toda resposta da API sai com `Cache-Control: private, no-store`, salvo quando a
+rota define o próprio cabeçalho. O middleware `defaultCacheControl`,
+em `api/src/security/cacheControl.ts`, roda por fora dos demais e só preenche o
+cabeçalho ausente, cobrindo também 401, 404, 413, 429 e 500 emitidos pelos
+middlewares anteriores ou pelos handlers de erro. Nenhum cache, do navegador ou de uma regra futura
+da Cloudflare, guarda dado de conta. As exceções são `GET /matches`, que responde
+`private, max-age=60` ao navegador, e `/public/*`, que mantém o cache público de
+cada rota. O proxy do Pages devolve o cabeçalho da API sem alterar.
+
 `GET /matches` consulta somente dados locais e usa chave de cache composta por
-competição, rodada e status. Parâmetros desconhecidos não criam novas entradas.
+competição, versão monotônica dos jogos, rodada e status, conforme ADR-025.
+Parâmetros desconhecidos não criam novas entradas.
 Atualizações externas dependem dos crons e do sync manual autenticado como admin.
 O poller busca resultados na janela ativa (115 a 200 minutos após o início) e, como
 resgate, de jogos iniciados há até 24 horas que ainda não estão finalizados ou que
@@ -305,6 +398,72 @@ A expressão só casa com o proxy do front (`palpitae.com.br/api/*`), onde o IP
 contado é o do visitante. As rotas do host `api.palpitae.com.br` não começam com
 `/api/`, porque o proxy remove o prefixo, então os subrequests do proxy, que chegam
 à API com o IP de saída da Cloudflare, não entram na mesma contagem.
+
+A regra não pode ir para `api.palpitae.com.br/*`. O proxy do Pages chama esse host
+com o IP de saída dos Workers, igual para todos os visitantes, e uma contagem por IP
+ali limitaria o site inteiro em bloco, como um único cliente. Por isso a regra mira
+o caminho `/api/*` do host do front, onde a Cloudflare ainda enxerga o IP de cada
+visitante.
+
+### Estado da borda
+
+Leitura de 13/11/2026, feita no painel e na API da Cloudflare sem alterar nada.
+
+- A zona `palpitae.com.br` está no plano Free, com 0 de 5 regras custom e 0 de 1
+  regra de rate limit. A regra descrita acima ainda não existe, e a criação
+  depende do operador, nos [Passos do operador](#passos-do-operador).
+- O Worker `palpitae-api` tinha o `workers.dev` e as previews por versão ligados, e
+  o domínio personalizado `api.palpitae.com.br` ligado ao Worker pelo painel. O
+  `api/wrangler.toml` declara agora `workers_dev = false` e `preview_urls = false`,
+  e um teste em `api/src/wrangler-config.test.ts` confere as duas chaves. O
+  `deploy-api.yml` aplica o valor no deploy seguinte. O arquivo não declara `routes`
+  nem `custom_domain`, e o deploy do wrangler só publica domínios e rotas que a
+  configuração lista. No wrangler 4.136.3 do lockfile, o vínculo do painel fica
+  como está, e o `workers_dev` ausente valia como ligado justamente por faltar
+  `routes`. Declarar o domínio no arquivo fica como decisão separada, a conferir
+  contra a conta antes do primeiro deploy que incluir essa chave.
+- Nada no repositório usa o endereço `workers.dev`. O front e as Functions chamam
+  `api.palpitae.com.br` em `web/functions/api/[[path]].ts`, `web/.env.production`
+  e `web/functions/convite/[code].ts`. No `wrangler.toml`, `BASE_URL` e
+  `FRONTEND_URL` apontam para os hosts próprios.
+
+### Risco aceito do host da API
+
+Com o `workers.dev` fechado, a API responde por um único host público. Esse host
+continua sem regra de borda. O limitador do código, descrito em
+[Consumo de recursos](#consumo-de-recursos), é a única barreira de quem chama
+`api.palpitae.com.br` direto. Um flood anônimo vindo de muitos IPs passa pela
+regra da zona, porque ela não casa com esse host. Cada requisição conta nas 100 mil
+diárias do Workers Free, inclusive as que o limitador recusa com 429. O plano Free
+não separa o proxy do Pages de um atacante nesse host, pelo motivo exposto antes.
+O operador aceitou esse risco em 13/11/2026, com o gatilho para migrar ao Workers
+Paid registrado no [ADR-022](architecture/decisions.md).
+
+### Passos do operador
+
+1. Criar a regra de rate limit da zona pelos passos acima, com a expressão
+   `starts_with(http.request.uri.path, "/api/")`, contagem por IP e nenhuma
+   condição sobre o host da API. Esta é a única regra gratuita da zona.
+2. Fazer o merge em `main` e esperar o `deploy-api.yml` terminar.
+3. Ler o subdomínio do Worker. O resultado esperado traz `enabled` e
+   `previews_enabled` em `false`.
+
+   ```bash
+   curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+     "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/palpitae-api/subdomain"
+   ```
+
+   O painel mostra o mesmo em **Workers & Pages > palpitae-api > Settings > Domains &
+   Routes**, com o `workers.dev` desativado.
+4. Conferir que `https://api.palpitae.com.br/health` responde 200 e que o domínio
+   personalizado continua listado em **Domains & Routes**.
+5. Conferir em **Security > Security rules** da zona que o contador de regras de
+   rate limit marca 1 de 1.
+6. Acompanhar **Security > Events** por alguns dias. Bloqueio de tráfego legítimo
+   pede um teto maior na regra.
+
+Se o `workers.dev` seguir ligado depois do deploy, olhe a execução do
+`deploy-api.yml` antes de desligar à mão no painel.
 
 Para barrar subrequests de Workers de outras contas, uma regra de WAF Custom com
 `(cf.worker.upstream_zone ne "" and cf.worker.upstream_zone ne "palpitae-web.pages.dev")`
@@ -399,6 +558,53 @@ Para rotacionar o `JWT_SECRET`:
 3. Gere o valor novo e grave: `npx wrangler secret put JWT_SECRET --config ./wrangler.toml`.
 4. Resultado esperado: as sessões caem. Numa rotação planejada, os links de
    descadastro assinados com o `UNSUBSCRIBE_SECRET` continuam funcionando.
+
+O `CF_ANALYTICS_TOKEN` só lê analytics da conta (Account Analytics: Read) e mede o uso
+diário das cotas do plano Free. Rotacionar não afeta sessões nem links: crie o token novo com a
+mesma permissão, grave com
+`cd api && npx wrangler secret put CF_ANALYTICS_TOKEN --config ./wrangler.toml` e revogue o
+antigo no painel. Uma medição que coincida com a troca grava `cloudflare_usage_error` e volta
+no cron do dia seguinte. Criação do token em
+[Observabilidade](observability.md#token-de-analytics-passos-do-operador).
+
+`MAILJET_WEBHOOK_SECRET` é a senha do Basic Auth de `POST /notifications/mailjet-events`
+(Event API unsub/spam). Sem ele a rota responde 404. Trocar o valor exige atualizar o
+`Url` dos `eventcallbackurl` na Mailjet (usuário livre, ex. `mailjet`; a senha é o
+segredo). Grave com
+`cd api && npx wrangler secret put MAILJET_WEBHOOK_SECRET --config ./wrangler.toml`.
+Passos de cadastro do callback: ADR-020.
+
+## Tokens da Cloudflare no CI
+
+Hoje os workflows `deploy-api`, `deploy-web` e `radar-sync` leem o mesmo secret
+`CLOUDFLARE_API_TOKEN`. Quem consegue alterar o `radar-sync` em qualquer branch,
+por `workflow_dispatch`, ou alterar os deploys na `main`, alcança todos os
+recursos que o token cobre. As actions de terceiros ficam
+pinadas por SHA completo, e `scripts/workflows-check.test.mjs` falha se uma
+referência voltar a usar tag. Esta proposta reduz o alcance do token e depende de
+configuração do operador na Cloudflare e nas configurações do repositório.
+
+Passos propostos:
+
+1. No painel da Cloudflare, em My Profile > API Tokens, crie três tokens com o
+   mínimo de permissão.
+   - `radar-sync`, escopo na conta: D1 Edit.
+   - `deploy-web`, escopo na conta: Cloudflare Pages Edit.
+   - `deploy-api`, escopo na conta: Workers Scripts Edit e D1 Edit.
+2. No repositório, em Settings > Environments, crie os environments `deploy-api`,
+   `deploy-web` e `radar-sync`. Em cada um, restrinja Deployment branches and tags
+   a `main`.
+3. Grave cada token como secret do environment correspondente, com o nome
+   `CLOUDFLARE_API_TOKEN`, e mantenha `CLOUDFLARE_ACCOUNT_ID` nos secrets do repositório.
+4. Nos workflows, adicione `environment: <nome>` ao job que usa o token. Essa
+   mudança de YAML vai em PR à parte, depois que os secrets existirem.
+5. Depois do primeiro deploy e da primeira execução do `radar-sync` com os
+   tokens novos, apague o `CLOUDFLARE_API_TOKEN` antigo dos secrets do repositório
+   e revogue-o no painel.
+
+O job de deploy da API aplica a migration e publica o Worker em sequência, por
+isso o token dele leva Worker e D1. Se a conta tiver mais de um banco,
+restrinja a permissão de D1 ao banco `palpitae` quando o painel oferecer essa opção.
 
 ## Migrações
 

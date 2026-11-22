@@ -1,12 +1,13 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import GroupTabContent from '../../pages/GroupDetailPage/GroupTabContent'
 import type { GroupDetail } from '../../pages/GroupDetailPage/types'
-import { fetchGroupsList } from '../../lib/groupsList'
+import { groupsListQueryOptions } from '../../lib/groupsList'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
 import { usePredictionsTab } from './usePredictionsTab'
+import { createTestQueryClient, renderWithQuery as render, renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
@@ -54,7 +55,6 @@ describe('Barra de importação', () => {
     await user.click(await screen.findByRole('button', { name: 'Importar' }))
     expect(await screen.findByRole('button', { name: 'Importar de novo' })).toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
-    // Na mesma visita a origem é conhecida e aparece numa mensagem só.
     expect(screen.getByText('Palpites importados de Origem.')).toBeInTheDocument()
     expect(screen.queryByText(/importado\(s\)/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Importar de novo' }))
@@ -63,14 +63,13 @@ describe('Barra de importação', () => {
     view.unmount()
     const next = render(<PredictionsTab groupId="target" competitionId="c" />)
     await screen.findByRole('button', { name: 'Importar de novo' })
-    // Depois de remontar, a API informa só que houve importação, sem o grupo de origem.
     expect(screen.getByText('Você já importou palpites de outro grupo.')).toBeInTheDocument()
     expect(screen.queryByText(/Palpites importados de/)).not.toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
     next.rerender(<PredictionsTab groupId="other" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
     next.unmount()
-    state.completed.clear() // Nova conta, sem conclusão no backend.
+    state.completed.clear()
     render(<PredictionsTab groupId="target" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
   })
@@ -78,11 +77,15 @@ describe('Barra de importação', () => {
   it('lê os grupos da lista do painel em cache, sem buscar de novo', async () => {
     const { fetchMock } = setup()
     const groupsCalls = () =>
-      fetchMock.mock.calls.filter(([url]) => String(url).includes('/groups')).length
-    await fetchGroupsList('u1')
+      fetchMock.mock.calls.filter(([url]) => {
+        const path = String(url)
+        return path.includes('/groups') && !path.includes('/round-standings')
+      }).length
+    const queryClient = createTestQueryClient()
+    await queryClient.fetchQuery(groupsListQueryOptions('u1'))
     expect(groupsCalls()).toBe(1)
 
-    render(<PredictionsTab groupId="target" competitionId="c" userId="u1" />)
+    render(<PredictionsTab groupId="target" competitionId="c" userId="u1" />, { queryClient })
 
     expect(await screen.findByText('Importar palpites de:')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /Origem/ })).toBeInTheDocument()
@@ -298,7 +301,6 @@ describe('Barra de importação', () => {
     it('reabre o seletor quando a rodada nova tem palpites em outro grupo', async () => {
       const posts = mockSources({
         import_completed: true,
-        // `done` travou depois da resposta da API e não entra na contagem.
         import_sources: { source: ['m', 'm2', 'done'] },
         predictions: [{ match_id: 'm' }],
       })
@@ -352,7 +354,6 @@ describe('Barra de importação', () => {
       })
       render(<PredictionsTab groupId="target" competitionId="c" />)
       expect(await screen.findByText('Importar palpites de:')).toBeInTheDocument()
-      // O grupo com mais pendências vem selecionado, mesmo não sendo o primeiro de /groups.
       expect(screen.getByRole('option', { name: 'Vazio (2 palpites novos)' })).toHaveProperty(
         'selected',
         true,

@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { trackEvent } from '../../analytics/ga'
+import { useOutsideClick } from '../../hooks/useOutsideClick'
 import { positionLabel } from '../../lib/groupPosition'
 import styles from './GroupDetailPage.module.css'
 
@@ -21,14 +22,15 @@ interface GroupHeaderProps {
   leaving: boolean
 }
 
-interface GroupMenuProps {
-  isAdmin: boolean
-  onOpenRename: () => void
-  onOpenRules?: () => void
-  onDeleteGroup: () => void
-  deleting: boolean
-  onLeaveGroup: () => void
-  leaving: boolean
+type GroupMenuProps = Omit<GroupHeaderProps, 'group'>
+
+function StatItem({ value, label }: { value: string | number; label: string }) {
+  return (
+    <div className={styles.statItem}>
+      <span className={styles.statValue}>{value}</span>
+      <span className={styles.statLabel}>{label}</span>
+    </div>
+  )
 }
 
 function GroupMenu({
@@ -44,26 +46,7 @@ function GroupMenu({
   const menuRef = useRef<HTMLDivElement>(null)
   const kebabRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    if (!menuOpen) return
-
-    const handlePointer = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
-    }
-
-    document.addEventListener('mousedown', handlePointer)
-    document.addEventListener('keydown', handleKey)
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointer)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [menuOpen])
+  useOutsideClick(menuRef, menuOpen, () => setMenuOpen(false), { closeOnEscape: true })
 
   return (
     <div className={styles.menuWrap} ref={menuRef}>
@@ -85,7 +68,6 @@ function GroupMenu({
               role="menuitem"
               onClick={() => {
                 trackEvent('click_group_detail_regras')
-                // O item some ao fechar o menu. O foco vai ao botão do menu para o Modal devolvê-lo ali.
                 kebabRef.current?.focus()
                 setMenuOpen(false)
                 onOpenRules()
@@ -137,47 +119,21 @@ function GroupMenu({
   )
 }
 
-export function GroupHeader({
-  group,
-  isAdmin,
-  onOpenRename,
-  onOpenRules,
-  onDeleteGroup,
-  deleting,
-  onLeaveGroup,
-  leaving,
-}: GroupHeaderProps) {
+export function GroupHeader({ group, ...menuProps }: GroupHeaderProps) {
   return (
     <div className={styles.groupHeader}>
       <div className={styles.groupMeta}>
         <span className={styles.competition}>{group.competition_name ?? group.competition_id}</span>
         <div className={styles.groupNameRow}>
           <h1 className={styles.groupName}>{group.name}</h1>
-          <GroupMenu
-            isAdmin={isAdmin}
-            onOpenRename={onOpenRename}
-            onOpenRules={onOpenRules}
-            onDeleteGroup={onDeleteGroup}
-            deleting={deleting}
-            onLeaveGroup={onLeaveGroup}
-            leaving={leaving}
-          />
+          <GroupMenu {...menuProps} />
         </div>
       </div>
       <div className={styles.groupActions}>
         <div className={styles.stats}>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{group.member_count}</span>
-            <span className={styles.statLabel}>membros</span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{positionLabel(group.user_position)}</span>
-            <span className={styles.statLabel}>sua posição</span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{group.user_points}</span>
-            <span className={styles.statLabel}>pontos</span>
-          </div>
+          <StatItem value={group.member_count} label="membros" />
+          <StatItem value={positionLabel(group.user_position)} label="sua posição" />
+          <StatItem value={group.user_points} label="pontos" />
         </div>
       </div>
     </div>

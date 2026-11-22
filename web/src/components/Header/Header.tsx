@@ -1,21 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Avatar from '../Avatar'
 import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
+import { useOutsideClick } from '../../hooks/useOutsideClick'
+import type { User } from '../../types'
 import styles from './Header.module.css'
 
-interface User {
-  nickname?: string
-  avatar_url?: string
-  email: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
-
 interface HeaderProps {
-  user: User
+  user: Omit<User, 'id'>
   onCreateGroup: () => void
   onJoinGroup: () => void
   onLogout: () => void
@@ -27,16 +20,7 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
   const menuRef = useRef<HTMLDivElement>(null)
   const displayName = user.nickname?.trim() || user.email
 
-  useEffect(() => {
-    if (!menuOpen) return
-    function handleOutsideClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [menuOpen])
+  useOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
 
   return (
     <header className={styles.header}>
@@ -51,7 +35,6 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
         </a>
 
         <div className={styles.actions}>
-          {/* No celular os botões viram ícones; o texto fica só para leitor de tela. */}
           <Button
             variant="secondary"
             className={styles.actionButton}
@@ -88,7 +71,6 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
               aria-haspopup="true"
               aria-label={`Menu de ${displayName}`}
             >
-              {/* A inicial só aparece no celular, onde o nome some e sobra o avatar. */}
               <Avatar
                 name={displayName}
                 src={user.avatar_url}

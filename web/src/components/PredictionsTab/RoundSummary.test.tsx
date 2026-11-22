@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { renderWithQuery as render } from '../../test-utils'
 import { makeMatch } from '../matchFixtures'
 import type { Match, Prediction } from '../MatchCard'
 import RoundSummary from './RoundSummary'
@@ -9,16 +9,26 @@ import RoundSummary from './RoundSummary'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 
 const mockRender = vi.fn()
+const mockMilestoneRender = vi.fn()
+const mockUnlikelyRender = vi.fn()
 vi.mock('../../lib/roundShareCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/roundShareCard')>()),
   renderRoundShareCardBlob: (...args: unknown[]) => mockRender(...args),
 }))
-
-beforeEach(() => invalidateApiCache())
+vi.mock('../../lib/milestoneShareCard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/milestoneShareCard')>()),
+  renderMilestoneShareCardBlob: (...args: unknown[]) => mockMilestoneRender(...args),
+}))
+vi.mock('../../lib/unlikelyExactShareCard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/unlikelyExactShareCard')>()),
+  renderUnlikelyExactShareCardBlob: (...args: unknown[]) => mockUnlikelyRender(...args),
+}))
 
 afterEach(() => {
   vi.restoreAllMocks()
   mockRender.mockReset()
+  mockMilestoneRender.mockReset()
+  mockUnlikelyRender.mockReset()
 })
 
 const members = [
@@ -53,8 +63,28 @@ function groupPick(userId: string, matchId: string, home: number, away: number, 
   }
 }
 
-function mockGroupApi(predictions: unknown[], ok = true) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+function mockGroupApi(
+  predictions: unknown[],
+  ok = true,
+  roundStandings: {
+    round: string | null
+    standings: {
+      user_id: string
+      round_points: number
+      position_change: number | null
+      streak?: number
+      exact_hits?: number
+      exact_milestone?: number | null
+      exact_milestones_crossed?: number[]
+      unlikely_exact?: boolean
+    }[]
+  } = { round: '34', standings: [] },
+) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/round-standings')) {
+      return new Response(JSON.stringify(roundStandings), { status: 200 })
+    }
     if (!ok) return new Response('{}', { status: 500 })
     return new Response(
       JSON.stringify({ self_user_id: 'me', members, predictions, open_pickers: {} }),
@@ -63,15 +93,23 @@ function mockGroupApi(predictions: unknown[], ok = true) {
   })
 }
 
-function renderSummary(matches: Match[], mine: Prediction[]) {
+function renderSummary(
+  matches: Match[],
+  mine: Prediction[],
+  extras: { inviteCode?: string; publicId?: string; isOwner?: boolean } = {},
+) {
   return render(
     <RoundSummary
       groupId="g1"
       groupName="Realidade do BR"
       roundLabel="Rodada 34"
+      selectedRound="34"
       roundMatches={matches}
       predictions={new Map(mine.map((p) => [p.match_id, p]))}
       pointsExact={3}
+      inviteCode={extras.inviteCode}
+      publicId={extras.publicId}
+      isOwner={extras.isOwner}
     />,
   )
 }
@@ -90,7 +128,6 @@ describe('RoundSummary', () => {
     renderSummary(matches, [own('a', 2, 1, 3), own('b', 1, 1, 1)])
 
     const region = screen.getByRole('region', { name: 'Resumo da rodada' })
-    // 3 + 1 = 4 pontos, igual à soma dos chips dos cards.
     expect(region).toHaveTextContent(/4\s*pontos/)
     expect(region).toHaveTextContent(/1\s*placar exato/)
     expect(region).toHaveTextContent(/1\s*resultado certo/)
@@ -180,7 +217,13 @@ describe('RoundSummary', () => {
   it('trocar entre rodadas encerradas reaproveita a resposta do grupo', async () => {
     const fetchSpy = mockGroupApi([groupPick('me', 'a', 2, 1, 3)])
     const mine = new Map([['a', own('a', 2, 1, 3)]])
-    const props = { groupId: 'g1', roundLabel: 'Rodada 34', predictions: mine, pointsExact: 3 }
+    const props = {
+      groupId: 'g1',
+      roundLabel: 'Rodada 34',
+      selectedRound: '34',
+      predictions: mine,
+      pointsExact: 3,
+    }
     const { rerender } = render(<RoundSummary {...props} roundMatches={[done('a', 2, 1)]} />)
     await screen.findByRole('button', { name: 'Compartilhar rodada' })
 
@@ -188,7 +231,208 @@ describe('RoundSummary', () => {
     rerender(<RoundSummary {...props} roundMatches={[done('a', 2, 1)]} />)
     await screen.findByRole('button', { name: 'Compartilhar rodada' })
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const groupCalls = fetchSpy.mock.calls.filter((call) =>
+      String(call[0]).includes('/predictions/group'),
+    )
+    expect(groupCalls).toHaveLength(1)
+  })
+
+  it('destaca o marco só na rodada de referência e oferece o cartão com o link', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+
+    expect(
+      await screen.findByText('Você cruzou o marco de 5 placares exatos neste grupo.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compartilhar marco' })).toBeInTheDocument()
+  })
+
+  it('não redispara o destaque do marco quando a API não reporta cruzamento', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 6,
+          exact_milestone: 5,
+          exact_milestones_crossed: [],
+        },
+      ],
+    })
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+
+    await screen.findByRole('button', { name: 'Compartilhar rodada' })
+    expect(screen.queryByText(/cruzou o marco/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Compartilhar marco' })).not.toBeInTheDocument()
+  })
+
+  it('destaca o placar improvável na rodada de referência e oferece o cartão', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      publicId: 'abcdef0123456789abcdef0123456789',
+      isOwner: false,
+    })
+
+    expect(
+      await screen.findByText(
+        'Você cravou um placar improvável: no máximo 10% dos palpiteiros da competição acertaram.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Compartilhar placar improvável' }),
+    ).toBeInTheDocument()
+  })
+
+  it('não destaca placar improvável fora da rodada de referência', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '33',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+
+    await screen.findByRole('button', { name: 'Compartilhar rodada' })
+    expect(screen.queryByText(/placar improvável/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Compartilhar placar improvável' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('compartilha o placar improvável pelo menu nativo com o link do grupo', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockResolvedValue(new Blob(['u'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    expect(arg.files[0].name).toBe('palpitae-placar-improvavel.png')
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    expect(arg.text).toContain(inviteUrl)
+    expect(arg.text).toMatch(/^Cravei um placar improvável/)
+    expect(mockUnlikelyRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('no download do placar improvável copia o link', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockResolvedValue(new Blob(['u'], { type: 'image/png' }))
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:u'),
+      revokeObjectURL: vi.fn(),
+    })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining(inviteUrl))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Imagem baixada e link copiado',
+    )
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+  })
+
+  it('avisa quando a geração do cartão do placar improvável falha', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockRejectedValue(new Error('canvas'))
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
   })
 
   it('avisa quando a geração do cartão falha', async () => {
@@ -200,5 +444,240 @@ describe('RoundSummary', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
     expect(screen.getByRole('button', { name: 'Compartilhar rodada' })).toBeEnabled()
+  })
+
+  it('compartilha o marco pelo menu nativo e inclui a URL completa do convite', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    expect(arg.files[0].name).toBe('palpitae-marco-5-exatos.png')
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    expect(arg.text).toContain(inviteUrl)
+    expect(arg.text).toMatch(/^Cruzei o marco/)
+    expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('membro comum compartilha o placar improvável pelo link público /grupo/:publicId', async () => {
+    const publicId = 'abcdef0123456789abcdef0123456789'
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockResolvedValue(new Blob(['u'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      publicId,
+      isOwner: false,
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    const groupUrl = `${window.location.origin}/grupo/${publicId}`
+    expect(arg.files[0].name).toBe('palpitae-placar-improvavel.png')
+    expect(arg.text).toContain(groupUrl)
+    expect(arg.text).toContain('no máximo 10%')
+    expect(arg.text).not.toContain('AAAA-BBBB')
+    expect(arg.text).not.toContain('/convite/')
+    expect(mockUnlikelyRender.mock.calls[0][0]).toMatchObject({ groupLink: groupUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('membro comum compartilha o link público e nunca o código de convite', async () => {
+    const publicId = 'abcdef0123456789abcdef0123456789'
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      publicId,
+      isOwner: false,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    const groupUrl = `${window.location.origin}/grupo/${publicId}`
+    expect(arg.text).toContain(groupUrl)
+    expect(arg.text).not.toContain('AAAA-BBBB')
+    expect(arg.text).not.toContain('/convite/')
+    expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: groupUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('no download do marco copia o link e confirma de forma acessível', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:m'),
+      revokeObjectURL: vi.fn(),
+    })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining(inviteUrl))
+    expect(writeText.mock.calls[0][0]).toMatch(/^Cruzei o marco/)
+    expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Imagem baixada e link copiado',
+    )
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+  })
+
+  it('no download sem clipboard mostra o link para copiar', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true })
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+      configurable: true,
+    })
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:m'),
+      revokeObjectURL: vi.fn(),
+    })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('Imagem baixada. Copie o link:')
+    expect(status.querySelector('a')).toHaveAttribute('href', inviteUrl)
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+  })
+
+  it('avisa quando a geração do cartão do marco falha', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockRejectedValue(new Error('canvas'))
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
+    expect(screen.getByRole('button', { name: 'Compartilhar marco' })).toBeEnabled()
+  })
+
+  it('rótulos no singular quando há 1 ponto, 1 exato e 1 acerto', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)])
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+
+    const region = screen.getByRole('region', { name: 'Resumo da rodada' })
+    expect(region).toHaveTextContent(/3\s*pontos/)
+    expect(region).toHaveTextContent(/1\s*placar exato/)
+    expect(await screen.findByText(/1º de 3/)).toBeInTheDocument()
   })
 })

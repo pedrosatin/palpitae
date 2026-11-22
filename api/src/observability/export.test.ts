@@ -102,7 +102,7 @@ describe('exportEventsToR2', () => {
     const fetchFake = vi.fn()
     vi.stubGlobal('fetch', fetchFake)
     const put = vi.fn()
-    const env = { EVENTS: { put } } as unknown as Env // falta CF_ACCOUNT_ID/AE_SQL_TOKEN
+    const env = { EVENTS: { put } } as unknown as Env
 
     await exportEventsToR2(env, new Date('2026-06-20T00:00:00Z'))
 
@@ -111,7 +111,6 @@ describe('exportEventsToR2', () => {
   })
 
   it('happy path: grava NDJSON na chave correta com a contagem em customMetadata', async () => {
-    // Sob sampling cada linha vale _sample_interval eventos: 3 + 1 (default) = 4.
     const events = [{ a: 1, _sample_interval: 3 }, { b: 2 }]
     const fetchFake = fetchOk(events)
     vi.stubGlobal('fetch', fetchFake)
@@ -146,22 +145,18 @@ describe('exportRecentDays', () => {
     const events = [{ a: 1 }]
     vi.stubGlobal('fetch', fetchOk(events))
 
-    // head: dias pares já existem (com manifesto completo), ímpares faltam.
     const head = vi.fn(async (key: string) => {
-      const dd = Number(key.slice(-9, -7)) // "DD" antes de ".ndjson"
+      const dd = Number(key.slice(-9, -7))
       return dd % 2 === 0 ? { customMetadata: { events: '1', rows: '1', complete: '1' } } : null
     })
     const put = vi.fn()
     const env = makeEnv({ EVENTS: { head, put } as unknown as R2Bucket })
 
-    // today = 30 -> verifica back=1..lookback (dias 29,28,27,...). Teto = 10 exports.
     await exportRecentDays(env, new Date('2026-06-30T00:00:00Z'), 90)
 
-    // Não pode exportar mais que o teto de 10 por execução.
     expect(put.mock.calls.length).toBeLessThanOrEqual(10)
     expect(put.mock.calls.length).toBeGreaterThan(0)
 
-    // Nenhum dia par (já existente) foi exportado.
     for (const [key] of put.mock.calls as [string][]) {
       const dd = Number(key.slice(-9, -7))
       expect(dd % 2).toBe(1)
@@ -197,8 +192,8 @@ describe('exportRecentDays', () => {
       expect(put).toHaveBeenCalledTimes(1)
       const [key, body, opts] = put.mock.calls[0] as unknown as [string, string, R2PutOptions]
       expect(key).toBe(target)
-      expect(body).toBe(ndjson) // mesmo corpo — só ganha a metadata
-      expect(opts.customMetadata).toEqual({ events: '3', rows: '2', complete }) // 2 + 1 (default)
+      expect(body).toBe(ndjson)
+      expect(opts.customMetadata).toEqual({ events: '3', rows: '2', complete })
       expect(opts.onlyIf).toEqual({ etagMatches: 'e1' })
     },
   )
@@ -218,7 +213,7 @@ describe('exportRecentDays', () => {
   it('isola a falha no backfill de metadata de um dia — não trava os demais', async () => {
     vi.stubGlobal('fetch', fetchOk([]))
 
-    const head = vi.fn(async () => ({ size: 24 })) // Sem manifesto: força o reparo
+    const head = vi.fn(async () => ({ size: 24 }))
 
     let getCalls = 0
     const get = vi.fn(async () => {
@@ -231,15 +226,11 @@ describe('exportRecentDays', () => {
 
     await exportRecentDays(env, new Date('2026-06-30T00:00:00Z'), 3)
 
-    // O erro no primeiro get foi isolado e o loop continuou.
-    // 3 head() -> todos caem em backfill. O primeiro falha no get().
-    // Sobram 2 que fazem get() e put()
     expect(get).toHaveBeenCalledTimes(3)
     expect(put).toHaveBeenCalledTimes(2)
   })
 
   it('isola a falha de um dia — não trava o backfill dos demais', async () => {
-    // 1ª chamada à SQL API lança; as seguintes funcionam. Loop não pode parar.
     let n = 0
     const fetchFake = vi.fn(async () => {
       n++
@@ -254,7 +245,6 @@ describe('exportRecentDays', () => {
 
     await exportRecentDays(env, new Date('2026-06-30T00:00:00Z'), 3)
 
-    // 3 dias tentados (loop não parou no erro); o dia que falhou não gravou.
     expect(fetchFake).toHaveBeenCalledTimes(3)
     expect(put).toHaveBeenCalledTimes(2)
   })
@@ -263,17 +253,28 @@ describe('exportRecentDays', () => {
 type AeRow = { timestamp: string; [column: string]: unknown }
 type Stored = { body: string; customMetadata: Record<string, string>; etag: string }
 
-/** SQL API falsa: respeita o intervalo de `timestamp`, a ordem e o LIMIT da consulta. */
+function typeList(sql: string, operator: 'IN' | 'NOT IN'): string[] | undefined {
+  const match = new RegExp(`blob1 ${operator} \\(([^)]*)\\)`).exec(sql)
+  return match ? [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : undefined
+}
+
 function aeResponder(rows: AeRow[]) {
   return async (_url: string, init: { body: string }) => {
     const sql = String(init.body)
     const from = /timestamp >= toDateTime\('([^']+)'\)/.exec(sql)![1]
     const to = /timestamp < toDateTime\('([^']+)'\)/.exec(sql)![1]
-    const limit = Number(/LIMIT (\d+)/.exec(sql)![1])
-    const data = rows
+    const included = typeList(sql, 'IN')
+    const excluded = typeList(sql, 'NOT IN')
+    const inRange = rows
       .filter((r) => r.timestamp >= from && r.timestamp < to)
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-      .slice(0, limit)
+      .filter((r) => !included || included.includes(String(r.blob1)))
+      .filter((r) => !excluded || !excluded.includes(String(r.blob1)))
+    if (sql.includes('GROUP BY blob1')) {
+      const types = [...new Set(inRange.map((r) => String(r.blob1)))]
+      return { ok: true, json: async () => ({ data: types.map((t) => ({ event_type: t })) }) }
+    }
+    const limit = Number(/LIMIT (\d+)/.exec(sql)![1])
+    const data = inRange.sort((a, b) => a.timestamp.localeCompare(b.timestamp)).slice(0, limit)
     return { ok: true, json: async () => ({ data }) }
   }
 }
@@ -282,7 +283,6 @@ function fakeAe(rows: AeRow[]): FetchFake {
   return vi.fn(aeResponder(rows))
 }
 
-/** R2 em memória com etag e `onlyIf.etagMatches`, como o binding real. */
 function fakeBucket(initial: Record<string, { body: string; customMetadata?: Record<string, string> }> = {}) {
   let version = 0
   const store = new Map<string, Stored>()
@@ -339,7 +339,6 @@ describe('manifesto de completude e reparo do dia', () => {
   })
 
   it('dia com mais linhas que uma página é lido inteiro, sem repetir nem perder linhas', async () => {
-    // Duas linhas por segundo: a página de 10 mil termina no meio de um segundo.
     const rows: AeRow[] = Array.from({ length: 10_005 }, (_, i) => {
       const second = Math.floor(i / 2)
       const hh = String(Math.floor(second / 3600)).padStart(2, '0')
@@ -373,14 +372,12 @@ describe('manifesto de completude e reparo do dia', () => {
     await exportRecentDays(envWith(bucket), new Date('2026-06-30T00:05:00Z'), 1)
     expect(store.get(key)?.customMetadata).toEqual({ events: '2', rows: '2', complete: '0' })
 
-    // A SQL API passa a devolver uma linha do dia que não vinha no primeiro export.
     rows.push({ timestamp: '2026-06-29 04:00:30', blob1: 'poller_run' })
     await exportRecentDays(envWith(bucket), new Date('2026-07-01T00:05:00Z'), 2)
 
     expect(lines(store.get(key)?.body)).toHaveLength(3)
     expect(store.get(key)?.customMetadata).toEqual({ events: '3', rows: '3', complete: '1' })
 
-    // Dia completo não é mais consultado.
     fetchFake.mockClear()
     await exportRecentDays(envWith(bucket), new Date('2026-07-02T00:05:00Z'), 3)
     const queried = fetchFake.mock.calls.map((c) => String((c[1] as { body: string }).body))
@@ -408,7 +405,6 @@ describe('manifesto de completude e reparo do dia', () => {
       rows: '2',
       complete: '1',
     })
-    // Sem eventos de fato: continua vazio, agora com manifesto de dia completo.
     expect(store.get('events/2026/06/21.ndjson')).toMatchObject({
       body: '',
       customMetadata: { events: '0', rows: '0', complete: '1' },
@@ -452,7 +448,6 @@ describe('manifesto de completude e reparo do dia', () => {
     await exportRecentDays(envWith(bucket), new Date('2026-06-22T00:05:00Z'), 2)
     expect(store.get(key)).toEqual(before)
 
-    // Continua aberto: a execução seguinte consulta o dia de novo.
     fetchFake.mockClear()
     await exportRecentDays(envWith(bucket), new Date('2026-06-23T00:05:00Z'), 3)
     const queried = fetchFake.mock.calls.map((c) => String((c[1] as { body: string }).body))
@@ -461,7 +456,6 @@ describe('manifesto de completude e reparo do dia', () => {
   })
 
   it('coleta completa com menos linhas perto do fim da retenção: o arquivo vira o registro definitivo', async () => {
-    // 80 dias antes de 2026-09-08 é 2026-06-20.
     const fetchFake = fakeAe([{ timestamp: '2026-06-20 10:00:00' }])
     vi.stubGlobal('fetch', fetchFake)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -494,7 +488,6 @@ describe('manifesto de completude e reparo do dia', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init: { body: string }) => {
-        // Outra execução grava o dia enquanto esta consulta o AE.
         if (String(init.body).includes("'2026-06-20 00:00:00'")) {
           await bucket.put(key, '{"outra":1}\n', {
             customMetadata: { events: '1', rows: '1', complete: '1' },
@@ -509,4 +502,220 @@ describe('manifesto de completude e reparo do dia', () => {
 
     expect(store.get(key)?.body).toBe('{"outra":1}\n')
   })
+})
+
+describe('eventos de negócio e de segurança no dia truncado', () => {
+  const key = 'events/2026/06/20.ndjson'
+
+  function at(second: number): string {
+    const hh = String(Math.floor(second / 3600)).padStart(2, '0')
+    const mm = String(Math.floor((second % 3600) / 60)).padStart(2, '0')
+    const ss = String(second % 60).padStart(2, '0')
+    return `2026-06-20 ${hh}:${mm}:${ss}`
+  }
+
+  function oauthNoise(count: number): AeRow[] {
+    return Array.from({ length: count }, (_, i) => ({
+      timestamp: at(Math.floor(i / 9)),
+      blob1: 'oauth_error',
+      blob2: 'other',
+    }))
+  }
+
+  function ndjson(rows: AeRow[]): string {
+    return rows.map((r) => `${JSON.stringify(r)}\n`).join('')
+  }
+
+  function completeDaysBefore(first: Date, count: number) {
+    const complete = { customMetadata: { events: '1', rows: '1', complete: '1' }, body: '{}\n' }
+    return Object.fromEntries(
+      Array.from({ length: count }, (_, i) => {
+        const d = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate() - i))
+        return [dayBounds(d).key, complete]
+      }),
+    )
+  }
+
+  const business: AeRow[] = [
+    { timestamp: '2026-06-20 12:00:00', blob1: 'account_created', blob2: 'sintetico' },
+    { timestamp: '2026-06-20 18:00:00', blob1: 'security_storage_error', blob2: 'request_limits' },
+  ]
+
+  function queriesForDay(fetchFake: FetchFake): number {
+    return fetchFake.mock.calls.filter((c) =>
+      String((c[1] as { body: string }).body).includes("< toDateTime('2026-06-21 00:00:00')"),
+    ).length
+  }
+
+  it('30.600 linhas de oauth_error antes dos eventos de negócio: o arquivo guarda os dois e o manifesto aponta só oauth_error', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetchFake = fakeAe([...oauthNoise(30_600), ...business])
+    vi.stubGlobal('fetch', fetchFake)
+    const { bucket, store } = fakeBucket()
+
+    await exportRecentDays(envWith(bucket), new Date('2026-06-21T00:05:00Z'), 1)
+
+    const rows = lines(store.get(key)?.body).map((l) => JSON.parse(l) as AeRow)
+    expect(rows.filter((r) => r.blob1 === 'account_created')).toHaveLength(1)
+    expect(rows.filter((r) => r.blob1 === 'security_storage_error')).toHaveLength(1)
+    expect(rows.length).toBeLessThan(30_600)
+    expect(rows.map((r) => r.timestamp)).toEqual(rows.map((r) => r.timestamp).sort())
+    expect(store.get(key)?.customMetadata).toEqual({
+      events: String(rows.length),
+      rows: String(rows.length),
+      complete: '0',
+      truncatedTypes: 'oauth_error',
+    })
+    expect(queriesForDay(fetchFake)).toBe(5)
+  })
+
+  it('dia truncado só em tipos de volume fecha no cron seguinte e não é mais consultado', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    const fetchFake = fakeAe([...oauthNoise(30_600), ...business])
+    vi.stubGlobal('fetch', fetchFake)
+    const { bucket, store } = fakeBucket()
+
+    await exportRecentDays(envWith(bucket), new Date('2026-06-21T00:05:00Z'), 1)
+    await exportRecentDays(envWith(bucket), new Date('2026-06-22T00:05:00Z'), 2)
+
+    expect(store.get(key)?.customMetadata).toMatchObject({
+      complete: '1',
+      truncatedTypes: 'oauth_error',
+    })
+    const closedBody = store.get(key)?.body
+
+    fetchFake.mockClear()
+    await exportRecentDays(envWith(bucket), new Date('2026-06-23T00:05:00Z'), 3)
+    expect(queriesForDay(fetchFake)).toBe(0)
+    expect(store.get(key)?.body).toBe(closedBody)
+  })
+
+  it('volume de um tipo de negócio além do teto deixa o dia aberto', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const flood: AeRow[] = oauthNoise(52_000).map((r) => ({ ...r, blob1: 'login_failure' }))
+    vi.stubGlobal('fetch', fakeAe(flood))
+    const { bucket, store } = fakeBucket()
+
+    await exportRecentDays(envWith(bucket), new Date('2026-06-22T00:05:00Z'), 2)
+
+    expect(store.get(key)?.customMetadata?.complete).toBe('0')
+  })
+
+  it('dia sem excesso sai idêntico ao export de uma consulta só, na ordem do AE', async () => {
+    const rows: AeRow[] = [
+      { timestamp: '2026-06-20 01:00:00', blob1: 'poller_run', double1: 1 },
+      { timestamp: '2026-06-20 02:00:00', blob1: 'account_created', blob2: 'sintetico', _sample_interval: 2 },
+      { timestamp: '2026-06-20 03:00:00', blob1: 'request_perf', double1: 7 },
+      { timestamp: '2026-06-20 04:00:00', blob1: 'security_storage_error', blob2: 'request_limits' },
+    ]
+    const fetchFake = fakeAe(rows)
+    vi.stubGlobal('fetch', fetchFake)
+    const { bucket, store } = fakeBucket()
+
+    await exportEventsToR2(envWith(bucket), new Date('2026-06-20T00:00:00Z'), new Date('2026-06-22T00:05:00Z'))
+
+    expect(store.get(key)?.body).toBe(`${rows.map((r) => JSON.stringify(r)).join('\n')}\n`)
+    expect(store.get(key)?.customMetadata).toEqual({ events: '5', rows: '4', complete: '1' })
+    expect(fetchFake).toHaveBeenCalledTimes(1)
+  })
+
+  it('30.600 linhas de volume antes de 15.000 de negócio: o arquivo respeita o teto e guarda todo o negócio', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const volume = oauthNoise(30_600).map((r, i) => (i < 20_000 ? r : { ...r, blob1: 'request_perf' }))
+    const businessFlood: AeRow[] = Array.from({ length: 15_000 }, (_, i) => ({
+      timestamp: at(6 * 3600 + Math.floor(i / 3)),
+      blob1: i % 2 === 0 ? 'account_created' : 'security_storage_error',
+      double1: i,
+    }))
+    const fetchFake = fakeAe([...volume, ...businessFlood])
+    vi.stubGlobal('fetch', fetchFake)
+    const { bucket, store } = fakeBucket()
+
+    await exportRecentDays(envWith(bucket), new Date('2026-06-21T00:05:00Z'), 1)
+
+    const rows = lines(store.get(key)?.body).map((l) => JSON.parse(l) as AeRow)
+    expect(rows.length).toBeLessThanOrEqual(30_000)
+    const kept = rows.filter((r) => r.blob1 === 'account_created' || r.blob1 === 'security_storage_error')
+    expect(kept.map((r) => r.double1)).toEqual(businessFlood.map((r) => r.double1))
+    expect(rows.filter((r) => r.blob1 === 'oauth_error' || r.blob1 === 'request_perf')).toEqual(
+      volume.slice(0, 30_000 - kept.length),
+    )
+    expect(rows.map((r) => r.timestamp)).toEqual(rows.map((r) => r.timestamp).sort())
+    expect(store.get(key)?.customMetadata).toEqual({
+      events: String(rows.length),
+      rows: String(rows.length),
+      complete: '0',
+      truncatedTypes: 'oauth_error,request_perf',
+    })
+    expect(queriesForDay(fetchFake)).toBe(6)
+  })
+
+  it('reparo troca o arquivo cheio de volume pela coleta que recupera eventos de negócio, mesmo com menos linhas', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    const burst: AeRow[] = Array.from({ length: 10_000 }, () => ({ timestamp: at(0), blob1: 'oauth_error' }))
+    vi.stubGlobal('fetch', fakeAe([...burst, ...business]))
+    const { bucket, store } = fakeBucket({
+      [key]: { body: ndjson(oauthNoise(29_997)), customMetadata: { events: '29997', rows: '29997', complete: '0' } },
+    })
+
+    await exportRecentDays(envWith(bucket), new Date('2026-06-22T00:05:00Z'), 2)
+
+    expect(lines(store.get(key)?.body).map((l) => (JSON.parse(l) as AeRow).blob1)).toEqual([
+      'account_created',
+      'security_storage_error',
+    ])
+    expect(store.get(key)?.customMetadata).toEqual({
+      events: '2',
+      rows: '2',
+      complete: '1',
+      truncatedTypes: 'oauth_error',
+    })
+  })
+
+  it('perto do fim da retenção, o reparo grava os eventos de negócio recuperados em vez de fechar o arquivo antigo', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    const burst: AeRow[] = Array.from({ length: 10_000 }, () => ({ timestamp: at(0), blob1: 'oauth_error' }))
+    vi.stubGlobal('fetch', fakeAe([...burst, ...business]))
+    const { bucket, store } = fakeBucket({
+      ...completeDaysBefore(new Date('2026-09-07T00:00:00Z'), 79),
+      [key]: { body: ndjson(oauthNoise(29_997)), customMetadata: { events: '29997', rows: '29997', complete: '0' } },
+    })
+
+    await exportRecentDays(envWith(bucket), new Date('2026-09-08T00:05:00Z'), 80)
+
+    const types = lines(store.get(key)?.body).map((l) => (JSON.parse(l) as AeRow).blob1)
+    expect(types).toEqual(['account_created', 'security_storage_error'])
+    expect(store.get(key)?.customMetadata).toMatchObject({ complete: '1', truncatedTypes: 'oauth_error' })
+  })
+
+  it.each([
+    { back: 2, today: '2026-06-22T00:05:00Z', complete: '0' },
+    { back: 80, today: '2026-09-08T00:05:00Z', complete: '1' },
+  ])(
+    'coleta com menos eventos de negócio é recusada mesmo com mais linhas ($back dias atrás): o arquivo fica, com complete=$complete',
+    async ({ back, today, complete }) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.spyOn(console, 'info').mockImplementation(() => {})
+      const fresh: AeRow[] = [
+        business[0],
+        ...Array.from({ length: 5 }, (_, i) => ({ timestamp: at(20 * 3600 + i), blob1: 'poller_run' })),
+      ]
+      vi.stubGlobal('fetch', fakeAe(fresh))
+      const archived = ndjson([...business, { timestamp: at(20 * 3600), blob1: 'poller_run' }])
+      const todayDate = new Date(today)
+      const yesterday = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), todayDate.getUTCDate() - 1))
+      const { bucket, store } = fakeBucket({
+        ...completeDaysBefore(yesterday, back - 1),
+        [key]: { body: archived, customMetadata: { events: '3', rows: '3', complete: '0' } },
+      })
+
+      await exportRecentDays(envWith(bucket), todayDate, back)
+
+      expect(store.get(key)?.body).toBe(archived)
+      expect(store.get(key)?.customMetadata).toEqual({ events: '3', rows: '3', complete })
+    },
+  )
 })

@@ -4,25 +4,13 @@ export interface Match {
   leg1_match_id?: string | null
   start_time: string
   status: 'scheduled' | 'live' | 'finished'
-  /**
-   * Jogo adiado pelo provider. O `start_time` continua sendo o horário original
-   * (que já passou), então o card não pode se guiar só pela data — sem essa flag
-   * ele mostraria "bloqueado / aguardando resultado" para sempre.
-   */
   postponed?: number | boolean
-  /**
-   * Instante em que o sync viu o jogo iniciado pela primeira vez (não é o horário
-   * em que a bola rolou). Preenchido, o palpite fica travado mesmo que o jogo seja
-   * suspenso ou remarcado depois (espelha api/src/matches/locking.ts).
-   */
   locked_at?: string | null
   home_score: number | null
   away_score: number | null
   phase: string
   round: string
-  /** Server-derived display label for the round (e.g. "Rodada 1", "Oitavas de final"). */
   round_label: string
-  /** Server-derived knockout classification from the match phase. */
   is_knockout?: boolean
   group_name: string | null
   home_team_id: string
@@ -33,9 +21,7 @@ export interface Match {
   away_team_name: string
   away_team_short_name: string
   away_team_logo: string
-  /** Server-derived: this match decides on penalties in a single game. */
   decides_on_penalties?: boolean
-  /** Actual shootout result (only set once a finished match went to penalties). */
   penalty_winner?: 'home' | 'away' | null
   home_penalty_goals?: number | null
   away_penalty_goals?: number | null
@@ -61,3 +47,13 @@ export const OUTCOMES = {
   away: { home: 0, away: 1, label: 'Fora' },
 } as const
 export type Outcome = keyof typeof OUTCOMES
+
+/** Sigla do time de um dos lados do jogo, ou `null` sem lado escolhido. */
+export function teamShortName(
+  match: Match,
+  side: 'home' | 'away' | null | undefined,
+): string | null {
+  if (side === 'home') return match.home_team_short_name
+  if (side === 'away') return match.away_team_short_name
+  return null
+}

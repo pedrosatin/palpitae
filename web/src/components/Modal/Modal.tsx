@@ -4,18 +4,28 @@ import { trackEvent } from '../../analytics/ga'
 import styles from './Modal.module.css'
 import Button from '../Button'
 
+export type ModalAnalyticsId =
+  | 'palpites_membro'
+  | 'confirmacao'
+  | 'criar_grupo'
+  | 'entrar_grupo'
+  | 'regras_grupo'
+  | 'compartilhar_resultado'
+  | 'configurar_grupo'
+  | 'lembretes_palpite'
+  | 'jogos_grupo'
+
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
   title: string
+  analyticsId: ModalAnalyticsId
   children: ReactNode
 }
 
-export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, analyticsId, children }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // O autoFocus de um campo roda no commit, antes de qualquer efeito. Só durante o
-  // render o foco ainda está no elemento que abriu o modal.
   const openerRef = useRef<HTMLElement | null>(null)
   const wasOpenRef = useRef(false)
   if (isOpen && !wasOpenRef.current) {
@@ -23,7 +33,6 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
   }
   wasOpenRef.current = isOpen
 
-  // Leva o foco para dentro do diálogo, se nenhum campo já o pediu, e o devolve ao fechar.
   useEffect(() => {
     if (!isOpen) return
     const dialog = dialogRef.current
@@ -58,7 +67,7 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
             size="icon"
             className={styles.closeBtn}
             onClick={() => {
-              trackEvent('click_modal_fechar', { modal: title })
+              trackEvent('click_modal_fechar', { modal: analyticsId })
               onClose()
             }}
             aria-label="Fechar"

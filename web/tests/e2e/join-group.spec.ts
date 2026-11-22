@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
 
+const GROUP_ID = '00000000-0000-4000-8000-0000000000c2'
+
 test.describe('Join Group Flow', () => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': 'http://localhost:5173',
@@ -61,14 +63,14 @@ test.describe('Join Group Flow', () => {
         joinCalled = true
         await route.fulfill({
           headers: corsHeaders,
-          json: { group: { id: 'group-2', name: 'Grupo Novo' } },
+          json: { group: { id: GROUP_ID, name: 'Grupo Novo' } },
         })
-      } else if (url.includes('/group-2') && method === 'GET') {
+      } else if (url.includes(`/${GROUP_ID}`) && method === 'GET') {
         await route.fulfill({
           headers: corsHeaders,
           json: {
             group: {
-              id: 'group-2',
+              id: GROUP_ID,
               name: 'Grupo Novo',
               competition_id: 'comp-1',
               competition_name: 'Brasileirão',
@@ -86,21 +88,16 @@ test.describe('Join Group Flow', () => {
       }
     })
 
-    // 1. Acessar o Dashboard logado
     await page.goto('/')
 
-    // 2. Clicar em "Entrar em grupo"
     await page.getByRole('button', { name: /Entrar em grupo/i }).click()
 
-    // 3. Inserir código de convite no Modal
     const modal = page.getByRole('dialog')
     await expect(modal).toBeVisible()
     await modal.locator('input').first().fill('INVITE123')
 
-    // Submeter o código
     await modal.getByRole('button', { name: /Entrar|Confirmar/i }).click()
 
-    // 4 & 5. Validar chamada de API e redirecionamento
     await expect(page.locator('h1').filter({ hasText: 'Grupo Novo' })).toBeVisible()
     expect(joinCalled).toBe(true)
   })

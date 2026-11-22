@@ -6,6 +6,7 @@
  * O cartão é público. Mostra só o primeiro nome dos outros membros, e um nome que
  * seja e-mail mascarado vira "Palpiteiro". Nenhum e-mail sai na imagem.
  */
+import { firstName } from './shareCard'
 import {
   ASH,
   BONE,
@@ -13,13 +14,19 @@ import {
   FONT,
   INK,
   LIME,
+  PAD,
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
+  drawEyebrow,
+  drawFooter,
   fillTracked,
-  firstName,
   hline,
+  renderCardBlob,
+  stripScheme,
   truncate,
-} from './shareCard'
+  withSelfRow,
+  type ShareRow,
+} from './shareCardParts'
 import {
   pointsLabel,
   postponedNotice,
@@ -28,25 +35,15 @@ import {
   type RoundTally,
 } from './roundSummary'
 
-export interface RoundShareEntry {
-  position: number
-  display: string
-  points: number
-  isYou: boolean
-}
-
 export interface RoundShareCardData {
   groupName: string
   roundLabel: string
   points: number
-  /** Colocação do jogador na rodada e quantos membros disputaram. */
   position: number
   total: number
   exact: number
   correct: number
-  /** Top 3 da rodada e, se o jogador ficou fora dele, a linha dele. */
-  standings: RoundShareEntry[]
-  /** Quem compartilha está entre os líderes da rodada, pela regra de `roundLeaders`. */
+  standings: ShareRow[]
   isRoundLeader: boolean
   notice: string | null
   domain: string
@@ -60,10 +57,6 @@ export function cardName(display: string): string {
   return firstName(display)
 }
 
-function stripScheme(origin: string): string {
-  return origin.replace(/^https?:\/\//, '').replace(/\/$/, '')
-}
-
 /** Traduz a classificação da rodada no dado do cartão. Puro, sem canvas. */
 export function buildRoundShareCardData(input: {
   groupName: string
@@ -74,15 +67,12 @@ export function buildRoundShareCardData(input: {
   origin: string
 }): RoundShareCardData {
   const { standings, self } = input
-  const entries: RoundShareEntry[] = standings.slice(0, TOP).map((s) => ({
+  const entries: ShareRow[] = standings.slice(0, TOP).map((s) => ({
     position: s.position,
     display: s.isYou ? 'Você' : cardName(s.display),
     points: s.points,
     isYou: s.isYou,
   }))
-  if (!entries.some((e) => e.isYou)) {
-    entries.push({ position: self.position, display: 'Você', points: self.points, isYou: true })
-  }
   return {
     groupName: input.groupName,
     roundLabel: input.roundLabel,
@@ -91,7 +81,7 @@ export function buildRoundShareCardData(input: {
     total: standings.length,
     exact: self.exact,
     correct: self.correct,
-    standings: entries,
+    standings: withSelfRow(entries, self),
     isRoundLeader: roundLeaders(standings).some((s) => s.isYou),
     notice: postponedNotice(input.postponed),
     domain: stripScheme(input.origin),
@@ -125,31 +115,12 @@ export function roundShareFileName(roundLabel: string): string {
 export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundShareCardData): void {
   const W = SHARE_CARD_WIDTH
   const H = SHARE_CARD_HEIGHT
-  const P = 80
 
   ctx.fillStyle = INK
   ctx.fillRect(0, 0, W, H)
 
-  // Eyebrow: wordmark e grupo.
-  ctx.textBaseline = 'alphabetic'
-  ctx.textAlign = 'left'
-  ctx.fillStyle = BONE
-  ctx.font = `800 34px ${FONT}`
-  let wx = P
-  for (const ch of 'PALPITAE') {
-    ctx.fillText(ch, wx, 118)
-    wx += ctx.measureText(ch).width + 4
-  }
-  ctx.textAlign = 'right'
-  ctx.fillStyle = ASH
-  ctx.font = `600 28px ${FONT}`
-  ctx.fillText(truncate(ctx, data.groupName.toUpperCase(), 460), W - P, 118)
+  drawEyebrow(ctx, data.groupName)
 
-  ctx.strokeStyle = BORDER
-  ctx.lineWidth = 2
-  hline(ctx, P, 158, W - P)
-
-  // Título do líder, na faixa livre entre o divisor do topo e o nome da rodada.
   ctx.textAlign = 'center'
   if (data.isRoundLeader) {
     ctx.fillStyle = LIME
@@ -157,12 +128,10 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
     ctx.fillText('REI DA RODADA', W / 2, 226)
   }
 
-  // Rodada.
   ctx.fillStyle = ASH
   ctx.font = `700 34px ${FONT}`
   fillTracked(ctx, data.roundLabel.toUpperCase(), W / 2, 280, 8)
 
-  // Herói: pontos da rodada.
   const heroY = 500
   ctx.textBaseline = 'middle'
   ctx.fillStyle = LIME
@@ -185,9 +154,8 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
 
   ctx.strokeStyle = BORDER
   ctx.lineWidth = 2
-  hline(ctx, P, 960, W - P)
+  hline(ctx, PAD, 960, W - PAD)
 
-  // Top 3 da rodada e a sua linha.
   const rows = data.standings.slice(0, 4)
   const rowH = rows.length > 3 ? 64 : 76
   const startY = 1020
@@ -198,35 +166,19 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
     ctx.textAlign = 'left'
     ctx.font = `700 34px ${FONT}`
     ctx.fillStyle = row.isYou || row.position === 1 ? LIME : ASH
-    ctx.fillText(`${row.position}`, P + 8, y)
+    ctx.fillText(`${row.position}`, PAD + 8, y)
     ctx.fillStyle = row.isYou ? LIME : BONE
     ctx.font = `${row.isYou ? 700 : 500} 38px ${FONT}`
-    ctx.fillText(truncate(ctx, row.display, 560), P + 90, y)
+    ctx.fillText(truncate(ctx, row.display, 560), PAD + 90, y)
     ctx.textAlign = 'right'
     ctx.font = `700 38px ${FONT}`
-    ctx.fillText(`${row.points}`, W - P, y)
+    ctx.fillText(`${row.points}`, W - PAD, y)
   }
 
-  // Rodapé.
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = ASH
-  ctx.font = `500 30px ${FONT}`
-  ctx.fillText(data.notice ?? 'dispute o topo da classificação', W / 2, H - 100)
-  ctx.fillStyle = LIME
-  ctx.font = `700 44px ${FONT}`
-  ctx.fillText(data.domain, W / 2, H - 50)
+  drawFooter(ctx, data.notice ?? 'dispute o topo da classificação', data.domain)
 }
 
 /** Renderiza o cartão num PNG. `null` quando o canvas não existe (jsdom). */
-export async function renderRoundShareCardBlob(data: RoundShareCardData): Promise<Blob | null> {
-  const canvas = document.createElement('canvas')
-  canvas.width = SHARE_CARD_WIDTH
-  canvas.height = SHARE_CARD_HEIGHT
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-  drawRoundShareCard(ctx, data)
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), 'image/png')
-  })
+export function renderRoundShareCardBlob(data: RoundShareCardData): Promise<Blob | null> {
+  return renderCardBlob((ctx) => drawRoundShareCard(ctx, data))
 }

@@ -12,10 +12,6 @@ const SESSION_EXPIRED_NOTICE = 'Sua sessão expirou. Entre novamente para contin
 const LOGOUT_UNCONFIRMED_NOTICE =
   'Não conseguimos confirmar no servidor o fim da sua sessão. Se este aparelho for compartilhado, entre de novo e use “Sair de todos os dispositivos” em Configurações.'
 
-/**
- * Aviso que explica por que a pessoa chegou ao login. Consome as duas marcas,
- * para nenhuma sobrar para a próxima visita.
- */
 function consumeLoginNotice(): string | null {
   const logoutUnconfirmed = consumeLogoutUnconfirmed()
   const sessionExpired = consumeSessionExpired()
@@ -35,7 +31,6 @@ function consumeLoginNotice(): string | null {
 export default function LoginPage() {
   useDocumentTitle('Entrar')
 
-  // Lido uma vez e apagado, para um refresh de /entrar não repetir o aviso.
   const [notice] = useState(consumeLoginNotice)
 
   return (
@@ -59,6 +54,10 @@ export default function LoginPage() {
         >
           ← Conheça o Palpitae
         </Link>
+
+        <a href="/privacidade" className={styles.privacyLink}>
+          Política de privacidade
+        </a>
       </Card>
     </main>
   )

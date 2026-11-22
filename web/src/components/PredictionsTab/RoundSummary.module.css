@@ -54,6 +54,20 @@
   color: var(--color-warning);
 }
 
+.milestone {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+}
+
+.unlikely {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-warning);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -68,4 +82,20 @@
 .error {
   font-size: var(--font-size-sm);
   color: var(--color-danger);
+}
+
+.noticeOk {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.noticeManual {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.noticeLink {
+  color: var(--color-primary);
+  word-break: break-all;
 }

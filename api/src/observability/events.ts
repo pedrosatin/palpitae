@@ -1,9 +1,9 @@
 /**
  * Observabilidade server-side — dual-write de eventos de negócio e de saúde.
  *
- * Hoje só escreve no Analytics Engine (hot path, retenção ~3 meses, grátis). O cold
- * path (R2, retenção ilimitada) virá de um cron diário que exporta este dataset —
- * não muda nada aqui. Ver `docs/observability.md` para a arquitetura completa.
+ * Escreve só no Analytics Engine (hot path, retenção ~3 meses, grátis). O cold path é
+ * o cron diário de `export.ts`, que copia o dataset para o R2, onde os arquivos ficam
+ * 13 meses. Ver `docs/observability.md` para a arquitetura completa.
  *
  * Modelo fixo do Analytics Engine: até 20 `blobs` (strings/dimensões), até 20
  * `doubles` (números/medidas), 1 `index` (chave de sampling). Convenção do projeto:
@@ -15,44 +15,37 @@
  * REGRA LGPD: nunca passar PII crua (e-mail, nome) em blob. Usar `user_hash`.
  */
 
+import { hexEncode } from '../auth/encoding'
+
 export type EventType =
-  // Saúde do cron / API Football
   | 'poller_run'
   | 'fixture_discovery_run'
   | 'football_api_error'
-  // Rotina agendada: cron sem ramo no handler e configuração opcional ausente
   | 'scheduled_unknown_cron'
   | 'scheduled_config_missing'
-  // Fallback de resultados via ESPN (ADR-016)
+  | 'cloudflare_usage'
+  | 'cloudflare_quota_alert'
+  | 'cloudflare_usage_error'
   | 'match_results_fallback'
-  // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos
   | 'provider_http_attempt'
-  // Provedor trocou os times de um jogo já gravado (mando invertido ou time substituído)
+  | 'provider_work_run'
+  | 'provider_access_blocked'
   | 'match_teams_changed'
-  // Sync achou competição nova sem configuração cadastrada e não a criou
   | 'competition_unconfigured'
-  // Sync não importou eventos do provedor (fase desconhecida, outra edição, time ausente)
   | 'sync_event_discarded'
-  // Jogo pendente que o calendário completo da football-data deixou de trazer
   | 'match_missing_from_feed'
-  // Descoberta não conseguiu gravar o status da competição depois do sync
   | 'competition_status_error'
-  // Pontuação de uma competição falhou no poller (as outras seguem)
   | 'match_scoring_error'
-  // Competição com jogo encerrado que segue sem pontuação depois de mais de um ciclo do poller
   | 'match_unscored'
-  // Radar de competições (inteligência de produto, admin)
+  | 'result_overdue_alert'
   | 'radar_sync_run'
   | 'radar_sync_error'
-  // Performance / latência de request
   | 'request_perf'
-  // Falha de D1 nos controles de acesso (contador de requisições, revogação, limpeza)
   | 'security_storage_error'
-  // Negócio (server-side, nos routers)
   | 'prediction_saved'
   | 'group_created'
   | 'group_joined'
-  // Abertura de /convite/:code por uma pessoa, sem nenhum dado do convite ou de quem abriu
+  | 'join_request'
   | 'invite_opened'
   | 'member_removed'
   | 'group_renamed'
@@ -60,12 +53,10 @@ export type EventType =
   | 'group_deleted'
   | 'login_success'
   | 'login_failure'
-  // Conta nova: origem em categoria fechada, sem identificar a pessoa
   | 'account_created'
   | 'logout_all'
   | 'oauth_error'
   | 'matches_cache'
-  // Notificações por e-mail
   | 'email_reminder_sent'
   | 'email_reminder_failed'
   | 'cron_round_reminder'
@@ -74,9 +65,7 @@ export type EventType =
   | 'email_resubscribed'
 
 export type EventDims = {
-  /** Dimensões string. Viram blob2, blob3, ... (blob1 é sempre o event_type). */
   blobs?: (string | null | undefined)[]
-  /** Medidas numéricas. Viram double1, double2, ... */
   doubles?: number[]
 }
 
@@ -97,6 +86,25 @@ export function logError(
     blobs: [...(dims.blobs ?? []), message],
     doubles: dims.doubles,
   })
+}
+
+/**
+ * `logError` que nunca lança: a rotina que registra a própria falha não pode ser
+ * derrubada por uma escrita que falhou no Analytics Engine. O erro original
+ * continua no console, e a falha da escrita também.
+ */
+export function tryLogError(
+  ae: AnalyticsEngineDataset | undefined,
+  type: EventType,
+  consoleMessage: string,
+  error: unknown,
+  dims: EventDims = {},
+): void {
+  try {
+    logError(ae, type, consoleMessage, error, dims)
+  } catch (writeError) {
+    console.error(`[observability] Falha ao registrar ${type}:`, writeError)
+  }
 }
 
 /**
@@ -140,6 +148,5 @@ export function tryLogEvent(
  */
 export async function hashUserId(userId: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId))
-  const bytes = new Uint8Array(digest, 0, 8)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return hexEncode(new Uint8Array(digest, 0, 8))
 }

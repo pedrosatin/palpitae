@@ -25,7 +25,6 @@ describe('GroupTabs', () => {
     const predictionsTab = screen.getByRole('link', { name: 'Palpitar' })
     expect(predictionsTab).toBeInTheDocument()
     expect(predictionsTab).toHaveAttribute('href', '/test/predictions')
-    // active styling should be present
     expect(predictionsTab.className).toContain('tabActive')
 
     const groupPicksTab = screen.getByRole('link', { name: 'Grupo' })
@@ -38,7 +37,6 @@ describe('GroupTabs', () => {
     expect(leaderboardTab).toHaveAttribute('href', '/test/leaderboard')
     expect(leaderboardTab.className).not.toContain('tabActive')
 
-    // Optional tabs shouldn't be rendered
     expect(screen.queryByRole('link', { name: 'Tabela' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Membros' })).not.toBeInTheDocument()
   })
@@ -57,6 +55,22 @@ describe('GroupTabs', () => {
     expect(membersTab).toBeInTheDocument()
     expect(membersTab).toHaveAttribute('href', '/test/members')
     expect(membersTab.className).toContain('tabActive')
+  })
+
+  it('selo de pedidos: número visível com aria-hidden e texto sr-only', () => {
+    renderWithRouter(
+      <GroupTabs
+        {...defaultProps}
+        isAdmin={true}
+        pendingJoinRequestCount={2}
+        activeTab={'members' as Tab}
+      />,
+    )
+    const membersTab = screen.getByRole('link', { name: /Membros/ })
+    expect(membersTab).toHaveAccessibleName(/2 pedidos pendentes/)
+    const visibleCount = membersTab.querySelector('[aria-hidden="true"]')
+    expect(visibleCount).toHaveTextContent('2')
+    expect(membersTab.querySelector('.sr-only')).toHaveTextContent('2 pedidos pendentes')
   })
 
   it('calls onTabClick when a tab is clicked', async () => {

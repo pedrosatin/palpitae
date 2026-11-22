@@ -12,12 +12,10 @@ const HOUR = 60 * MIN
 
 describe('formatMatchDate', () => {
   it('mostra dia da semana sem ponto, data e hora de Brasília', () => {
-    // 21:30 UTC = 18:30 em Brasília, num sábado.
     expect(formatMatchDate('2026-11-14T21:30:00Z')).toBe('sáb, 14/11 · 18:30')
   })
 
   it('usa o dia de Brasília quando o UTC já virou o dia', () => {
-    // 02:00 UTC de domingo ainda é 23:00 de sábado em Brasília.
     expect(formatMatchDate('2026-11-15T02:00:00Z')).toBe('sáb, 14/11 · 23:00')
   })
 

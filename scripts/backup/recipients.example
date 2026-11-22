@@ -1,0 +1,20 @@
+# Public age recipients only. One age1... key per line (multiple allowed).
+# This file is a TEMPLATE. Scripts refuse to use recipients.example as a live
+# recipients file — copy it to recipients.local (gitignored) after you:
+#   1. Generate a real age keypair (private key stays with the operator)
+#   2. Run an isolated restore rehearsal that decrypts with that identity
+#   3. Record the restore proof before enabling CI/schedule
+#
+# Generate a real pair:
+#   age-keygen -o ~/secure/palpitae-backup.identity
+#   age-keygen -y ~/secure/palpitae-backup.identity > scripts/backup/recipients.local
+#   chmod 600 ~/secure/palpitae-backup.identity scripts/backup/recipients.local
+#
+# Optional second recipient (recovery operator):
+#   age-keygen -y ~/secure/palpitae-backup-recovery.identity >> scripts/backup/recipients.local
+#
+# Never commit AGE-SECRET-KEY lines.
+# Never paste orphan/example public keys — generate your own with age-keygen.
+#
+# After the steps above, recipients.local should contain one or more lines like:
+#   age1...

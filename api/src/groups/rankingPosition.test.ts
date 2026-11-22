@@ -79,7 +79,6 @@ describe('posição, pódio e ranking na mesma ordem', () => {
     const group = await listed('caio')
     expect(group.user_position).toBeNull()
     expect(group.podium).toEqual([{ position: 1, display: 'Ana', points: 10, is_you: false }])
-    // No ranking ele segue listado, depois de quem pontuou.
     expect(await ranking('caio')).toEqual(['ana', 'bia', 'caio', 'dudu'])
   })
 
@@ -116,7 +115,6 @@ describe('posição, pódio e ranking na mesma ordem', () => {
     expect(await ranking('ana')).toEqual(['bia', 'dudu', 'ana', 'caio'])
     expect(await detailPosition('bia')).toBe(1)
     expect(await detailPosition('dudu')).toBe(2)
-    // ana ocupa o 3º lugar da lista e segue sem posição própria.
     expect(await detailPosition('ana')).toBeNull()
     expect(await detailPosition('caio')).toBe(4)
   })
@@ -147,7 +145,6 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
     const group = await listed('bia')
     expect(group).toMatchObject({ user_position: 1, member_count: 3 })
     expect(group.podium?.map((e) => e.display)).toEqual(['Bia'])
-    // A linha fica parada no banco.
     expect(rows()).toContainEqual({ user_id: 'dudu', total_points: 99 })
   })
 
@@ -159,19 +156,16 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
       INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
         VALUES ('p1','bia','g','m2',2,0), ('p2','dudu','g','m2',2,0), ('p3','caio','g','m2',2,0);
     `)
-    // dudu sai sozinho e caio é removido pelo dono. Os palpites ficam.
     await request('dudu', '/groups/g/members/dudu', 'DELETE')
     await request('ana', '/groups/g/members/caio', 'DELETE')
 
     await scoreUnprocessedMatches('c', db)
-    // Segunda passada, como no retry do poller.
     sqlite.exec("UPDATE matches SET scored_at = NULL WHERE id = 'm2'")
     await scoreUnprocessedMatches('c', db)
 
     expect(await ranking('ana')).toEqual(['bia', 'ana'])
     expect(await detailPosition('bia')).toBe(1)
 
-    // dudu volta depois do encerramento e encontra os pontos apurados na ausência.
     expect((await request('dudu', '/groups/join', 'POST')).status).toBe(200)
     expect(await ranking('ana')).toEqual(['bia', 'dudu', 'ana'])
     expect(await detailPosition('dudu')).toBe(2)
@@ -303,10 +297,8 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
       user_id: string
     }[]
     expect(standings.map((s) => s.user_id)).toEqual(['bia', 'ana', 'caio'])
-    // O banido não vê mais o grupo na própria lista.
     expect((await request('dudu', '/groups')).body.groups).toEqual([])
 
-    // O recálculo atualiza a linha do banido, mas ela continua fora das leituras.
     sqlite.exec("UPDATE matches SET scored_at = NULL WHERE id = 'm1'")
     await scoreUnprocessedMatches('c', db)
     expect(await ranking('bia')).toEqual(['bia', 'ana', 'caio'])

@@ -5,7 +5,6 @@ describe('buildApiUrl', () => {
   const originalApiUrl = config.apiUrl
 
   afterEach(() => {
-    // Restore the original apiUrl after each test
     ;(config as any).apiUrl = originalApiUrl
   })
 
@@ -91,7 +90,6 @@ describe('buildAuthUrl', () => {
   })
 })
 
-// Código-fonte do app, fora dos testes, lido como texto.
 const sources = import.meta.glob(['./**/*.{ts,tsx}', '!./**/*.test.{ts,tsx}', '!./config.ts'], {
   query: '?raw',
   import: 'default',

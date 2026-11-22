@@ -1,12 +1,3 @@
-/**
- * Orçamento do free tier football-data.org.
- *
- * A API limita a 10 requests/minuto (header `X-Requests-Available-Minute`).
- * Discovery (1×/dia, fora do pico) e poller (~30 min) compartilham esta cota.
- * `FD_MAX_CONCURRENT_REQUESTS` fica abaixo de 10 para deixar folga a retries e
- * sobreposição ocasional entre jobs no mesmo minuto. Um 429 ou a cota zerada
- * pausam as chamadas do isolate até o reset informado (`noteFootballDataResponse`).
- */
 
 /** Limite documentado do free tier (requests por minuto). */
 export const FD_FREE_REQUESTS_PER_MINUTE = 10
@@ -26,32 +17,8 @@ export const FD_RETRY_BACKOFF_MS = 6_000
 /** Tempo máximo de um request à football-data antes de abortar. */
 export const FD_TIMEOUT_MS = 10_000
 
-/**
- * Executa `worker` sobre `items` com no máximo `limit` promessas em voo.
- * Preserva a ordem dos resultados. `limit < 1` trata como 1.
- */
-export async function runWithConcurrency<T, R>(
-  limit: number,
-  items: readonly T[],
-  worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  if (items.length === 0) return []
-
-  const concurrency = Math.max(1, Math.min(limit, items.length))
-  const results = Array.from({ length: items.length }) as R[]
-  let nextIndex = 0
-
-  const runners = Array.from({ length: concurrency }, async () => {
-    for (;;) {
-      const index = nextIndex++
-      if (index >= items.length) return
-      results[index] = await worker(items[index], index)
-    }
-  })
-
-  await Promise.all(runners)
-  return results
-}
+/** Reexportado de `../concurrency` para o poller e a descoberta manterem o import. */
+export { runWithConcurrency } from '../concurrency'
 
 /**
  * Pausa quando o 429, ou a resposta com cota zerada, chega sem reset legível:
@@ -73,9 +40,7 @@ export const FD_QUOTA_MAX_WAIT_MS = 65_000
 
 /** Cota informada numa resposta da football-data. */
 export type FootballDataQuota = {
-  /** Requests restantes na janela; `null` sem cabeçalho válido. */
   remaining: number | null
-  /** Segundos até zerar o contador (o maior valor válido entre os cabeçalhos); `null` sem nenhum. */
   resetSeconds: number | null
 }
 
@@ -100,10 +65,8 @@ function nonNegativeInt(value: string | null): number | null {
   return /^\d+$/.test(trimmed) ? Number(trimmed) : null
 }
 
-/** Data HTTP (IMF-fixdate), ex.: `Thu, 12 Nov 2026 12:02:13 GMT`. */
 const HTTP_DATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/
 
-/** `Retry-After` em segundos ou como data HTTP. `-5` não é data, é inválido. */
 function retryAfterSeconds(value: string | null, now: number): number | null {
   const seconds = nonNegativeInt(value)
   const trimmed = value?.trim() ?? ''
@@ -143,8 +106,8 @@ export class FootballDataQuotaError extends Error {
 
 /**
  * Instante até o qual este isolate não chama a football-data. Vale só para o
- * isolate: outro isolate, o radar e scripts locais não enxergam esta pausa. A
- * coordenação entre eles é do backlog de resiliência (orçamento compartilhado).
+ * isolate: outro isolate fica sabendo pelo orçamento compartilhado no D1
+ * (`providerBudget.ts`), e o radar e scripts locais seguem sem coordenação.
  */
 let pausedUntil = 0
 
@@ -158,6 +121,22 @@ export function clearFootballDataPause(): void {
 }
 
 /**
+ * Espera imposta por um 429 ou por uma resposta com cota zerada, em
+ * milissegundos: o reset informado (capado) ou, sem reset válido, a espera
+ * conservadora; um 429 nunca espera menos que `FD_RETRY_BACKOFF_MS`. `0` quando
+ * a resposta não impõe pausa. Compartilhada pelo pause do isolate
+ * (`noteFootballDataResponse`) e pelo bloqueio no orçamento do D1
+ * (`noteFootballDataBlock`).
+ */
+export function footballDataPauseMs(status: number, quota: FootballDataQuota): number {
+  if (status !== 429 && quota.remaining !== 0) return 0
+  const resetMs =
+    quota.resetSeconds === null ? FD_QUOTA_DEFAULT_PAUSE_MS : quota.resetSeconds * 1000
+  const floorMs = status === 429 ? FD_RETRY_BACKOFF_MS : 0
+  return Math.min(FD_QUOTA_MAX_PAUSE_MS, Math.max(floorMs, resetMs))
+}
+
+/**
  * Pausa o isolate depois de um 429 ou de uma resposta com cota zerada, pelo
  * reset informado. Sem reset válido usa `FD_QUOTA_DEFAULT_PAUSE_MS`; o 429
  * nunca pausa menos que `FD_RETRY_BACKOFF_MS`; nada passa de
@@ -168,12 +147,8 @@ export function noteFootballDataResponse(
   quota: FootballDataQuota,
   now: number,
 ): void {
-  if (status !== 429 && quota.remaining !== 0) return
-  const resetMs =
-    quota.resetSeconds === null ? FD_QUOTA_DEFAULT_PAUSE_MS : quota.resetSeconds * 1000
-  const floorMs = status === 429 ? FD_RETRY_BACKOFF_MS : 0
-  const pauseMs = Math.min(FD_QUOTA_MAX_PAUSE_MS, Math.max(floorMs, resetMs))
-  pausedUntil = Math.max(pausedUntil, now + pauseMs)
+  const pauseMs = footballDataPauseMs(status, quota)
+  if (pauseMs > 0) pausedUntil = Math.max(pausedUntil, now + pauseMs)
 }
 
 /**

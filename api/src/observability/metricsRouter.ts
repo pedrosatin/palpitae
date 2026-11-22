@@ -1,35 +1,60 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { isAdminUser } from '../auth/permissions'
+import {
+  overdueCutoffSqlBind,
+  overdueNoScoreSql,
+  overdueResultHours,
+} from '../matches/resultOverdue'
 import { radarRouter } from '../radar/router'
 import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
+import { MAX_QUERY_SPAN_DAYS, daysInRange, queryArchive } from './archiveQuery'
 import { countInviteJoinsInD1, summarizeInviteEvents } from './inviteFunnel'
+import { FREE_DAILY_QUOTAS, QUOTA_METRICS, quotaPercent, quotaThreshold } from './quotaUsage'
 import { countSignupsInD1, summarizeSignupOrigins } from './signupOrigin'
 
-/**
- * Métricas para o dashboard admin — proxy autenticado da SQL API do Analytics
- * Engine + listagem do arquivo frio (R2). Ver `docs/observability.md`.
- *
- * Por que um proxy: a SQL API exige um token de CONTA Cloudflare
- * (Account Analytics:Read), que nunca pode ir pro cliente. O token fica em
- * secret do Worker; o navegador autentica com o cookie de sessão normal.
- *
- * Acesso: só o admin (e-mail em ADMIN_EMAIL, secret). Sem ADMIN_EMAIL
- * configurado, tudo responde 403 — fechado por padrão.
- *
- * São endpoints de LEITURA — sem logEvent, conforme a regra de instrumentação.
- */
 
 const DATASET = 'palpitae_events'
 
-const MAX_DAYS = 90 // janela de retenção do Analytics Engine (~3 meses)
+const MAX_DAYS = 90
 
-/** Janela em dias vinda da query string, saneada (1..MAX_DAYS; default 30). */
 function parseDays(raw: string | undefined): number {
   const n = Number(raw ?? '30')
   if (!Number.isInteger(n) || n < 1) return 30
   return Math.min(n, MAX_DAYS)
+}
+
+/**
+ * 503 quando a SQL API do Analytics Engine não está configurada (secrets
+ * CF_ACCOUNT_ID e AE_SQL_TOKEN); `null` quando dá para consultar.
+ */
+function aeUnavailable(c: Context<AppContext>): Response | null {
+  if (c.env.CF_ACCOUNT_ID && c.env.AE_SQL_TOKEN) return null
+  return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+}
+
+/**
+ * Entrada das rotas que consultam o AE por janela: devolve a resposta 503 se a
+ * SQL API não estiver configurada; senão `days` (da query string, saneado) e a
+ * cláusula `since` das consultas.
+ */
+function aeWindow(c: Context<AppContext>): Response | { days: number; since: string } {
+  const unavailable = aeUnavailable(c)
+  if (unavailable) return unavailable
+  const days = parseDays(c.req.query('days'))
+  return { days, since: `timestamp > NOW() - INTERVAL '${days}' DAY` }
+}
+
+type AeRow = Record<string, unknown>
+
+function firstAt(rows: AeRow[]): string | null {
+  return (rows[0]?.first_at as string | null | undefined) ?? null
+}
+
+function sampleInterval(rows: AeRow[]): number {
+  const avg = Number(rows[0]?.avg_sample_interval ?? 1)
+  return Number.isFinite(avg) && avg >= 1 ? avg : 1
 }
 
 export const metricsRouter = new Hono<AppContext>()
@@ -37,15 +62,12 @@ export const metricsRouter = new Hono<AppContext>()
 metricsRouter.use('*', requireAuth)
 
 metricsRouter.use('*', async (c, next) => {
-  // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts).
-  if (!isAdminUser(c.get('userEmail'), c.env)) {
+  if (!isAdminUser(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   await next()
 })
 
-// Radar de competições (/metrics/radar) — inteligência de produto, mesmo gate
-// de admin. Ver api/src/radar/router.ts.
 metricsRouter.route('/radar', radarRouter)
 
 /**
@@ -63,12 +85,9 @@ metricsRouter.route('/radar', radarRouter)
  *   login_failure    → blob2 = reason
  */
 metricsRouter.get('/overview', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [
@@ -127,7 +146,6 @@ metricsRouter.get('/overview', async (c) => {
           `FROM ${DATASET} WHERE blob1 = 'login_failure' AND ${since} ` +
           `GROUP BY reason ORDER BY count DESC`,
       ),
-      // Quota da API Football: chamadas/dia feitas pelo poller.
       runAeSql(
         c.env,
         `SELECT toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day, ` +
@@ -222,30 +240,21 @@ metricsRouter.get('/overview', async (c) => {
   }
 })
 
-type AeRow = Record<string, unknown>
-
-/** Dia UTC `YYYY-MM-DD` (também valida o `from`/`to` do arquivo frio). */
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
-/** Teto de linhas (dia × campeonato) da série diária; ver `groupsDailyTruncated`. */
 const GROUP_DAILY_LIMIT = 5000
 
-/** UUID de competição; qualquer outra coisa em blob de competição é lixo legado. */
 const COMPETITION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Identificador do provedor (slug, código, id): letras, dígitos, `.`, `_` e `-`. */
 const PROVIDER_TOKEN_RE = /^[\w.-]{1,80}$/
 
-/** Horário no formato de `matches.start_time`. */
 const ISO_SECONDS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
 
-/** Identificador do provedor ou vazio: texto livre no blob não sai no payload. */
 function providerToken(raw: unknown): string {
   const value = String(raw ?? '')
   return PROVIDER_TOKEN_RE.test(value) ? value : ''
 }
 
-/** Id válido ou vazio ("sem liga"): nunca devolve texto livre de blob antigo. */
 function competitionIdOrEmpty(raw: unknown): string {
   const id = String(raw ?? '')
   return COMPETITION_ID_RE.test(id) ? id : ''
@@ -299,12 +308,9 @@ function footballApiErrorOrigin(
  * `cycles` conta os ciclos que registraram a pendência.
  */
 metricsRouter.get('/ops', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
   const httpWeight = '(_sample_interval * double2)'
   const httpMeasures =
     `SUM(${httpWeight}) AS attempts, SUM(_sample_interval) AS events, ` +
@@ -321,6 +327,7 @@ metricsRouter.get('/ops', async (c) => {
       discards,
       missingMatches,
       unscoredMatches,
+      pendingWorkRows,
     ] = await Promise.all([
       runAeSql(
         c.env,
@@ -382,8 +389,29 @@ metricsRouter.get('/ops', async (c) => {
           `FROM ${DATASET} WHERE blob1 = 'match_unscored' AND ${since} ` +
           `GROUP BY competition_id ORDER BY last_seen DESC LIMIT 200`,
       ),
+      Promise.resolve()
+        .then(async () => {
+          const rows = await c.env.DB.prepare(
+            `SELECT provider, status, COUNT(*) AS items, MIN(created_at) AS oldest_created_at, ` +
+              `MAX(attempts) AS max_attempts ` +
+              `FROM provider_work ` +
+              `WHERE status IN ('pending', 'running', 'failed') ` +
+              `GROUP BY provider, status ` +
+              `ORDER BY provider ASC, status ASC`,
+          ).all<{
+            provider: string
+            status: string
+            items: number
+            oldest_created_at: number
+            max_attempts: number
+          }>()
+          return { ok: true as const, rows }
+        })
+        .catch((err: unknown) => {
+          console.error('[metrics] falha ao ler provider_work:', err)
+          return { ok: false as const, rows: null }
+        }),
     ])
-
     const sumBy = (rows: AeRow[], key: (r: AeRow) => string, value: string) => {
       const out = new Map<string, number>()
       for (const r of rows) out.set(key(r), (out.get(key(r)) ?? 0) + Number(r[value] ?? 0))
@@ -440,7 +468,7 @@ metricsRouter.get('/ops', async (c) => {
 
     return c.json({
       days,
-      httpFirstSeenAt: (httpFirstSeen[0]?.first_at as string | null | undefined) ?? null,
+      httpFirstSeenAt: firstAt(httpFirstSeen),
       httpByProvider: httpByProvider.map((r) => ({
         ...mapHttp(r),
         context: String(r.context ?? ''),
@@ -477,6 +505,23 @@ metricsRouter.get('/ops', async (c) => {
         cycles: Number(r.cycles ?? 0),
         last_seen: String(r.last_seen ?? ''),
       })),
+      ...(pendingWorkRows.ok
+        ? {
+            pendingWork: (pendingWorkRows.rows?.results ?? []).map((r) => {
+              const oldest = Number(r.oldest_created_at ?? 0)
+              const ageMinutes =
+                oldest > 0 ? Math.max(0, Math.round((Date.now() - oldest) / 60_000)) : 0
+              return {
+                provider: providerToken(r.provider),
+                status: providerToken(r.status),
+                items: Number(r.items ?? 0),
+                oldest_age_minutes: ageMinutes,
+                max_attempts: Number(r.max_attempts ?? 0),
+              }
+            }),
+            pendingWorkError: false as const,
+          }
+        : { pendingWorkError: true as const }),
     })
   } catch (err) {
     console.error('[metrics] falha na SQL API (ops):', err)
@@ -484,40 +529,10 @@ metricsRouter.get('/ops', async (c) => {
   }
 })
 
-/**
- * Criações de grupo e atividade de palpites por campeonato no período, a
- * partir do Analytics Engine. Endpoint próprio (como `/ops`) para que uma
- * falha aqui não derrube a página e para o front novo conviver com uma API
- * ainda sem a rota.
- *
- * Posições: group_created → blob3 competition_id; prediction_saved → blob6
- * competition_id (só em eventos gravados depois do deploy do enriquecimento),
- * double1 = nº de palpites do evento. Evento antigo sem a dimensão chega com
- * blob6 vazio e vira a linha "sem liga" (`competition_id: ''`); não há backfill.
- *
- * Contagens ponderadas pelo sampling: eventos = SUM(_sample_interval),
- * palpites = SUM(double1 * _sample_interval). A SQL API não faz join com o D1:
- * o Worker resolve nome e temporada dos ids que vieram do AE. Id sem linha em
- * `competitions` sai com `name` e `season` nulos. `predictionsDimensionSince`
- * (sem filtro de janela) é o primeiro evento com a dimensão, para o painel
- * distinguir "sem palpites" de "dimensão ainda não coletada".
- *
- * `groupsDaily` é a série de criações de grupo por dia (UTC, `YYYY-MM-DD`) ×
- * competition_id, com o mesmo SUM(_sample_interval). Só existem linhas de dias
- * com criação: o preenchimento dos dias zerados é do cliente. A consulta tem
- * teto de GROUP_DAILY_LIMIT linhas (ordem do dia mais recente para o mais
- * antigo); se bater no teto, `groupsDailyTruncated` é true e o painel avisa em
- * vez de mostrar uma série cortada como completa. O payload não carrega nome
- * de grupo, código de convite nem user_hash: só ids de campeonato (UUID
- * validado), dia e contagem; nome e temporada saem de `competitions`.
- */
 metricsRouter.get('/competition-activity', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [groupsCreated, predictionsSaved, dimensionSince, groupsDailyRows] = await Promise.all([
@@ -630,7 +645,7 @@ metricsRouter.get('/competition-activity', async (c) => {
 
     return c.json({
       days,
-      predictionsDimensionSince: (dimensionSince[0]?.first_at as string | null | undefined) ?? null,
+      predictionsDimensionSince: firstAt(dimensionSince),
       competitions,
       groupsDaily,
       groupsDailyTruncated: groupsDailyRows.length >= GROUP_DAILY_LIMIT,
@@ -641,7 +656,6 @@ metricsRouter.get('/competition-activity', async (c) => {
   }
 })
 
-/** Eventos do mapa de calor: palpites salvos e logins bem-sucedidos. */
 const HEATMAP_EVENTS = `('prediction_saved', 'login_success')`
 
 /**
@@ -651,7 +665,6 @@ const HEATMAP_EVENTS = `('prediction_saved', 'login_success')`
  */
 const HEATMAP_LIMIT = 5000
 
-/** Hora UTC da SQL API (`YYYY-MM-DD HH:MM:SS`) → ISO `YYYY-MM-DDTHH:00:00Z`; inválida vira ''. */
 function normalizeHour(raw: unknown): string {
   const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):/.exec(String(raw ?? ''))
   if (!m) return ''
@@ -682,12 +695,9 @@ function normalizeHour(raw: unknown): string {
  * identificador algum: só hora e contagens.
  */
 metricsRouter.get('/heatmap', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [hourlyRows, firstSeenRows, samplingRows] = await Promise.all([
@@ -733,11 +743,10 @@ metricsRouter.get('/heatmap', async (c) => {
     const firstSeen = (type: string) =>
       (firstSeenRows.find((r) => r.event_type === type)?.first_at as string | null | undefined) ??
       null
-    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
 
     return c.json({
       days,
-      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      avgSampleInterval: sampleInterval(samplingRows),
       firstSeenAt: {
         prediction_saved: firstSeen('prediction_saved'),
         login_success: firstSeen('login_success'),
@@ -750,7 +759,6 @@ metricsRouter.get('/heatmap', async (c) => {
   }
 })
 
-/** Eventos do funil de convite (`invite_opened` e `group_joined`). */
 const INVITE_FUNNEL_EVENTS = `('invite_opened', 'group_joined')`
 
 /**
@@ -768,18 +776,15 @@ const INVITE_FUNNEL_EVENTS = `('invite_opened', 'group_joined')`
  * O payload não leva código, nome de grupo, user_hash nem texto livre de blob.
  */
 metricsRouter.get('/invite-funnel', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
   const firstEvent = (where: string) =>
     runAeSql(
       c.env,
       `SELECT blob1 AS event_type, MIN(timestamp) AS first_at ` +
         `FROM ${DATASET} WHERE ${where} GROUP BY event_type`,
-    ).then((rows) => (rows[0]?.first_at as string | null | undefined) ?? null)
+    ).then(firstAt)
 
   try {
     const [eventRows, opensSince, joinDimensionSince, samplingRows, d1] = await Promise.all([
@@ -800,14 +805,13 @@ metricsRouter.get('/invite-funnel', async (c) => {
       countInviteJoinsInD1(c.env.DB, days),
     ])
 
-    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
     return c.json({
       days,
       ...summarizeInviteEvents(eventRows),
       d1,
       opensSince,
       joinDimensionSince,
-      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      avgSampleInterval: sampleInterval(samplingRows),
     })
   } catch (err) {
     console.error('[metrics] falha ao montar o funil de convite:', err)
@@ -826,12 +830,9 @@ metricsRouter.get('/invite-funnel', async (c) => {
  * de "ainda não coletado". O payload só leva categorias e slugs de guia validados.
  */
 metricsRouter.get('/signup-origins', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [originRows, firstEventRows, samplingRows, d1Signups] = await Promise.all([
@@ -855,13 +856,12 @@ metricsRouter.get('/signup-origins', async (c) => {
       countSignupsInD1(c.env.DB, days),
     ])
 
-    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
     return c.json({
       days,
       ...summarizeSignupOrigins(originRows),
       d1: { signups: d1Signups },
-      originsSince: (firstEventRows[0]?.first_at as string | null | undefined) ?? null,
-      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      originsSince: firstAt(firstEventRows),
+      avgSampleInterval: sampleInterval(samplingRows),
     })
   } catch (err) {
     console.error('[metrics] falha ao montar a origem dos cadastros:', err)
@@ -869,42 +869,12 @@ metricsRouter.get('/signup-origins', async (c) => {
   }
 })
 
-/** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 
-/** Tolerância após o kickoff antes de um jogo sem placar contar como atrasado. */
-const OVERDUE_RESULT_HOURS = 3
-
-/**
- * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
- * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
- * base), não a janela de `days`; só contagens "criados no período" respeitam
- * `days`. `datetime(created_at)` normaliza o ISO com `Z` que o login grava em
- * `users` antes de comparar com `datetime('now')`; o texto cru contava o dia do
- * limite inteiro. Ignora grupos soft-deleted (deleted_at) em todas as contagens que
- * passam por grupo, inclusive usuários em grupo e usuários que palpitaram.
- *
- * `competitions` é o snapshot por temporada: TODAS as linhas de competitions,
- * inclusive as sem grupo (contagens zeradas). Cada métrica vem de uma
- * subquery agregada por competition_id antes do LEFT JOIN — juntar grupos,
- * membros e palpites numa query só multiplicaria as contagens.
- *   groups_current    → grupos não excluídos
- *   members           → usuários distintos nesses grupos
- *   active_groups_14d → grupos com palpite salvo/editado (updated_at) nos
- *                       últimos ACTIVE_GROUP_DAYS dias, relógio UTC do D1
- *   overdue_no_score  → jogos scheduled/live, não adiados, sem placar completo
- *                       (home_score ou away_score nulo) e com início há mais de
- *                       OVERDUE_RESULT_HOURS horas: buraco de feed
- *   finished_unscored → jogos finished com scored_at nulo: backlog de pontuação
- *                       (inclui finished sem placar, que o scoring não alcança)
- *                       Os dois contam só jogos, nunca ids nem times.
- *
- * `topCompetitions` continua no payload para o front antigo (deploys de API e
- * web não são atômicos); o front novo usa `competitions`.
- */
 metricsRouter.get('/business', async (c) => {
   const days = parseDays(c.req.query('days'))
   const db = c.env.DB
+  const overdueHours = overdueResultHours(c.env.RESULT_OVERDUE_HOURS)
 
   const [rollupCounts, groupMembership, competitions] = await Promise.all([
     db
@@ -926,7 +896,6 @@ metricsRouter.get('/business', async (c) => {
         usersCreated: number
         groupsCreated: number
       }>(),
-    // Quantos grupos cada usuário integra — distribuição (média + mediana aprox via percentil).
     db
       .prepare(
         `SELECT gm.user_id AS user_id, COUNT(*) AS groups ` +
@@ -935,9 +904,6 @@ metricsRouter.get('/business', async (c) => {
           `GROUP BY gm.user_id`,
       )
       .all(),
-    // Snapshot por temporada. datetime(p.updated_at) normaliza o ISO com "Z"
-    // gravado pelo app para o formato do datetime('now') antes de comparar;
-    // datetime(m.start_time) faz o mesmo (aceita "Z", milissegundos e offset).
     db
       .prepare(
         `SELECT c.id AS id, c.name AS name, c.slug AS slug, c.season AS season, ` +
@@ -958,14 +924,12 @@ metricsRouter.get('/business', async (c) => {
           `WHERE datetime(p.updated_at) > datetime('now', ?) ` +
           `GROUP BY g.competition_id) ac ON ac.competition_id = c.id ` +
           `LEFT JOIN (SELECT competition_id, ` +
-          `SUM(CASE WHEN status IN ('scheduled', 'live') AND postponed = 0 ` +
-          `AND (home_score IS NULL OR away_score IS NULL) ` +
-          `AND datetime(start_time) <= datetime('now', ?) THEN 1 ELSE 0 END) AS overdue_no_score, ` +
+          `SUM(CASE WHEN ${overdueNoScoreSql('')} THEN 1 ELSE 0 END) AS overdue_no_score, ` +
           `SUM(CASE WHEN status = 'finished' AND scored_at IS NULL THEN 1 ELSE 0 END) AS finished_unscored ` +
           `FROM matches GROUP BY competition_id) mh ON mh.competition_id = c.id ` +
           `ORDER BY groups_current DESC, c.name ASC, c.season ASC, c.id ASC`,
       )
-      .bind(`-${ACTIVE_GROUP_DAYS} days`, `-${OVERDUE_RESULT_HOURS} hours`)
+      .bind(`-${ACTIVE_GROUP_DAYS} days`, overdueCutoffSqlBind(overdueHours))
       .all<{
         id: string
         name: string
@@ -991,11 +955,16 @@ metricsRouter.get('/business', async (c) => {
     groupCounts.length > 0 ? groupCounts[Math.floor(groupCounts.length / 2)] : 0
 
   const competitionRows = competitions.results
-  // Formato legado: só campeonatos com grupo, top 10 (já vem ordenado por grupos).
   const topCompetitions = competitionRows
     .filter((r) => r.groups_current > 0)
     .slice(0, 10)
     .map((r) => ({ competition: r.name, groups: r.groups_current }))
+
+  const overdueTotal = competitionRows.reduce((s, r) => s + Number(r.overdue_no_score ?? 0), 0)
+  const finishedUnscoredTotal = competitionRows.reduce(
+    (s, r) => s + Number(r.finished_unscored ?? 0),
+    0,
+  )
 
   return c.json({
     days,
@@ -1007,9 +976,64 @@ metricsRouter.get('/business', async (c) => {
     avgGroupsPerUser,
     medianGroupsPerUser,
     activeGroupDays: ACTIVE_GROUP_DAYS,
+    overdueResultHours: overdueHours,
+    overdueTotal,
+    finishedUnscoredTotal,
     competitions: competitionRows,
     topCompetitions,
   })
+})
+
+/**
+ * Última medição do uso das cotas do plano Free (ADR-022), gravada pelo cron das
+ * 00:05 UTC como `cloudflare_usage`: blob2 = dia UTC medido, double1 = linhas lidas
+ * do D1, double2 = linhas escritas do D1, double3 = requisições dos Workers.
+ *
+ * Um evento por dia, então a linha mais recente é a medição e os doubles valem
+ * como gravados, sem peso de sampling. A busca cobre a retenção inteira do AE,
+ * para o painel mostrar a última medição mesmo com o cron parado. `latest: null`
+ * significa nenhuma medição ainda, o que inclui token não cadastrado.
+ * Percentual e faixa vêm das mesmas constantes que o cron usa.
+ */
+metricsRouter.get('/quota', async (c) => {
+  const unavailable = aeUnavailable(c)
+  if (unavailable) return unavailable
+
+  try {
+    const rows = await runAeSql(
+      c.env,
+      `SELECT timestamp, blob2 AS day, double1 AS d1_rows_read, ` +
+        `double2 AS d1_rows_written, double3 AS worker_requests ` +
+        `FROM ${DATASET} WHERE blob1 = 'cloudflare_usage' ` +
+        `AND timestamp > NOW() - INTERVAL '${MAX_DAYS}' DAY ` +
+        `ORDER BY timestamp DESC LIMIT 1`,
+    )
+    const row = rows[0]
+    if (!row) return c.json({ latest: null })
+
+    const day = String(row.day ?? '')
+    return c.json({
+      latest: {
+        day: DAY_RE.test(day) ? day : null,
+        measuredAt: String(row.timestamp ?? ''),
+        metrics: QUOTA_METRICS.map((metric) => {
+          const raw = Number(row[metric] ?? 0)
+          const used = Number.isFinite(raw) && raw > 0 ? raw : 0
+          const limit = FREE_DAILY_QUOTAS[metric]
+          return {
+            metric,
+            used,
+            limit,
+            percent: quotaPercent(used, limit),
+            threshold: quotaThreshold(used, limit),
+          }
+        }),
+      },
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao ler o uso das cotas:', err)
+    return c.json({ error: 'Falha ao consultar o uso das cotas' }, 502)
+  }
 })
 
 /**
@@ -1037,8 +1061,6 @@ metricsRouter.get('/archive', async (c) => {
   }[] = []
   let cursor: string | undefined
   do {
-    // customMetadata vem por padrão no list() (compatibility_date ≥ 2022-08-04
-    // — a opção `include` nem existe mais no runtime atual).
     const listed = await bucket.list({ prefix: 'events/', limit: 1000, cursor })
     for (const o of listed.objects) {
       const raw = o.customMetadata?.events
@@ -1055,29 +1077,16 @@ metricsRouter.get('/archive', async (c) => {
   return c.json({ files })
 })
 
-const MAX_QUERY_SPAN_DAYS = 92
-
-/** Lista de dias YYYY-MM-DD de `from` a `to` (inclusive), UTC. */
-function daysInRange(from: string, to: string): string[] {
-  const days: string[] = []
-  const cur = new Date(`${from}T00:00:00Z`)
-  const end = new Date(`${to}T00:00:00Z`)
-  while (cur <= end) {
-    days.push(cur.toISOString().slice(0, 10))
-    cur.setUTCDate(cur.getUTCDate() + 1)
-  }
-  return days
-}
-
 /**
  * Análise do arquivo frio — agrega os NDJSON de um intervalo lendo o CORPO dos
  * arquivos (não só a metadata do /archive). É o que permite dissecar dados além
  * da janela de ~3 meses do Analytics Engine: breakdown por tipo de evento e por
  * dia. Cada linha vale `_sample_interval` eventos reais (sampling).
  *
- * `from`/`to` em YYYY-MM-DD (UTC, inclusivo). Span limitado a
- * MAX_QUERY_SPAN_DAYS pra não estourar CPU/memória do Worker — o dashboard
- * consulta um mês por vez.
+ * `from`/`to` em YYYY-MM-DD (UTC, inclusivo), no máximo MAX_QUERY_SPAN_DAYS
+ * dias; o dashboard consulta um mês por vez. A leitura é um arquivo por vez,
+ * em streaming, com teto de bytes por consulta (ver `archiveQuery.ts`): passou
+ * dele, a resposta sai com `truncated: true` e só os dias lidos.
  */
 metricsRouter.get('/archive/query', async (c) => {
   const bucket = c.env.EVENTS
@@ -1085,66 +1094,14 @@ metricsRouter.get('/archive/query', async (c) => {
     return c.json({ error: 'Bucket R2 não configurado' }, 503)
   }
 
-  const from = c.req.query('from')
-  const to = c.req.query('to')
-  if (!from || !to || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) {
-    return c.json({ error: 'Parâmetros from/to inválidos (YYYY-MM-DD, from ≤ to)' }, 400)
+  const range = daysInRange(c.req.query('from') ?? '', c.req.query('to') ?? '')
+  if ('error' in range) {
+    return range.error === 'too_long'
+      ? c.json({ error: `Intervalo máximo é ${MAX_QUERY_SPAN_DAYS} dias` }, 400)
+      : c.json({ error: 'Parâmetros from/to inválidos (YYYY-MM-DD, from ≤ to)' }, 400)
   }
 
-  const days = daysInRange(from, to)
-  if (days.length > MAX_QUERY_SPAN_DAYS) {
-    return c.json({ error: `Intervalo máximo é ${MAX_QUERY_SPAN_DAYS} dias` }, 400)
-  }
-
-  const byType = new Map<string, number>()
-  const byDay: { day: string; count: number }[] = []
-  let filesRead = 0
-
-  const fetchPromises = days.map(async (day) => {
-    const key = `events/${day.replaceAll('-', '/')}.ndjson`
-    const obj = await bucket.get(key)
-    if (!obj) return { day, obj: null, body: null }
-    const body = await obj.text()
-    return { day, obj, body }
-  })
-
-  const results = await Promise.all(fetchPromises)
-
-  for (const { day, obj, body } of results) {
-    if (!obj || body === null) continue
-    filesRead++
-
-    let dayTotal = 0
-
-    let lastIndex = 0
-    let nextIndex = body.indexOf('\n')
-    while (nextIndex !== -1) {
-      const line = body.substring(lastIndex, nextIndex)
-      lastIndex = nextIndex + 1
-      nextIndex = body.indexOf('\n', lastIndex)
-      if (line.trim() !== '') {
-        const row = JSON.parse(line) as Record<string, unknown>
-        const weight = Number(row._sample_interval ?? 1)
-        const type = String(row.blob1 ?? 'unknown')
-        byType.set(type, (byType.get(type) ?? 0) + weight)
-        dayTotal += weight
-      }
-    }
-    const lastLine = body.substring(lastIndex)
-    if (lastLine.trim() !== '') {
-      const row = JSON.parse(lastLine) as Record<string, unknown>
-      const weight = Number(row._sample_interval ?? 1)
-      const type = String(row.blob1 ?? 'unknown')
-      byType.set(type, (byType.get(type) ?? 0) + weight)
-      dayTotal += weight
-    }
-    byDay.push({ day, count: dayTotal })
-  }
-
-  const totalEvents = byDay.reduce((sum, d) => sum + d.count, 0)
-  const byTypeSorted = [...byType.entries()]
-    .map(([event_type, count]) => ({ event_type, count }))
-    .sort((a, b) => b.count - a.count)
-
-  return c.json({ from, to, filesRead, totalEvents, byType: byTypeSorted, byDay })
+  const from = range.days[0]
+  const to = range.days[range.days.length - 1]
+  return c.json({ from, to, ...(await queryArchive(bucket, range.days)) })
 })

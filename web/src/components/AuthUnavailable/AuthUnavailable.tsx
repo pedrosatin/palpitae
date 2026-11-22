@@ -4,7 +4,6 @@ import styles from './AuthUnavailable.module.css'
 
 interface AuthUnavailableProps {
   onRetry: () => void
-  /** Consulta em andamento: o botão fica ocupado e ignora novos cliques, sem perder o foco. */
   retrying?: boolean
 }
 
@@ -18,7 +17,6 @@ export default function AuthUnavailable({ onRetry, retrying = false }: AuthUnava
     <main className={styles.page}>
       <ErrorState className={styles.notice}>
         <p>O Palpitae está indisponível no momento. Tente de novo em instantes.</p>
-        {/* `aria-disabled` no lugar de `disabled`: botão desabilitado perde o foco. */}
         <Button
           variant="secondary"
           size="sm"

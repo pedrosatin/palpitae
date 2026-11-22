@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  EspnHttpError,
+  EspnUnavailableError,
+  requireScoreboardEvents,
+  type EspnGate,
   ESPN_MIN_INTERVAL_MS,
   ESPN_RETRY_BACKOFF_MS,
   ESPN_TIMEOUT_MS,
   espnScoreboardUrl,
   fetchEspnScoreboard,
+  parseNonNegativeInt,
   resetEspnClientForTests,
   setEspnMinIntervalForTests,
   setEspnTimeoutForTests,
@@ -13,7 +18,6 @@ import {
 describe('fetchEspnScoreboard', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    // Em Vitest o delay default é 0 via process.env.VITEST no módulo; aqui restauramos 1,3s para medir pacing.
     resetEspnClientForTests()
     setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
   })
@@ -85,7 +89,6 @@ describe('fetchEspnScoreboard', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ events: [], leagues: [] })))
 
     const promise = fetchEspnScoreboard('eng.1', '20261005')
-    // Retry imediato: pacing 1300 cobre o backoff 500
     await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS)
 
     await expect(promise).resolves.toEqual({ events: [], leagues: [] })
@@ -119,7 +122,6 @@ describe('fetchEspnScoreboard', () => {
     const withRetry = fetchEspnScoreboard('bra.1', '20261001')
     const neighbor = fetchEspnScoreboard('bra.1', '20261002')
 
-    // 3 inícios × 1300ms + margem para o body de 20ms por sucesso
     await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS * 3 + 100)
     await Promise.all([withRetry, neighbor])
 
@@ -133,7 +135,6 @@ describe('fetchEspnScoreboard', () => {
       ).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
     }
 
-    // 403 não retenta; reset limpa fila/relógio para a próxima suíte
     resetEspnClientForTests()
     setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
     vi.mocked(fetch).mockReset()
@@ -352,5 +353,120 @@ describe('fetchEspnScoreboard · telemetria por tentativa', () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
 
     await expect(fetchEspnScoreboard('bra.1', '20261005')).resolves.toEqual({ events: [] })
+  })
+})
+
+describe('parseNonNegativeInt', () => {
+  it('aceita só dígitos', () => {
+    expect(parseNonNegativeInt('0')).toBe(0)
+    expect(parseNonNegativeInt('12')).toBe(12)
+  })
+
+  it.each(['', '3.0', '-1', ' 2', '1e1', 'x'])('recusa %j', (raw) => {
+    expect(parseNonNegativeInt(raw)).toBeNull()
+  })
+
+  it('recusa placar ausente', () => {
+    expect(parseNonNegativeInt(undefined)).toBeNull()
+  })
+})
+
+describe('fetchEspnScoreboard com o gate do orçamento compartilhado', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    resetEspnClientForTests()
+    setEspnMinIntervalForTests(0)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetEspnClientForTests()
+  })
+
+  const gateOf = (note: EspnGate['note'] = async () => null) => ({
+    reserve: vi.fn(async () => {}),
+    note: vi.fn(note),
+  })
+
+  it('reserva vaga antes de cada request e registra a resposta', async () => {
+    const gate = gateOf()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
+
+    await fetchEspnScoreboard('bra.1', '20261007', undefined, gate)
+
+    expect(gate.reserve).toHaveBeenCalledTimes(1)
+    expect(gate.note).toHaveBeenCalledWith(200, expect.any(Headers))
+  })
+
+  it('sem vaga não há request: a recusa sobe como EspnUnavailableError', async () => {
+    const gate = gateOf()
+    gate.reserve.mockRejectedValueOnce(new EspnUnavailableError('window_full', 123))
+
+    await expect(fetchEspnScoreboard('bra.1', undefined, undefined, gate)).rejects.toMatchObject({
+      reason: 'window_full',
+      retryAt: 123,
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('resposta que bloqueia o provedor falha na hora, sem o retry', async () => {
+    const gate = gateOf(async () => ({ reason: 'blocked', retryAt: 999 }))
+    vi.mocked(fetch).mockResolvedValue(new Response('proibido', { status: 403 }))
+
+    const error = await fetchEspnScoreboard('bra.1', '20261007', undefined, gate).catch((e) => e)
+
+    expect(error).toBeInstanceOf(EspnUnavailableError)
+    expect(error).toMatchObject({ reason: 'blocked', retryAt: 999 })
+    expect(error.message).toContain('403')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('5xx tenta de novo e cada tentativa reserva a própria vaga', async () => {
+    const gate = gateOf()
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
+
+    await fetchEspnScoreboard('bra.1', '20261007', undefined, gate)
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(gate.reserve).toHaveBeenCalledTimes(2)
+  })
+
+  it('falha de rede ou timeout sobe como está (a vaga já foi gasta), não como recusa do orçamento', async () => {
+    const gate = gateOf()
+    vi.mocked(fetch).mockRejectedValue(new TypeError('fetch failed'))
+
+    const error = await fetchEspnScoreboard('bra.1', undefined, undefined, gate).catch((e) => e)
+
+    expect(error).toBeInstanceOf(TypeError)
+    expect(gate.reserve).toHaveBeenCalledTimes(1)
+    expect(gate.note).not.toHaveBeenCalled()
+  })
+
+  it('4xx sem bloqueio falha com EspnHttpError e o status', async () => {
+    const gate = gateOf()
+    vi.mocked(fetch).mockResolvedValue(new Response('', { status: 404 }))
+
+    await expect(fetchEspnScoreboard('bra.1', undefined, undefined, gate)).rejects.toMatchObject({
+      status: 404,
+    })
+    await expect(fetchEspnScoreboard('bra.1', undefined, undefined, gate)).rejects.toBeInstanceOf(
+      EspnHttpError,
+    )
+  })
+
+  it('sem gate o cliente age como antes: nada é reservado nem registrado', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 403 }))
+
+    await expect(fetchEspnScoreboard('bra.1')).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+describe('requireScoreboardEvents', () => {
+  it('lista vazia é válida; ausência da lista é resposta incompleta', () => {
+    expect(requireScoreboardEvents({ events: [] }, 'bra.1')).toEqual([])
+    expect(() => requireScoreboardEvents({}, 'bra.1')).toThrow('resposta incompleta')
+    expect(() => requireScoreboardEvents(null, 'bra.1')).toThrow('resposta incompleta')
   })
 })

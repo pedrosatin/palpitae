@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   FEATURE_KEYS,
   getFeatureFlags,
+  googleSubOf,
   hasFeatureAccess,
   hasPilotAccess,
   isAdminUser,
 } from './permissions'
+
+/** Identidade sem `sub` do Google, como a de conta de outro provedor. */
+const semSub = (email: string | undefined) => ({ email, googleSub: undefined })
 
 describe('permissions', () => {
   it('exposes create_group as the only feature key', () => {
@@ -56,18 +60,56 @@ describe('permissions', () => {
 
   describe('isAdminUser', () => {
     it('matches ADMIN_EMAIL case-insensitively', () => {
-      expect(isAdminUser('Admin@Example.com', { ADMIN_EMAIL: 'admin@example.com' })).toBe(true)
-      expect(isAdminUser('  admin@example.com  ', { ADMIN_EMAIL: ' ADMIN@EXAMPLE.COM ' })).toBe(
+      expect(isAdminUser(semSub('Admin@Example.com'), { ADMIN_EMAIL: 'admin@example.com' })).toBe(
         true,
       )
+      expect(
+        isAdminUser(semSub('  admin@example.com  '), { ADMIN_EMAIL: ' ADMIN@EXAMPLE.COM ' }),
+      ).toBe(true)
     })
 
     it('returns false when ADMIN_EMAIL is missing, empty, or different', () => {
-      expect(isAdminUser('admin@example.com', {})).toBe(false)
-      expect(isAdminUser('admin@example.com', { ADMIN_EMAIL: '   ' })).toBe(false)
-      expect(isAdminUser('user@example.com', { ADMIN_EMAIL: 'admin@example.com' })).toBe(false)
-      expect(isAdminUser(undefined, { ADMIN_EMAIL: 'admin@example.com' })).toBe(false)
-      expect(isAdminUser('', { ADMIN_EMAIL: 'admin@example.com' })).toBe(false)
+      expect(isAdminUser(semSub('admin@example.com'), {})).toBe(false)
+      expect(isAdminUser(semSub('admin@example.com'), { ADMIN_EMAIL: '   ' })).toBe(false)
+      expect(isAdminUser(semSub('user@example.com'), { ADMIN_EMAIL: 'admin@example.com' })).toBe(
+        false,
+      )
+      expect(isAdminUser(semSub(undefined), { ADMIN_EMAIL: 'admin@example.com' })).toBe(false)
+      expect(isAdminUser(semSub(''), { ADMIN_EMAIL: 'admin@example.com' })).toBe(false)
+    })
+
+    describe('com ADMIN_GOOGLE_SUB', () => {
+      const env = { ADMIN_EMAIL: 'admin@example.test', ADMIN_GOOGLE_SUB: 'sub-certo' }
+      const conta = (googleSub: string | undefined, email = 'admin@example.test') => ({
+        email,
+        googleSub,
+      })
+
+      it('exige o e-mail e o sub do Google', () => {
+        expect(isAdminUser(conta('sub-certo'), env)).toBe(true)
+        expect(isAdminUser(conta('sub-certo', 'ADMIN@Example.test'), env)).toBe(true)
+        expect(isAdminUser(conta('sub-errado'), env)).toBe(false)
+        expect(isAdminUser(conta(undefined), env)).toBe(false)
+        expect(isAdminUser(conta('sub-certo', 'outro@example.test'), env)).toBe(false)
+      })
+
+      it('ignora espaços do segredo e vale só o e-mail quando ele está vazio', () => {
+        expect(isAdminUser(conta('sub-certo'), { ...env, ADMIN_GOOGLE_SUB: ' sub-certo\n' })).toBe(
+          true,
+        )
+        expect(isAdminUser(conta(undefined), { ...env, ADMIN_GOOGLE_SUB: '' })).toBe(true)
+        expect(isAdminUser(conta(undefined), { ...env, ADMIN_GOOGLE_SUB: '  ' })).toBe(true)
+      })
+    })
+  })
+
+  describe('googleSubOf', () => {
+    it('só devolve o provider_id de conta Google', () => {
+      expect(googleSubOf('google', 'sub-1')).toBe('sub-1')
+      expect(googleSubOf('github', 'sub-1')).toBeUndefined()
+      expect(googleSubOf('google', '')).toBeUndefined()
+      expect(googleSubOf(null, 'sub-1')).toBeUndefined()
+      expect(googleSubOf(undefined, undefined)).toBeUndefined()
     })
   })
 
@@ -78,23 +120,34 @@ describe('permissions', () => {
     }
 
     it('grants access to the admin user', () => {
-      expect(hasPilotAccess('ADMIN@palpitae.com.br', env)).toBe(true)
+      expect(hasPilotAccess(semSub('ADMIN@palpitae.com.br'), env)).toBe(true)
       expect(
-        hasPilotAccess('admin@palpitae.com.br', { ADMIN_EMAIL: 'admin@palpitae.com.br' }),
+        hasPilotAccess(semSub('admin@palpitae.com.br'), { ADMIN_EMAIL: 'admin@palpitae.com.br' }),
       ).toBe(true)
     })
 
     it('grants access to guests listed in PILOT_EMAILS case-insensitively', () => {
-      expect(hasPilotAccess('convidado1@example.com', env)).toBe(true)
-      expect(hasPilotAccess('CONVIDADO1@example.com', env)).toBe(true)
-      expect(hasPilotAccess('convidado2@example.com', env)).toBe(true)
+      expect(hasPilotAccess(semSub('convidado1@example.com'), env)).toBe(true)
+      expect(hasPilotAccess(semSub('CONVIDADO1@example.com'), env)).toBe(true)
+      expect(hasPilotAccess(semSub('convidado2@example.com'), env)).toBe(true)
     })
 
     it('denies access to ordinary users and empty emails', () => {
-      expect(hasPilotAccess('comum@example.com', env)).toBe(false)
-      expect(hasPilotAccess(undefined, env)).toBe(false)
-      expect(hasPilotAccess('   ', env)).toBe(false)
-      expect(hasPilotAccess('convidado1@example.com', {})).toBe(false)
+      expect(hasPilotAccess(semSub('comum@example.com'), env)).toBe(false)
+      expect(hasPilotAccess(semSub(undefined), env)).toBe(false)
+      expect(hasPilotAccess(semSub('   '), env)).toBe(false)
+      expect(hasPilotAccess(semSub('convidado1@example.com'), {})).toBe(false)
+    })
+
+    it('with ADMIN_GOOGLE_SUB set, the admin email with another sub loses access and guests keep it', () => {
+      const comSub = { ...env, ADMIN_GOOGLE_SUB: 'sub-admin' }
+      expect(
+        hasPilotAccess({ email: 'admin@palpitae.com.br', googleSub: 'sub-outro' }, comSub),
+      ).toBe(false)
+      expect(
+        hasPilotAccess({ email: 'admin@palpitae.com.br', googleSub: 'sub-admin' }, comSub),
+      ).toBe(true)
+      expect(hasPilotAccess(semSub('convidado1@example.com'), comSub)).toBe(true)
     })
   })
 })

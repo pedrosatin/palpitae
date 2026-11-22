@@ -3,10 +3,10 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
 
-/** Tentativas HTTP que cada sync gasta do orçamento do tick. */
 const sync = vi.hoisted(() => ({ attempts: 0 }))
 
-vi.mock('./sync', () => ({
+vi.mock('./sync', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sync')>()),
   syncFixtures: vi.fn(async (options: { onHttpAttempt?: (attempt: unknown) => void }) => {
     for (let i = 0; i < sync.attempts; i++) {
       options.onHttpAttempt?.({ provider: 'football-data', status: 200, durationMs: 1 })
@@ -27,7 +27,6 @@ import { POLLER_CALL_BUDGET, pollActiveMatches } from './poller'
  */
 
 const KICKOFF = Date.parse('2026-11-08T15:30:00Z')
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = KICKOFF + 120 * 60_000
 const TICK_MS = 30 * 60_000
 const COMPETITIONS = ['c1', 'c2', 'c3']
@@ -45,10 +44,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/**
- * Três competições com seis jogos encerrados e sem pontuação cada, um minuto
- * entre eles, todos na mesma rodada. Cada jogo tem 251 palpites.
- */
 function seed() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -93,7 +88,6 @@ function scoredByCompetition(sqlite: DatabaseSync): Record<string, number> {
 describe('pontuação de várias competições com poucas chamadas', () => {
   it('com chamadas para começar, nenhuma competição passa dois ticks sem pontuar', async () => {
     const { sqlite, db } = seed()
-    // O planejamento lê 1 vez; os três syncs deixam 11 chamadas ou menos para a pontuação.
     sync.attempts = Math.floor((POLLER_CALL_BUDGET - 1 - 11) / COMPETITIONS.length)
 
     await pollActiveMatches(db, 'key', undefined, NOW)

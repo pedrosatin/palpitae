@@ -1,75 +1,23 @@
-import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, useRef, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { invalidateApiCache } from '../../lib/api-cache'
-import { predictedClassified } from '../../lib/predictedTie'
-import { collectRoundDrafts, type UnsavedDrafts } from '../../lib/predictionDrafts'
-import type { Match, Prediction } from '../MatchCard'
-
-type PredictionMap = Map<string, Prediction>
-
-function applyPredictionUpdate(
-  prev: PredictionMap,
-  matchId: string,
-  home: number,
-  away: number,
-  penaltyWinner: 'home' | 'away' | null,
-  allMatches: Match[],
-): PredictionMap {
-  const next = new Map(prev)
-  const existing = prev.get(matchId)
-  const match = allMatches.find((m) => m.id === matchId)
-  next.set(matchId, {
-    id: existing?.id ?? '',
-    match_id: matchId,
-    predicted_home_score: home,
-    predicted_away_score: away,
-    predicted_penalty_winner: penaltyWinner,
-    classified_points: existing?.classified_points ?? 0,
-    predicted_classified: match
-      ? predictedClassified(
-          match,
-          home,
-          away,
-          penaltyWinner,
-          match.leg1_match_id ? prev.get(match.leg1_match_id) : undefined,
-        )
-      : null,
-    points_awarded: existing?.points_awarded ?? 0,
-    penalty_points: existing?.penalty_points ?? 0,
-    locked: 0,
-    updated_at: new Date().toISOString(),
-  })
-  for (const context of allMatches) {
-    const pick = next.get(context.id)
-    if (!pick) continue
-    next.set(context.id, {
-      ...pick,
-      predicted_classified: predictedClassified(
-        context,
-        pick.predicted_home_score,
-        pick.predicted_away_score,
-        pick.predicted_penalty_winner ?? null,
-        context.leg1_match_id ? next.get(context.leg1_match_id) : undefined,
-      ),
-    })
-  }
-  return next
-}
+import { invalidateGroupPredictions } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
+import { collectRoundDrafts, savedBase, type UnsavedDrafts } from '../../lib/predictionDrafts'
+import {
+  applyPredictionUpdates,
+  predictionBase,
+  rollbackPredictions,
+  type PredictionMap,
+  type PredictionUpdate,
+} from '../../lib/predictionOptimistic'
+import { plural } from '../../lib/replicateToGroups'
+import type { Match } from '../MatchCard'
 
 type BulkSaveResponse = { saved: string[]; locked?: string[]; not_found?: string[] }
 
-function count(n: number, one: string, many: string): string {
-  return n === 1 ? `1 ${one}` : `${n} ${many}`
-}
-
-/**
- * Aviso de um "Salvar todos" em que algum jogo enviado não voltou entre os salvos:
- * quantos foram salvos, o motivo de cada recusa e o que fazer. Jogo travado ou
- * fora do campeonato só sai da tela depois de recarregar a lista de jogos. Sem
- * motivo na resposta, vale tentar de novo. `null` quando todos foram salvos.
- */
 function bulkRejectionMessage(sent: string[], data: BulkSaveResponse): string | null {
   const saved = new Set(data.saved)
   const rejected = sent.filter((id) => !saved.has(id))
@@ -79,16 +27,16 @@ function bulkRejectionMessage(sent: string[], data: BulkSaveResponse): string | 
   const other = rejected.length - locked - notFound
   const accepted = sent.length - rejected.length
   return [
-    accepted > 0 && count(accepted, 'palpite salvo.', 'palpites salvos.'),
+    accepted > 0 && plural(accepted, 'palpite salvo.', 'palpites salvos.'),
     locked > 0 &&
-      count(locked, 'jogo já bloqueado ficou de fora.', 'jogos já bloqueados ficaram de fora.'),
+      plural(locked, 'jogo já bloqueado ficou de fora.', 'jogos já bloqueados ficaram de fora.'),
     notFound > 0 &&
-      count(
+      plural(
         notFound,
         'jogo não foi encontrado neste campeonato.',
         'jogos não foram encontrados neste campeonato.',
       ),
-    other > 0 && count(other, 'palpite não foi salvo.', 'palpites não foram salvos.'),
+    other > 0 && plural(other, 'palpite não foi salvo.', 'palpites não foram salvos.'),
     locked + notFound > 0 ? 'Recarregue a página para atualizar os jogos.' : 'Tente novamente.',
   ]
     .filter(Boolean)
@@ -109,14 +57,8 @@ function useBulkSaveStatus(selectedRound: string | undefined) {
     }
   }
 
-  // Cada rodada exibida ganha um número. O envio guarda o número da rodada em que
-  // começou, e a resposta que volta depois da troca não mostra aviso na rodada nova.
   const roundViewRef = useRef(0)
 
-  // Cancel the savedAll feedback timer and reset savedAll when the round changes,
-  // and on unmount — otherwise a stale timeout can fire after a second save,
-  // flipping savedAll back off (or on) at the wrong time. O aviso de erro ou de
-  // palpite recusado também é da rodada anterior e sai junto.
   useEffect(() => {
     roundViewRef.current += 1
     clearSavedAllTimer()
@@ -148,17 +90,40 @@ function useBulkSaveStatus(selectedRound: string | undefined) {
   }
 }
 
-export function usePredictionsBulkSave(
-  groupId: string,
-  roundMatches: Match[],
-  predictions: PredictionMap,
-  setPredictions: Dispatch<SetStateAction<PredictionMap>>,
-  selectedRound: string | undefined,
-  allMatches: Match[],
-  { drafts, penaltyDrafts }: UnsavedDrafts,
-  /** Chamado com os jogos gravados depois de um "Salvar todos". */
-  onBulkSaved?: (matchIds: string[]) => void,
-) {
+type BulkSaveInput = {
+  groupId: string
+  roundMatches: Match[]
+  predictions: PredictionMap
+  setPredictions: Dispatch<SetStateAction<PredictionMap>>
+  confirmedRef: MutableRefObject<PredictionMap>
+  saveSeqRef: MutableRefObject<Map<string, number>>
+  scopeSeqRef: MutableRefObject<number>
+  selectedRound: string | undefined
+  allMatches: Match[]
+  unsavedDrafts: UnsavedDrafts
+  clearSubmittedDrafts: (submitted: Array<{ matchId: string; nextBase: string }>) => void
+  rebaseDrafts: (rebases: Array<{ matchId: string; fromBase: string; toBase: string }>) => void
+  onClearCardErrors?: (matchIds: string[]) => void
+  onBulkSaved?: (matchIds: string[]) => void
+}
+
+export function usePredictionsBulkSave({
+  groupId,
+  roundMatches,
+  predictions,
+  setPredictions,
+  confirmedRef,
+  saveSeqRef,
+  scopeSeqRef,
+  selectedRound,
+  allMatches,
+  unsavedDrafts: { drafts, penaltyDrafts },
+  clearSubmittedDrafts,
+  rebaseDrafts,
+  onClearCardErrors,
+  onBulkSaved,
+}: BulkSaveInput) {
+  const queryClient = useQueryClient()
   const {
     savingAll,
     setSavingAll,
@@ -173,15 +138,8 @@ export function usePredictionsBulkSave(
     roundViewRef,
   } = useBulkSaveStatus(selectedRound)
 
-  function applySaved(
-    matchId: string,
-    home: number,
-    away: number,
-    penaltyWinner: 'home' | 'away' | null,
-  ) {
-    setPredictions((prev) =>
-      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
-    )
+  function markHasSaved() {
+    setHasSavedPredictions(true)
   }
 
   function handleSaved(
@@ -191,11 +149,39 @@ export function usePredictionsBulkSave(
     penaltyWinner: 'home' | 'away' | null,
   ) {
     setHasSavedPredictions(true)
-    applySaved(matchId, home, away, penaltyWinner)
+    setPredictions((prev) =>
+      applyPredictionUpdates(prev, [{ matchId, home, away, penaltyWinner }], allMatches),
+    )
   }
 
   function pendingDrafts() {
     return collectRoundDrafts({ roundMatches, drafts, penaltyDrafts, predictions })
+  }
+
+  function revertItems(
+    items: PredictionUpdate[],
+    tokens: Map<string, number>,
+    bases: Map<string, string>,
+  ) {
+    const active = items.filter(
+      (u) => saveSeqRef.current.get(u.matchId) === tokens.get(u.matchId),
+    )
+    if (active.length === 0) return
+    rebaseDrafts(
+      active.map((u) => ({
+        matchId: u.matchId,
+        fromBase: bases.get(u.matchId)!,
+        toBase: savedBase(confirmedRef.current.get(u.matchId)),
+      })),
+    )
+    setPredictions((prev) =>
+      rollbackPredictions(
+        prev,
+        active.map((u) => u.matchId),
+        confirmedRef.current,
+        allMatches,
+      ),
+    )
   }
 
   async function handleSaveAll() {
@@ -211,6 +197,29 @@ export function usePredictionsBulkSave(
     setSavedAll(false)
     setBulkError(null)
     const roundView = roundViewRef.current
+    const scopeSeq = scopeSeqRef.current
+
+    const updates: PredictionUpdate[] = toSave.map((p) => ({
+      matchId: p.match_id,
+      home: p.predicted_home_score,
+      away: p.predicted_away_score,
+      penaltyWinner: p.predicted_penalty_winner ?? null,
+    }))
+    const tokens = new Map<string, number>()
+    const bases = new Map<string, string>()
+    const submitted: Array<{ matchId: string; nextBase: string }> = []
+    for (const u of updates) {
+      const seq = (saveSeqRef.current.get(u.matchId) ?? 0) + 1
+      saveSeqRef.current.set(u.matchId, seq)
+      tokens.set(u.matchId, seq)
+      const nextBase = predictionBase(u.home, u.away, u.penaltyWinner)
+      bases.set(u.matchId, nextBase)
+      submitted.push({ matchId: u.matchId, nextBase })
+    }
+
+    clearSubmittedDrafts(submitted)
+    onClearCardErrors?.(updates.map((u) => u.matchId))
+    setPredictions((prev) => applyPredictionUpdates(prev, updates, allMatches))
 
     try {
       const res = await apiFetch(buildApiUrl('/predictions/bulk'), {
@@ -218,6 +227,7 @@ export function usePredictionsBulkSave(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId, predictions: toSave }),
       })
+      if (scopeSeqRef.current !== scopeSeq) return
 
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
@@ -225,30 +235,28 @@ export function usePredictionsBulkSave(
       }
 
       const data = (await res.json()) as BulkSaveResponse
+      if (scopeSeqRef.current !== scopeSeq) return
       const savedSet = new Set(data.saved)
-      const accepted = toSave.filter((p) => savedSet.has(p.match_id))
-      for (const p of accepted) {
-        applySaved(
-          p.match_id,
-          p.predicted_home_score,
-          p.predicted_away_score,
-          p.predicted_penalty_winner ?? null,
-        )
-      }
+      const accepted = updates.filter((u) => savedSet.has(u.matchId))
+      const rejectedItems = updates.filter((u) => !savedSet.has(u.matchId))
 
-      // Home cards leem pending_predictions via fetchCachedJson (TTL 30s).
-      // Sem invalidar, voltar à dashboard dentro do TTL mostra N antigo.
-      invalidateApiCache('groups:')
+      if (accepted.length > 0) {
+        confirmedRef.current = applyPredictionUpdates(confirmedRef.current, accepted, allMatches)
+      }
+      revertItems(rejectedItems, tokens, bases)
+
+      invalidateGroupsList(queryClient)
+      invalidateGroupPredictions(queryClient)
       if (data.saved.length > 0) onBulkSaved?.(data.saved)
 
-      // O aceito fica gravado em qualquer rodada. O convite de avaliação, como o
-      // aviso, abre só na rodada em que o envio começou.
       if (roundViewRef.current !== roundView) return
       if (accepted.length > 0) setHasSavedPredictions(true)
       const rejected = bulkRejectionMessage(toSave.map((p) => p.match_id), data)
       if (rejected) setBulkError(rejected)
       else startSavedAllTimer()
     } catch (e) {
+      if (scopeSeqRef.current !== scopeSeq) return
+      revertItems(updates, tokens, bases)
       if (roundViewRef.current === roundView) setBulkError((e as Error).message)
     } finally {
       setSavingAll(false)
@@ -265,5 +273,6 @@ export function usePredictionsBulkSave(
     pendingCount,
     handleSaveAll,
     handleSaved,
+    markHasSaved,
   }
 }

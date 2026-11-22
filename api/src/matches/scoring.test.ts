@@ -3,15 +3,12 @@ import {
   calculateClassifiedBonus,
   calculatePenaltyBonus,
   calculatePoints,
-  resolveSingleMatchClassified,
-  resolveTwoLegClassified,
   scoreUnprocessedMatches,
   classifiedRuleChangeStatements,
 } from './scoring'
 
-// ---------------------------------------------------------------------------
-// calculatePoints — pure function, no mocks needed
-// ---------------------------------------------------------------------------
+// Casos de resolveSingleMatchClassified / resolveTwoLegClassified: ver
+// mataMataVectors.test.ts (vetores em test-vectors/mata-mata.json).
 
 describe('calculatePoints', () => {
   describe('exact score → 3 points', () => {
@@ -156,7 +153,6 @@ describe('calculatePoints', () => {
   })
 
   describe('1X2 mode (points_exact = 0): exact-score bonus disabled', () => {
-    // Picks are stored as casa=(1,0), empate=(0,0), fora=(0,1).
     it('correct winner scores the winner value', () =>
       expect(
         calculatePoints({
@@ -204,12 +200,7 @@ describe('calculatePoints', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// calculatePenaltyBonus — pure function, no mocks needed
-// ---------------------------------------------------------------------------
-
 describe('calculatePenaltyBonus', () => {
-  // signature: (predHome, predAway, predPenWinner, penWinner, pointsPenalty, eligible)
   it('awards the bonus on a correct draw + correct shootout winner', () =>
     expect(calculatePenaltyBonus(1, 1, 'home', 'home', 1, true)).toBe(1))
   it('uses the configured points_penalty value', () =>
@@ -229,10 +220,6 @@ describe('calculatePenaltyBonus', () => {
   it('does not require an exact score — any correct draw counts', () =>
     expect(calculatePenaltyBonus(3, 3, 'home', 'home', 1, true)).toBe(1))
 })
-
-// ---------------------------------------------------------------------------
-// scoreUnprocessedMatches — tests with a fake D1 database
-// ---------------------------------------------------------------------------
 
 type FakePrediction = {
   id: string
@@ -272,11 +259,8 @@ function buildFakeDb(
   matches: FakeMatch[],
   predictions: FakePrediction[],
   groups: Record<string, FakeGroupConfig> = {},
-  // Penalty phases per competition (the competitions.penalty_phases gate).
   penaltyPhases: Record<string, string[]> = {},
 ) {
-  // Any group not explicitly configured uses the classic 3/1 scoring with the
-  // default 1-point penalty bonus.
   const defaultConfig: Required<FakeGroupConfig> = {
     points_exact: 3,
     points_winner: 1,
@@ -315,7 +299,6 @@ function buildFakeDb(
           ).length
           return { count } as T
         }
-        // Match-level penalty context (penalty_winner, phase, competition gate)
         if (sql.includes('FROM matches m') && sql.includes('JOIN competitions')) {
           const matchId = params[0] as string
           const m = matches.find((x) => x.id === matchId)
@@ -361,7 +344,6 @@ function buildFakeDb(
             })) as unknown as T[]
           return { results }
         }
-        // Jogos de mata-mata usados para montar os confrontos (ties.ts).
         if (
           sql.includes('FROM matches') &&
           sql.includes('phase IN (SELECT value FROM json_each(?))')
@@ -484,7 +466,6 @@ function buildFakeDb(
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
         if (sql?.startsWith('UPDATE predictions SET points_awarded')) {
-          // Uma instrução leva os pontos de vários palpites num JSON: [id, pontos, pênaltis, classificado].
           const scored = JSON.parse(params[0] as string) as [string, number, number, number][]
           for (const [id, points, penaltyPoints, classifiedPoints] of scored) {
             updatedPredictions[id] = {
@@ -667,7 +648,7 @@ describe('scoreUnprocessedMatches', () => {
         predicted_home_score: 1,
         predicted_away_score: 1,
         points_awarded: 0,
-      }, // exact
+      },
       {
         id: 'p2',
         group_id: 'g1',
@@ -676,7 +657,7 @@ describe('scoreUnprocessedMatches', () => {
         predicted_home_score: 2,
         predicted_away_score: 2,
         points_awarded: 0,
-      }, // correct outcome
+      },
       {
         id: 'p3',
         group_id: 'g1',
@@ -685,7 +666,7 @@ describe('scoreUnprocessedMatches', () => {
         predicted_home_score: 2,
         predicted_away_score: 0,
         points_awarded: 0,
-      }, // wrong
+      },
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -716,7 +697,7 @@ describe('scoreUnprocessedMatches', () => {
         predicted_home_score: 2,
         predicted_away_score: 0,
         points_awarded: 0,
-      }, // exact → 3pts
+      },
       {
         id: 'p2',
         group_id: 'g1',
@@ -725,7 +706,7 @@ describe('scoreUnprocessedMatches', () => {
         predicted_home_score: 1,
         predicted_away_score: 0,
         points_awarded: 0,
-      }, // correct → 1pt
+      },
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -752,7 +733,6 @@ describe('scoreUnprocessedMatches', () => {
       },
     ]
     const predictions: FakePrediction[] = [
-      // exact hit in a custom-scored group (5/2) → 5 points
       {
         id: 'p1',
         group_id: 'gCustom',
@@ -762,7 +742,6 @@ describe('scoreUnprocessedMatches', () => {
         predicted_away_score: 0,
         points_awarded: 0,
       },
-      // correct outcome (wrong score) in the same group → 2 points
       {
         id: 'p2',
         group_id: 'gCustom',
@@ -772,7 +751,6 @@ describe('scoreUnprocessedMatches', () => {
         predicted_away_score: 0,
         points_awarded: 0,
       },
-      // exact hit in a default group (3/1) → 3 points
       {
         id: 'p3',
         group_id: 'gDefault',
@@ -795,7 +773,7 @@ describe('scoreUnprocessedMatches', () => {
 
     const u1 = db._leaderboardUpserts.find((r) => r.user_id === 'u1')
     expect(u1?.total_points).toBe(5)
-    expect(u1?.exact_hits).toBe(1) // 5 == points_exact and 5 > 2
+    expect(u1?.exact_hits).toBe(1)
   })
 
   it('scores a 1X2 group (points_exact = 0) by winner only, with 0 exact_hits', async () => {
@@ -810,7 +788,6 @@ describe('scoreUnprocessedMatches', () => {
       },
     ]
     const predictions: FakePrediction[] = [
-      // "Casa" pick (1,0) coincides exactly with the 1-0 result — must still score the winner value, not 0.
       {
         id: 'p1',
         group_id: 'g1X2',
@@ -820,7 +797,6 @@ describe('scoreUnprocessedMatches', () => {
         predicted_away_score: 0,
         points_awarded: 0,
       },
-      // "Fora" pick (0,1) — wrong outcome → 0.
       {
         id: 'p2',
         group_id: 'g1X2',
@@ -857,7 +833,6 @@ describe('scoreUnprocessedMatches', () => {
       },
     ]
     const predictions: FakePrediction[] = [
-      // exact hit in a "só vencedor" group (1/1) → 1 point, but not counted as exact
       {
         id: 'p1',
         group_id: 'gWinner',
@@ -960,7 +935,7 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
     await scoreUnprocessedMatches('c1', db as unknown as D1Database)
 
-    expect(db._updatedPredictions['p1']?.points_awarded).toBe(3) // exact draw
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(3)
     expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
     expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(4)
   })
@@ -1004,7 +979,7 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
     await scoreUnprocessedMatches('c1', db as unknown as D1Database)
 
-    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1) // correct draw, wrong score
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1)
     expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
   })
 
@@ -1021,7 +996,6 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
         predicted_penalty_winner: 'home',
       },
     ]
-    // Gate lists only QUARTER_FINALS; the match is a FINAL → not eligible.
     const db = buildFakeDb([shootout('home')], predictions, {}, { c1: ['QUARTER_FINALS'] })
 
     await scoreUnprocessedMatches('c1', db as unknown as D1Database)
@@ -1077,63 +1051,9 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
     await scoreUnprocessedMatches('c1', db as unknown as D1Database)
 
-    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1) // correct outcome (draw)
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1)
     expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
     expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(2)
-  })
-})
-
-describe('resolveSingleMatchClassified', () => {
-  it('devolve home quando o mandante vence no tempo normal', () => {
-    expect(resolveSingleMatchClassified(2, 1, null)).toBe('home')
-  })
-
-  it('devolve away quando o visitante vence no tempo normal', () => {
-    expect(resolveSingleMatchClassified(0, 1, null)).toBe('away')
-  })
-
-  it('usa o vencedor dos pênaltis quando há empate', () => {
-    expect(resolveSingleMatchClassified(1, 1, 'away')).toBe('away')
-    expect(resolveSingleMatchClassified(0, 0, 'home')).toBe('home')
-    expect(resolveSingleMatchClassified(1, 1, null)).toBeNull()
-  })
-})
-
-describe('resolveTwoLegClassified', () => {
-  it('calcula o agregado invertendo mandante e visitante entre ida e volta', () => {
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 2, awayScore: 0 },
-        { homeScore: 1, awayScore: 0, penaltyWinner: null },
-      ),
-    ).toBe('away')
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 0, awayScore: 2 },
-        { homeScore: 0, awayScore: 1, penaltyWinner: null },
-      ),
-    ).toBe('home')
-  })
-
-  it('desempata pelos pênaltis da volta quando o agregado empata', () => {
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 2, awayScore: 0 },
-        { homeScore: 2, awayScore: 0, penaltyWinner: 'home' },
-      ),
-    ).toBe('home')
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 1, awayScore: 1 },
-        { homeScore: 1, awayScore: 1, penaltyWinner: 'away' },
-      ),
-    ).toBe('away')
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 2, awayScore: 0 },
-        { homeScore: 2, awayScore: 0, penaltyWinner: null },
-      ),
-    ).toBeNull()
   })
 })
 
@@ -1188,18 +1108,16 @@ describe('classifiedRuleChangeStatements', () => {
 
     expect(statements).toHaveLength(3)
 
-    // Second statement is the update statement. Let's check its structure.
     const updateStmt = statements[1] as unknown as { _sql: string; _params: unknown[] }
     expect(updateStmt._sql).toContain('UPDATE predictions SET classified_points =')
 
-    // The first bind parameter is the updates JSON string.
     const updatesJson = updateStmt._params[0] as string
     const updates = JSON.parse(updatesJson)
 
     expect(updates).toHaveLength(1)
     expect(updates[0]).toEqual({
       id: 'p1',
-      points: 5, // home team wins exactly predicted
+      points: 5,
     })
   })
 

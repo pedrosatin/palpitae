@@ -32,10 +32,6 @@ function buildMockContext(cookieHeader: string | null, dbMock?: any): Context<Ap
 describe('requireAuth middleware', () => {
   it('returns 401 when session resolution fails with unknown error', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'a@b.com' }, JWT_SECRET, 3600)
-    // Simulate verifySession throwing something other than SessionStorageError.
-    // SessionStorageError is explicitly matched in requireAuth.
-    // The easiest way is to let verifySession throw a generic error, which it does if row?.revoked is true
-    // However, we just return a mocked DB that causes row?.revoked to be true.
     const mockDb = {
       prepare: () => ({
         bind: () => ({

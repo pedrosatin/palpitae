@@ -1,48 +1,52 @@
 import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
+import { getCookie } from 'hono/cookie'
 import type { AppContext } from '../types'
 import { HMAC_SHA256, importHmacKey } from '../auth/crypto'
+import { hexEncode } from '../auth/encoding'
 import { resolveSession } from '../auth/middleware'
+import { sessionHash } from '../auth/session'
 import { logError } from '../observability/events'
+import { meterD1Rows, type D1RowUsage } from './d1Usage'
 
 const WINDOW_SECONDS = 60
 
-type Category = 'read' | 'write' | 'oauth'
+type AnonymousCategory = 'read' | 'write' | 'oauth'
+type Category = AnonymousCategory | 'revocation'
 
-// Limites por minuto de cada identidade (um usuário logado ou um IP).
-export const LIMITS: Record<Category, number> = { read: 300, write: 60, oauth: 30 }
+export const LIMITS: Record<Category, number> = {
+  read: 300,
+  write: 60,
+  oauth: 30,
+  revocation: 10,
+}
 
-// Teto do balde anônimo compartilhado: tráfego que chega por um Worker sem o
-// segredo válido, quando não há como saber o IP do visitante. Há um balde para o
-// próprio front e outro para os demais Workers, para que um Worker de terceiros não
-// esgote a quota de quem usa o site. O front é o CF-Worker igual ao host do
-// FRONTEND_URL, a um domínio pai dele ou ao FRONTEND_WORKER_ZONE.
-export const SHARED_PROXY_LIMITS: Record<Category, number> = {
+export const SHARED_PROXY_LIMITS: Record<AnonymousCategory, number> = {
   read: 3000,
   write: 600,
   oauth: 300,
 }
 
-// Headers que o proxy do Pages (web/functions/api/[[path]].ts) envia.
 export const CLIENT_IP_HEADER = 'X-Palpitae-Client-IP'
 export const PROXY_SECRET_HEADER = 'X-Palpitae-Proxy-Secret'
 /** Só a Function de convite envia; o proxy público remove (web/functions/api/[[path]].ts). */
 export const INVITE_OPEN_HEADER = 'X-Palpitae-Invite-Open'
 
-// Em subrequests de Worker entre zonas diferentes, a Cloudflare troca o
-// CF-Connecting-IP por este endereço fixo e adiciona o header CF-Worker.
-// https://developers.cloudflare.com/fundamentals/reference/http-headers/
 const WORKER_EGRESS_IP = '2a06:98c0:3600::103'
 
 const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/
 
-// D1 serializes the upsert, including requests from different Worker instances.
-// `key` should already be an opaque hash (see bucketKey).
-//
-// O WHERE do DO UPDATE impede a escrita quando o balde da janela atual já está
-// cheio: a requisição recusada só lê a linha, não grava nada, e o RETURNING volta
-// vazio. Assim um cliente insistente recebendo 429 não vira uma escrita no D1 por
-// requisição.
+const DAY_SECONDS = 86_400
+
+export const DAILY_D1_ROWS = { read: 250_000, written: 5_000 }
+
+// Linhas que a gravação do balde diário escreve para cada linha do balde, com a linha
+// e a entrada dela no índice de expiração. A própria gravação não tem como se medir.
+// O valor só entra na linha de escrita, quando a requisição escreveu algo.
+export const DAILY_BUCKET_ROWS_WRITTEN_PER_ROW = 2
+
+const DAILY_BUDGET_EXEMPT = new Set(['/auth/logout', '/auth/logout-all'])
+
 export async function consumeLimit(
   db: D1Database,
   key: string,
@@ -66,6 +70,189 @@ export async function consumeLimit(
   return result !== null && result.hits <= limit
 }
 
+export type DailyKeys = { read: string; written: string }
+type DailyLimits = { read: number; written: number }
+
+export const DAILY_BUDGET_ERROR =
+  'Você atingiu o limite diário de uso. Tente de novo depois das 21h, horário de Brasília.'
+
+/**
+ * Limites diários a partir das variáveis de ambiente. Vazio ou ausente vale o
+ * padrão. Um valor que não seja inteiro positivo também volta ao padrão, com erro no
+ * log, para que um erro de digitação não tire o limite nem bloqueie todo mundo.
+ */
+export function dailyD1Limits(env: {
+  D1_DAILY_ROWS_READ_PER_USER?: string
+  D1_DAILY_ROWS_WRITTEN_PER_USER?: string
+}): DailyLimits {
+  return {
+    read: rowLimit(
+      'D1_DAILY_ROWS_READ_PER_USER',
+      env.D1_DAILY_ROWS_READ_PER_USER,
+      DAILY_D1_ROWS.read,
+    ),
+    written: rowLimit(
+      'D1_DAILY_ROWS_WRITTEN_PER_USER',
+      env.D1_DAILY_ROWS_WRITTEN_PER_USER,
+      DAILY_D1_ROWS.written,
+    ),
+  }
+}
+
+function rowLimit(name: string, raw: string | undefined, fallback: number): number {
+  const value = raw?.trim()
+  if (!value) return fallback
+  const limit = /^\d+$/.test(value) ? Number(value) : NaN
+  if (Number.isSafeInteger(limit) && limit > 0) return limit
+  console.error(`[limits] ${name} inválido (${JSON.stringify(raw)}): usando ${fallback}.`)
+  return fallback
+}
+
+function dayStart(now: number): number {
+  return Math.floor(now / DAY_SECONDS) * DAY_SECONDS
+}
+
+export function dailyBudgetRetryAfter(now = Math.floor(Date.now() / 1000)): number {
+  return dayStart(now) + DAY_SECONDS - now
+}
+
+// O lote recusado ainda pode ter saldo para um lote menor, então a mensagem não diz que
+// o limite acabou.
+export const DAILY_BATCH_BUDGET_ERROR =
+  'Este lote passa do seu limite diário de escrita. Envie menos palpites ou tente depois das 21h, horário de Brasília.'
+
+export function dailyBudgetExceededResponse(
+  c: Context<AppContext>,
+  now = Math.floor(Date.now() / 1000),
+  message = DAILY_BUDGET_ERROR,
+): Response {
+  c.header('Retry-After', String(dailyBudgetRetryAfter(now)))
+  return c.json({ error: message }, 429)
+}
+
+function dailyWriteKey(secret: string, userId: string): Promise<string> {
+  return bucketKey(secret, `d1_written:user:${userId}`)
+}
+
+export async function dailyBucketKeys(secret: string, userId: string): Promise<DailyKeys> {
+  const [read, written] = await Promise.all([
+    bucketKey(secret, `d1_read:user:${userId}`),
+    dailyWriteKey(secret, userId),
+  ])
+  return { read, written }
+}
+
+/** Se o usuário já gastou no dia de hoje as linhas lidas ou escritas do orçamento. */
+export async function dailyBudgetExhausted(
+  db: D1Database,
+  keys: DailyKeys,
+  limits: DailyLimits,
+  now = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  const { results } = await db
+    .prepare(
+      `SELECT bucket_key, hits FROM request_limits
+      WHERE bucket_key IN (?, ?) AND window_start >= ?`,
+    )
+    .bind(keys.read, keys.written, dayStart(now))
+    .all<{ bucket_key: string; hits: number }>()
+  return results.some((row) =>
+    row.bucket_key === keys.read ? row.hits >= limits.read : row.hits >= limits.written,
+  )
+}
+
+/**
+ * Saldo de escrita que ainda resta ao usuário no dia UTC atual.
+ */
+export async function remainingDailyWrites(
+  db: D1Database,
+  writtenKey: string,
+  writtenLimit: number,
+  now = Math.floor(Date.now() / 1000),
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT hits FROM request_limits
+      WHERE bucket_key = ? AND window_start >= ?`,
+    )
+    .bind(writtenKey, dayStart(now))
+    .first<{ hits: number }>()
+  return Math.max(0, writtenLimit - (row?.hits ?? 0))
+}
+
+/**
+ * Recusa o lote antes da gravação quando as instruções planejadas passam do saldo
+ * restante de escrita do usuário. Cada instrução planejada conta como 1 unidade
+ * antes da execução, e o desconto real segue vindo do rows_written medido no fim.
+ */
+export async function enforceDailyWriteBudget(
+  c: Context<AppContext>,
+  plannedStatements: number,
+): Promise<Response | null> {
+  if (plannedStatements <= 0) return null
+  const userId = c.get('userId')
+  if (!userId) return null
+  const db = c.get('limiterDb') ?? c.env.DB
+  const now = Math.floor(Date.now() / 1000)
+  try {
+    const writtenKey =
+      c.get('dailyKeys')?.written ?? (await dailyWriteKey(c.env.JWT_SECRET, userId))
+    const remaining = await remainingDailyWrites(db, writtenKey, dailyD1Limits(c.env).written, now)
+    if (plannedStatements > remaining) {
+      return dailyBudgetExceededResponse(c, now, DAILY_BATCH_BUDGET_ERROR)
+    }
+    return null
+  } catch (error) {
+    logError(
+      c.env.AE,
+      'security_storage_error',
+      '[limits] Orçamento diário do D1 indisponível:',
+      error,
+      { blobs: ['request_limits', 'daily_d1'] },
+    )
+    return c.json({ error: 'Controle de requisições indisponível' }, 503)
+  }
+}
+
+/**
+ * Soma ao balde do dia as linhas da requisição. Um balde de outro dia recomeça do
+ * valor desta requisição. Só grava a linha com uso positivo, numa só consulta, e
+ * nada quando a requisição não leu nem escreveu. A linha de escrita leva também o
+ * custo da própria gravação, de cada linha gravada nesta consulta.
+ *
+ * O `usage` só tem o que passou pelo `DB` medido até aqui. Uma consulta feita com ele
+ * depois da resposta, como dentro de `ctx.waitUntil`, e as feitas por
+ * `db.withSession()` ficam fora do balde. Hoje nenhuma rota faz isso.
+ */
+export async function chargeDailyBudget(
+  db: D1Database,
+  keys: DailyKeys,
+  usage: D1RowUsage,
+  now = Math.floor(Date.now() / 1000),
+): Promise<void> {
+  const charges: [key: string, hits: number][] = []
+  if (usage.rowsRead > 0) charges.push([keys.read, usage.rowsRead])
+  if (usage.rowsWritten > 0) {
+    const bucketRows = charges.length + 1
+    charges.push([keys.written, usage.rowsWritten + bucketRows * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW])
+  }
+  if (charges.length === 0) return
+  const start = dayStart(now)
+  const end = start + DAY_SECONDS
+  await db
+    .prepare(
+      `INSERT INTO request_limits (bucket_key, window_start, hits, expires_at)
+      VALUES ${charges.map(() => '(?, ?, ?, ?)').join(', ')}
+      ON CONFLICT (bucket_key) DO UPDATE SET
+        hits = CASE WHEN request_limits.window_start >= excluded.window_start
+          THEN request_limits.hits + excluded.hits ELSE excluded.hits END,
+        window_start = MAX(request_limits.window_start, excluded.window_start),
+        expires_at = MAX(request_limits.expires_at, excluded.expires_at)`,
+    )
+    .bind(...charges.flatMap(([key, hits]) => [key, start, hits, end]))
+    .run()
+}
+
 /**
  * Normaliza o IP usado como identidade anônima. IPv4 fica como está. IPv6 é
  * agrupado pelo prefixo /64, que é o que um único cliente costuma receber: contar
@@ -85,30 +272,30 @@ export function ipBucketIdentity(ip: string): string {
     .join(':')}::/64`
 }
 
+function toHextets(part: string): string[] | null {
+  if (!part) return []
+  const out: string[] = []
+  for (const piece of part.split(':')) {
+    if (piece.includes('.')) {
+      const octets = piece.split('.').map(Number)
+      if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
+        return null
+      out.push(
+        ((octets[0] << 8) | octets[1]).toString(16),
+        ((octets[2] << 8) | octets[3]).toString(16),
+      )
+    } else if (/^[0-9a-f]{1,4}$/.test(piece)) {
+      out.push(piece)
+    } else {
+      return null
+    }
+  }
+  return out
+}
+
 function expandIpv6(value: string): string[] | null {
   const halves = value.split('::')
   if (halves.length > 2) return null
-  const toHextets = (part: string): string[] | null => {
-    if (!part) return []
-    const out: string[] = []
-    for (const piece of part.split(':')) {
-      if (piece.includes('.')) {
-        // IPv4 embutido no fim: vira dois hextets.
-        const octets = piece.split('.').map(Number)
-        if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
-          return null
-        out.push(
-          ((octets[0] << 8) | octets[1]).toString(16),
-          ((octets[2] << 8) | octets[3]).toString(16),
-        )
-      } else if (/^[0-9a-f]{1,4}$/.test(piece)) {
-        out.push(piece)
-      } else {
-        return null
-      }
-    }
-    return out
-  }
   const head = toHextets(halves[0])
   const tail = halves.length === 2 ? toHextets(halves[1]) : []
   if (!head || !tail) return null
@@ -121,12 +308,9 @@ function expandIpv6(value: string): string[] | null {
 async function hmacHex(secret: string, value: string): Promise<string> {
   const key = await importHmacKey(secret)
   const signature = await crypto.subtle.sign(HMAC_SHA256, key, new TextEncoder().encode(value))
-  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join(
-    '',
-  )
+  return hexEncode(signature)
 }
 
-// HMAC com segredo: um SHA-256 puro de um IPv4 sai por força bruta.
 export function bucketKey(secret: string, identity: string): Promise<string> {
   return hmacHex(secret, identity)
 }
@@ -174,7 +358,6 @@ export async function anonymousIdentity(
       : 'worker'
     return { identity: `proxy:anonymous:${source}`, shared: true }
   }
-  // Local requests share a dev bucket.
   return {
     identity: `ip:${connectingIp ? ipBucketIdentity(connectingIp) : 'local'}`,
     shared: false,
@@ -205,6 +388,11 @@ function isFrontendZone(
   return value === host || host.endsWith(`.${value}`)
 }
 
+function requestCategory(path: string, isRead: boolean): AnonymousCategory {
+  if (path.startsWith('/auth/google') || path.startsWith('/auth/callback')) return 'oauth'
+  return isRead ? 'read' : 'write'
+}
+
 export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   if (c.req.path === '/health' || c.req.method === 'OPTIONS') return next()
   const isRead = c.req.method === 'GET' || c.req.method === 'HEAD'
@@ -212,33 +400,55 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   if (!isRead && origin && origin !== c.env.FRONTEND_URL && origin !== safeOrigin(c.env.BASE_URL)) {
     return c.json({ error: 'Origem não autorizada' }, 403)
   }
-  const category: Category =
-    c.req.path.startsWith('/auth/google') || c.req.path.startsWith('/auth/callback')
-      ? 'oauth'
-      : isRead
-        ? 'read'
-        : 'write'
+  let category: Category = requestCategory(c.req.path, isRead)
 
-  // Sessão válida: só o balde do usuário. O IP não entra, porque pelo proxy do
-  // Pages ele não identifica o visitante.
+  // Daqui em diante as consultas da sessão e do handler passam pelo medidor. As do
+  // próprio limitador usam `db`, sem medidor, e ficam fora do orçamento. O env é
+  // copiado, porque o objeto original serve a outras requisições.
+  const db = c.env.DB
+  const usage: D1RowUsage = { rowsRead: 0, rowsWritten: 0 }
+  c.env = { ...c.env, DB: meterD1Rows(db, usage) }
+  c.set('limiterDb', db)
+
+  // Sessão válida usa o usuário, exceto na revogação, que usa o hash do token.
+  // O IP do proxy do Pages não identifica o visitante.
   const session = await resolveSession(c)
+  const userId = session && 'payload' in session ? session.payload.sub : null
   let identity: string
   let limit = LIMITS[category]
-  if (session && 'payload' in session) {
-    identity = `user:${session.payload.sub}`
+  let daily: DailyKeys | null = null
+  if (userId) {
+    if (c.req.method === 'POST' && DAILY_BUDGET_EXEMPT.has(c.req.path)) {
+      category = 'revocation'
+      identity = `session:${await sessionHash(getCookie(c, 'session')!)}`
+      limit = LIMITS[category]
+    } else {
+      identity = `user:${userId}`
+    }
   } else {
     const anonymous = await anonymousIdentity(c)
     identity = anonymous.identity
     if (anonymous.shared) limit = SHARED_PROXY_LIMITS[category]
   }
 
+  // Um só instante para a checagem e o Retry-After, que não podem cair em dias diferentes.
+  const now = Math.floor(Date.now() / 1000)
   try {
+    if (userId) {
+      daily = await dailyBucketKeys(c.env.JWT_SECRET, userId)
+      c.set('dailyKeys', daily)
+      // Vem antes do balde por minuto, que gravaria uma linha. A recusa por orçamento
+      // só lê.
+      if (
+        !DAILY_BUDGET_EXEMPT.has(c.req.path) &&
+        (await dailyBudgetExhausted(db, daily, dailyD1Limits(c.env), now))
+      ) {
+        return dailyBudgetExceededResponse(c, now)
+      }
+    }
     const key = await bucketKey(c.env.JWT_SECRET, `${category}:${identity}`)
-    if (!(await consumeLimit(c.env.DB, key, limit))) {
-      c.header(
-        'Retry-After',
-        String(WINDOW_SECONDS - (Math.floor(Date.now() / 1000) % WINDOW_SECONDS)),
-      )
+    if (!(await consumeLimit(db, key, limit, now))) {
+      c.header('Retry-After', String(WINDOW_SECONDS - (now % WINDOW_SECONDS)))
       return c.json({ error: 'Muitas requisições. Tente novamente em instantes.' }, 429)
     }
   } catch (error) {
@@ -249,10 +459,23 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
       error,
       { blobs: ['request_limits', category] },
     )
-    // Leitura passa sem contador; escrita e OAuth ficam bloqueadas.
     if (category !== 'read') return c.json({ error: 'Controle de requisições indisponível' }, 503)
   }
-  return next()
+
+  await next()
+
+  if (!daily) return
+  try {
+    await chargeDailyBudget(db, daily, usage)
+  } catch (error) {
+    logError(
+      c.env.AE,
+      'security_storage_error',
+      '[limits] Orçamento diário do D1 indisponível:',
+      error,
+      { blobs: ['request_limits', 'daily_d1'] },
+    )
+  }
 })
 
 function safeOrigin(url: string | undefined): string | null {

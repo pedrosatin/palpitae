@@ -6,8 +6,6 @@ export function makeMatch(overrides: Partial<Match> = {}): Match {
     status === 'finished'
       ? new Date(Date.now() - 3_600_000).toISOString()
       : new Date(Date.now() + 3_600_000).toISOString()
-  // Espelha o back: round_label deriva do round (numérico → "Rodada N"), salvo
-  // override explícito. Mantém os options do select coerentes nos testes.
   const round = overrides.round ?? '1'
   return {
     id: 'm1',

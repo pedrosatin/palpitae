@@ -5,6 +5,7 @@ import {
   isLeftoverRound,
   leftoverMatchesMarker,
   leftoverMatchesText,
+  previousLeftoverRound,
   rescheduledOpenByRound,
 } from './rounds'
 
@@ -118,8 +119,6 @@ describe('rounds', () => {
     })
 
     it('exclui a rodada padrão da API em vez de recalcular, mesmo no empate', () => {
-      // Fim de temporada: 9 e 21 com um remarcado no mesmo horário e a 38 encerrada.
-      // As duas empatam na regra. A dica tem de apontar a que a API não escolheu.
       const round9 = [...Array.from({ length: 9 }, () => at('2026-05-24T22:00:00Z')), at('2026-11-14T23:30:00Z')]
       const round38 = Array.from({ length: 10 }, () => at('2026-11-01T22:00:00Z'))
       const season = byRound({ '9': round9, '21': round21, '38': round38 })
@@ -147,6 +146,27 @@ describe('rounds', () => {
       expect(leftoverMatchesMarker(0, 1)).toBe('1 remarcado')
       expect(leftoverMatchesMarker(2, 1)).toBe('2 adiados, 1 remarcado')
       expect(leftoverMatchesMarker(0, 0)).toBe('')
+    })
+
+    it('escolhe a rodada com adiado ou remarcado mais próxima antes da exibida', () => {
+      const rounds = ['4', '21', '22', '23']
+      const postponed = new Map([
+        ['4', 1],
+        ['21', 2],
+      ])
+      const rescheduled = new Map([['23', 1]])
+
+      expect(previousLeftoverRound(rounds, 2, postponed, rescheduled)).toBe('21')
+      expect(previousLeftoverRound(rounds, 1, postponed, rescheduled)).toBeUndefined()
+      expect(previousLeftoverRound(rounds, 0, postponed, rescheduled)).toBeUndefined()
+      expect(previousLeftoverRound(rounds, 3, new Map(), rescheduled)).toBeUndefined()
+      expect(previousLeftoverRound([], -1, postponed, rescheduled)).toBeUndefined()
+    })
+
+    it('considera a rodada anterior que só tem jogo remarcado', () => {
+      expect(previousLeftoverRound(['9', '21', '35'], 2, new Map(), new Map([['21', 1]]))).toBe(
+        '21',
+      )
     })
   })
 })

@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 
-// Opt-in: carrega o script público; toda requisição de coleta é abortada.
 test.skip(!process.env.REAL_GTAG_ID, 'Defina REAL_GTAG_ID para verificar o cliente público do GA4')
 
 for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
@@ -23,7 +22,6 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
         true,
       )
     })
-    // Bloqueia outros endpoints de dados; só o script público pode sair.
     await page.route(
       /https:\/\/(?!www\.googletagmanager\.com)[^/]*(?:google|doubleclick)[^/]*\//,
       (route) => route.abort(),
@@ -31,7 +29,6 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
     await page.route('https://www.googletagmanager.com/**', (route) =>
       route.request().resourceType() === 'script' ? route.continue() : route.abort(),
     )
-    // A rota de coleta precisa ter precedência sobre o bloqueio geral.
     await page.route('**/g/collect*', async (route) => {
       requests.push(revoked)
       await route.abort()
@@ -69,7 +66,6 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
     )
     expect(cookiesBefore.length).toBeGreaterThan(0)
     expect(cookiesBefore.some((cookie) => cookie.domain === '.palpitae.test')).toBe(true)
-    // Também cobre cópias antigas restritas ao host.
     await context.addCookies(
       cookiesBefore.map((cookie) => ({ ...cookie, domain: 'app.palpitae.test' })),
     )

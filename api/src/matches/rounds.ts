@@ -55,7 +55,6 @@ const KNOCKOUT_LABELS: Record<string, { label: string; agreement: RoundAgreement
   FARROUPILHA_FINAL: { label: 'Final do Farroupilha', agreement: 'fs' },
 }
 
-/** Fases de pontos/grupos no mapa de rótulos que não são mata-mata. */
 const NON_KNOCKOUT_PHASES = new Set([
   'GROUP_STAGE',
   'REGULAR_SEASON',

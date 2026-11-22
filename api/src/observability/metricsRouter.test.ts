@@ -17,11 +17,16 @@ function makeApp() {
   return app
 }
 
-// Nas contas deste arquivo, o id é o próprio e-mail (ver authHeaders).
 function makeEnv(overrides: Partial<Env> = {}): Env {
+  const stubStmt = {
+    bind: () => stubStmt,
+    first: async () => null,
+    all: async () => ({ results: [] }),
+    run: async () => ({ success: true, meta: { changes: 0 } }),
+  }
   const env = {
     JWT_SECRET,
-    DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } as unknown as D1Database,
+    DB: { prepare: () => stubStmt } as unknown as D1Database,
     ADMIN_EMAIL: ADMIN,
     CF_ACCOUNT_ID: 'acct',
     AE_SQL_TOKEN: 'tok',
@@ -335,7 +340,6 @@ describe('GET /metrics/ops', () => {
   const COMP_A = '11111111-2222-4333-8444-555555555555'
   const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
 
-  /** Responde cada query da SQL API pela forma do SQL, com linhas fixas. */
   function fetchBySql(rows: {
     httpByProvider?: unknown[]
     httpByCompetition?: unknown[]
@@ -390,6 +394,14 @@ describe('GET /metrics/ops', () => {
     discards: Record<string, unknown>[]
     missingMatches: Record<string, unknown>[]
     unscoredMatches: Record<string, unknown>[]
+    pendingWork?: {
+      provider: string
+      status: string
+      items: number
+      oldest_age_minutes: number
+      max_attempts: number
+    }[]
+    pendingWorkError?: boolean
   }
 
   it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
@@ -770,6 +782,45 @@ describe('GET /metrics/ops', () => {
     )
     expect(ae.writeDataPoint).not.toHaveBeenCalled()
   })
+
+  it('pendingWork vazio quando a fila não tem item aberto', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    vi.stubGlobal('fetch', fetchBySql({}))
+    const res = await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: db }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as OpsBody
+    expect(body.pendingWorkError).toBe(false)
+    expect(body.pendingWork).toEqual([])
+  })
+
+  it('pendingWorkError quando a consulta de provider_work falha', async () => {
+    const stubStmt = {
+      bind: () => stubStmt,
+      first: async () => null,
+      all: async () => {
+        throw new Error('D1 provider_work down')
+      },
+      run: async () => ({ success: true, meta: { changes: 0 } }),
+    }
+    const brokenDb = { prepare: () => stubStmt } as unknown as D1Database
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchBySql({}))
+    const res = await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: brokenDb }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as OpsBody
+    expect(body.pendingWorkError).toBe(true)
+    expect(body.pendingWork).toBeUndefined()
+    expect(body.httpByProvider).toEqual([])
+  })
 })
 
 describe('GET /metrics/competition-activity', () => {
@@ -897,7 +948,6 @@ describe('GET /metrics/competition-activity', () => {
     expect(predictions).toContain('SUM(double1 * _sample_interval) AS predictions')
     expect(predictions).toContain("INTERVAL '7' DAY")
 
-    // Série diária: dia UTC × competition_id, ponderada, na mesma janela, com teto.
     const daily = bodies.find((sql) => sql.includes('toStartOfInterval'))
     expect(daily).toContain("toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day")
     expect(daily).toContain("blob1 = 'group_created'")
@@ -907,12 +957,9 @@ describe('GET /metrics/competition-activity', () => {
     expect(daily).toContain("INTERVAL '7' DAY")
     expect(daily).toMatch(/LIMIT \d+$/)
 
-    // Cobertura da dimensão não herda a janela: senão um período curto sem
-    // eventos pareceria coleta ausente.
     const since = bodies.find((sql) => sql.includes('MIN(timestamp)'))
     expect(since).not.toContain('INTERVAL')
     expect(since).toContain("blob6 != ''")
-    // Sem join na SQL API: nome e temporada vêm do D1.
     for (const sql of bodies) expect(sql).not.toMatch(/\bJOIN\b/i)
   })
 
@@ -1026,7 +1073,6 @@ describe('GET /metrics/competition-activity', () => {
           { competition_id: COMP_A, groups: '5' },
           { competition_id: COMP_B, groups: '2' },
         ],
-        // A SQL API entrega do dia mais recente para o mais antigo (ORDER BY day DESC).
         daily: [
           { day: '2026-10-28 00:00:00', competition_id: COMP_B, groups: '2' },
           { day: '2026-10-28 00:00:00', competition_id: COMP_A, groups: '1' },
@@ -1042,7 +1088,6 @@ describe('GET /metrics/competition-activity', () => {
       { day: '2026-10-28', competition_id: COMP_B, groups_created: 2 },
     ])
     expect(body.groupsDailyTruncated).toBe(false)
-    // O total por campeonato continua vindo da consulta própria (compatibilidade).
     expect(body.competitions.map((c) => [c.competition_id, c.groups_created])).toEqual([
       [COMP_A, 5],
       [COMP_B, 2],
@@ -1228,13 +1273,10 @@ describe('GET /metrics/business', () => {
     expect(body).toMatchObject({
       days: 7,
       usersTotal: 5,
-      // dave e erin só estão (e só palpitaram) em grupos excluídos.
       usersInGroup: 3,
       usersWhoPredicted: 3,
       usersCreatedInPeriod: 1,
-      // g-br26-b; g-br26-del também é recente, mas está excluído.
       groupsCreatedInPeriod: 1,
-      // alice 2, bob 2, carol 2 grupos não excluídos.
       avgGroupsPerUser: 2,
       medianGroupsPerUser: 2,
       activeGroupDays: 14,
@@ -1331,7 +1373,6 @@ describe('GET /metrics/business', () => {
         finished_unscored: 0,
       },
     ])
-    // Formato legado para o front ainda não atualizado: só quem tem grupo.
     expect(body.topCompetitions).toEqual([
       { competition: 'Brasileirão Série A', groups: 2 },
       { competition: 'Brasileirão Série A', groups: 1 },
@@ -1346,24 +1387,45 @@ describe('GET /metrics/business', () => {
       makeEnv({ DB: createBusinessFixture(healthMatchesSql()) }),
     )
 
-    const { competitions } = (await res.json()) as { competitions: CompetitionRow[] }
+    const body = (await res.json()) as {
+      competitions: CompetitionRow[]
+      overdueResultHours: number
+      overdueTotal: number
+      finishedUnscoredTotal: number
+    }
     const health = Object.fromEntries(
-      competitions.map((c) => [
+      body.competitions.map((c) => [
         c.id,
         { overdue: c.overdue_no_score, unscored: c.finished_unscored },
       ]),
     )
     expect(health).toEqual({
-      // 5 atrasados: scheduled 3h01, live, parcial, offset -03:00 e milissegundos.
-      // Ficam de fora: janela de 3h, futuro, adiado, 0x0 e offset na janela.
-      // 2 finished sem scored_at; o pontuado e os do fixture-base não contam.
       'comp-br26': { overdue: 5, unscored: 2 },
       'comp-br25': { overdue: 1, unscored: 1 },
-      // Só tem um jogo adiado e um finished já pontuado: zeros explícitos.
       'comp-pilot': { overdue: 0, unscored: 0 },
-      // Sem nenhum jogo: continua na lista, zerada.
       'comp-empty': { overdue: 0, unscored: 0 },
     })
+    expect(body.overdueResultHours).toBe(3)
+    expect(body.overdueTotal).toBe(6)
+    expect(body.finishedUnscoredTotal).toBe(3)
+  })
+
+  it('respeita RESULT_OVERDUE_HOURS no snapshot de saúde', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({
+        DB: createBusinessFixture(healthMatchesSql()),
+        RESULT_OVERDUE_HOURS: '6',
+      }),
+    )
+    const body = (await res.json()) as {
+      overdueResultHours: number
+      competitions: CompetitionRow[]
+    }
+    expect(body.overdueResultHours).toBe(6)
+    const br26 = body.competitions.find((c) => c.id === 'comp-br26')
+    expect(br26?.overdue_no_score).toBeLessThan(5)
   })
 
   it('a saúde de resultados não altera grupos, membros nem ativos da temporada', async () => {
@@ -1407,7 +1469,6 @@ describe('GET /metrics/business', () => {
 
 describe('GET /metrics/archive', () => {
   it('lista events/ inteiro paginando por cursor, com a contagem do customMetadata', async () => {
-    // 1ª página truncada + 2ª final — o handler precisa seguir o cursor.
     const pages = [
       {
         objects: [
@@ -1424,7 +1485,6 @@ describe('GET /metrics/archive', () => {
       {
         objects: [
           {
-            // Export antigo, sem metadata — events deve virar null.
             key: 'events/2026/05/02.ndjson',
             size: 456,
             uploaded: new Date('2026-05-03T00:05:00Z'),
@@ -1484,31 +1544,100 @@ describe('GET /metrics/archive/query', () => {
     return `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`
   }
 
+  const MiB = 1024 * 1024
+
+  /**
+   * R2 falso que entrega cada corpo em pedaços de `chunkSize` bytes (uma linha
+   * pode ficar partida entre dois pedaços) e conta os corpos abertos: um corpo
+   * conta de `get()` até ser lido inteiro, cancelado ou falhar. `failAfter`
+   * faz o stream do arquivo falhar depois de N pedaços, como uma queda do R2
+   * no meio da leitura. `text()` existe para a implementação antiga, que lia o
+   * corpo inteiro de uma vez.
+   */
+  function fakeBucket(
+    files: Record<string, string>,
+    opts: {
+      chunkSize?: number
+      size?: Record<string, number>
+      failAfter?: Record<string, number>
+    } = {},
+  ) {
+    const stats = { open: 0, maxOpen: 0, cancelled: [] as string[], errored: [] as string[] }
+    const get = vi.fn(async (key: string) => {
+      const text = files[key]
+      if (text === undefined) return null
+      const bytes = new TextEncoder().encode(text)
+      const chunkSize = opts.chunkSize ?? 97
+      let offset = 0
+      let pulls = 0
+      let open = true
+      const release = () => {
+        if (!open) return
+        open = false
+        stats.open--
+      }
+      stats.open++
+      stats.maxOpen = Math.max(stats.maxOpen, stats.open)
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pulls++ === opts.failAfter?.[key]) {
+            controller.error(new Error('falha do R2 no meio do stream'))
+            stats.errored.push(key)
+            release()
+            return
+          }
+          if (offset >= bytes.byteLength) {
+            controller.close()
+            release()
+            return
+          }
+          controller.enqueue(bytes.slice(offset, offset + chunkSize))
+          offset += chunkSize
+        },
+        cancel() {
+          stats.cancelled.push(key)
+          release()
+        },
+      })
+      return {
+        size: opts.size?.[key] ?? bytes.byteLength,
+        body,
+        text: () => new Response(body).text(),
+      }
+    })
+    return { bucket: { get } as unknown as R2Bucket, get, stats }
+  }
+
+  interface QueryBody {
+    filesRead: number
+    totalEvents: number
+    byType: { event_type: string; count: number }[]
+    byDay: { day: string; count: number }[]
+    daysRead?: string[]
+    truncated?: boolean
+    malformedLines?: number
+    bytesRead?: number
+  }
+
   it('agrega o corpo dos NDJSON por tipo e por dia, ponderando pelo sampling', async () => {
     const files: Record<string, string> = {
       'events/2026/05/01.ndjson': ndjson(
         { blob1: 'login_success', _sample_interval: 1 },
-        { blob1: 'prediction_saved', _sample_interval: 3 }, // vale 3 eventos
+        { blob1: 'prediction_saved', _sample_interval: 3 },
       ),
       'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
     }
-    const get = vi.fn(async (key: string) => (files[key] ? { text: async () => files[key] } : null))
+    const { bucket } = fakeBucket(files)
     const res = await makeApp().request(
       '/metrics/archive/query?from=2026-05-01&to=2026-05-02',
       { headers: await authHeaders(ADMIN) },
-      makeEnv({ EVENTS: { get } as unknown as R2Bucket }),
+      makeEnv({ EVENTS: bucket }),
     )
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      filesRead: number
-      totalEvents: number
-      byType: { event_type: string; count: number }[]
-      byDay: { day: string; count: number }[]
-    }
+    const body = (await res.json()) as QueryBody
     expect(body.filesRead).toBe(2)
-    expect(body.totalEvents).toBe(5) // 1 + 3 + 1
-    // Ordenado por contagem desc: prediction_saved (3) antes de login_success (2).
+    expect(body.totalEvents).toBe(5)
     expect(body.byType).toEqual([
       { event_type: 'prediction_saved', count: 3 },
       { event_type: 'login_success', count: 2 },
@@ -1517,6 +1646,285 @@ describe('GET /metrics/archive/query', () => {
       { day: '2026-05-01', count: 4 },
       { day: '2026-05-02', count: 1 },
     ])
+  })
+
+  it('num mês de 31 dias lê um arquivo por vez e solta cada corpo antes do próximo', async () => {
+    // Acento no meio da linha: com pedaços de 97 bytes, linhas e caracteres de
+    // dois bytes ficam partidos entre pedaços do stream.
+    const day = ndjson(
+      ...Array.from({ length: 200 }, (_, i) => ({
+        blob1: i % 2 ? 'login_success' : 'prediction_saved',
+        blob2: 'competição',
+        _sample_interval: 1,
+      })),
+    )
+    const files = Object.fromEntries(
+      Array.from({ length: 31 }, (_, i) => [
+        `events/2026/05/${String(i + 1).padStart(2, '0')}.ndjson`,
+        day,
+      ]),
+    )
+    const { bucket, get, stats } = fakeBucket(files)
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-31',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(get).toHaveBeenCalledTimes(31)
+    expect(stats.maxOpen).toBe(1)
+    expect(stats.open).toBe(0)
+    expect(body.filesRead).toBe(31)
+    expect(body.totalEvents).toBe(31 * 200)
+    expect(body.byType).toEqual([
+      { event_type: 'prediction_saved', count: 31 * 100 },
+      { event_type: 'login_success', count: 31 * 100 },
+    ])
+    expect(body.daysRead).toHaveLength(31)
+    expect(body.truncated).toBe(false)
+    expect(body.malformedLines).toBe(0)
+    expect(body.bytesRead).toBe(31 * new TextEncoder().encode(day).byteLength)
+  })
+
+  it('linha malformada é contada e pulada sem derrubar a consulta', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': [
+        JSON.stringify({ blob1: 'login_success', _sample_interval: 1 }),
+        '{quebrado',
+        '42',
+        'null',
+        JSON.stringify({ blob1: 'login_success', _sample_interval: 'abc' }),
+        '',
+        'x'.repeat(70 * 1024),
+        JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 2 }),
+      ].join('\n'),
+      'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const { bucket } = fakeBucket(files)
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-02',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.malformedLines).toBe(5)
+    expect(body.filesRead).toBe(2)
+    expect(body.byDay).toEqual([
+      { day: '2026-05-01', count: 3 },
+      { day: '2026-05-02', count: 1 },
+    ])
+    expect(body.byType).toEqual([
+      { event_type: 'login_success', count: 2 },
+      { event_type: 'prediction_saved', count: 2 },
+    ])
+  })
+
+  it('arquivo que não cabe no teto de 64 MiB encerra a leitura com resultado parcial', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/03.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const { bucket, get, stats } = fakeBucket(files, {
+      size: { 'events/2026/05/02.ndjson': 65 * MiB },
+    })
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-03',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.truncated).toBe(true)
+    expect(body.daysRead).toEqual(['2026-05-01'])
+    expect(body.filesRead).toBe(1)
+    expect(body.totalEvents).toBe(1)
+    expect(stats.cancelled).toEqual(['events/2026/05/02.ndjson'])
+    expect(stats.open).toBe(0)
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('corpo que passa do teto durante a leitura é cancelado e fica de fora', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/03.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const { bucket, get } = fakeBucket(files)
+    const fromFiles = get.getMockImplementation()!
+    const chunk = new Uint8Array(MiB).fill(0x20)
+    let sent = 0
+    let cancelled = false
+    get.mockImplementation(async (key: string) => {
+      if (key !== 'events/2026/05/02.ndjson') return fromFiles(key)
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent++ < 65) controller.enqueue(chunk)
+          else controller.close()
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+      return { size: 100, body, text: () => new Response(body).text() }
+    })
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-03',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.truncated).toBe(true)
+    expect(body.daysRead).toEqual(['2026-05-01'])
+    expect(cancelled).toBe(true)
+    expect(get).toHaveBeenCalledTimes(2)
+    const day1 = new TextEncoder().encode(files['events/2026/05/01.ndjson']).byteLength
+    expect(body.bytesRead).toBe(day1 + 64 * MiB)
+    expect(body.totalEvents).toBe(1)
+  })
+
+  it('campo com objeto conta como linha malformada e não derruba a consulta', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': [
+        '{"blob1":"login_success","_sample_interval":{"toString":1}}',
+        '{"blob1":{"toString":1}}',
+        JSON.stringify({ blob1: 42 }),
+        JSON.stringify({ blob1: 'login_success', _sample_interval: [] }),
+        JSON.stringify({ blob1: 'login_success', _sample_interval: '' }),
+        // Texto numérico e campos ausentes seguem valendo, como antes.
+        JSON.stringify({ blob1: 'prediction_saved', _sample_interval: '2' }),
+        JSON.stringify({ _sample_interval: null }),
+      ].join('\n'),
+    }
+    const { bucket, stats } = fakeBucket(files)
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-01',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.malformedLines).toBe(5)
+    expect(body.byType).toEqual([
+      { event_type: 'prediction_saved', count: 2 },
+      { event_type: 'unknown', count: 1 },
+    ])
+    expect(stats.open).toBe(0)
+  })
+
+  it('limite de linha conta bytes UTF-8 e não depende do fatiamento do stream', async () => {
+    const LIMIT = 64 * 1024
+    const enc = new TextEncoder()
+    const lineOf = (bytes: number, fill: string) => {
+      const base = JSON.stringify({ blob1: 'login_success', blob2: '' })
+      const pad = (bytes - enc.encode(base).byteLength) / enc.encode(fill).byteLength
+      const line = JSON.stringify({ blob1: 'login_success', blob2: fill.repeat(pad) })
+      expect(enc.encode(line).byteLength).toBe(bytes)
+      return line
+    }
+    const text = [
+      JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 1 }),
+      lineOf(70_037, 'x'),
+      lineOf(80_026, 'é'),
+      lineOf(LIMIT, 'x'),
+      lineOf(LIMIT - 2, 'é'),
+      lineOf(LIMIT + 1, 'x'),
+      JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 1 }),
+    ].join('\n')
+    const files = { 'events/2026/05/01.ndjson': text }
+
+    const results: QueryBody[] = []
+    for (const chunkSize of [97, LIMIT, enc.encode(text).byteLength]) {
+      const { bucket } = fakeBucket(files, { chunkSize })
+      const res = await makeApp().request(
+        '/metrics/archive/query?from=2026-05-01&to=2026-05-01',
+        { headers: await authHeaders(ADMIN) },
+        makeEnv({ EVENTS: bucket }),
+      )
+      expect(res.status).toBe(200)
+      results.push((await res.json()) as QueryBody)
+    }
+
+    expect(results[0].malformedLines).toBe(3)
+    expect(results[0].byType).toEqual([
+      { event_type: 'prediction_saved', count: 2 },
+      { event_type: 'login_success', count: 2 },
+    ])
+    expect(results[1]).toEqual(results[0])
+    expect(results[2]).toEqual(results[0])
+  })
+
+  it('falha do R2 no meio do stream responde 500 sem pedir os dias seguintes', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/02.ndjson': ndjson(
+        ...Array.from({ length: 20 }, () => ({ blob1: 'login_success', _sample_interval: 1 })),
+      ),
+      'events/2026/05/03.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const { bucket, get, stats } = fakeBucket(files, {
+      failAfter: { 'events/2026/05/02.ndjson': 3 },
+    })
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-03',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(500)
+    expect(stats.errored).toEqual(['events/2026/05/02.ndjson'])
+    expect(stats.open).toBe(0)
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('exceção no processamento cancela o corpo em leitura antes de responder 500', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const decode = TextDecoder.prototype.decode
+    vi.spyOn(TextDecoder.prototype, 'decode').mockImplementation(function (
+      this: TextDecoder,
+      ...args: Parameters<TextDecoder['decode']>
+    ) {
+      const text = decode.apply(this, args)
+      if (text.includes('"explode"')) throw new Error('falha inesperada')
+      return text
+    })
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson(
+        { blob1: 'explode', _sample_interval: 1 },
+        ...Array.from({ length: 20 }, () => ({ blob1: 'login_success', _sample_interval: 1 })),
+      ),
+    }
+    const { bucket, stats } = fakeBucket(files)
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-01',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(500)
+    expect(stats.cancelled).toEqual(['events/2026/05/01.ndjson'])
+    expect(stats.open).toBe(0)
+  })
+
+  it('intervalo absurdo recebe 400 sem montar a lista de dias', async () => {
+    const headers = await authHeaders(ADMIN)
+    const toISOString = vi.spyOn(Date.prototype, 'toISOString')
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2000-01-01&to=2026-12-31',
+      { headers },
+      makeEnv({ EVENTS: {} as unknown as R2Bucket }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(toISOString.mock.calls.length).toBeLessThan(92)
   })
 
   it('400 para from/to inválidos ou invertidos', async () => {
@@ -1532,6 +1940,13 @@ describe('GET /metrics/archive/query', () => {
 
     res = await makeApp().request(
       '/metrics/archive/query?from=2026-05-05&to=2026-05-01',
+      { headers },
+      env,
+    )
+    expect(res.status).toBe(400)
+
+    res = await makeApp().request(
+      '/metrics/archive/query?from=2026-02-01&to=2026-02-31',
       { headers },
       env,
     )
@@ -1645,7 +2060,6 @@ describe('GET /metrics/heatmap', () => {
     expect(hourly).toContain("INTERVAL '7' DAY")
     expect(hourly).toMatch(/LIMIT \d+$/)
 
-    // Cobertura não herda a janela: senão um período curto sem eventos pareceria coleta ausente.
     const first = bodies.find((sql) => sql.includes('MIN(timestamp)'))
     expect(first).not.toContain("INTERVAL '7' DAY")
     expect(first).toContain('GROUP BY event_type')
@@ -1657,7 +2071,6 @@ describe('GET /metrics/heatmap', () => {
   it('junta palpites e logins da mesma hora numa linha, em ordem cronológica, sem converter fuso', async () => {
     const res = await getHeatmap(
       fetchBySql({
-        // A SQL API devolve em ordem decrescente (LIMIT pega as horas mais recentes).
         hourly: [
           {
             hour: '2026-10-29 14:00:00',
@@ -1704,7 +2117,6 @@ describe('GET /metrics/heatmap', () => {
     const res = await getHeatmap(
       fetchBySql({
         hourly: [
-          // _sample_interval = 10: 4 linhas viram 40 eventos; 120 palpites ponderados.
           {
             hour: '2026-10-29 20:00:00',
             event_type: 'prediction_saved',
@@ -1825,7 +2237,6 @@ describe('GET /metrics/invite-funnel', () => {
     return db
   }
 
-  /** SQL API falsa, que escolhe a resposta pela forma da consulta. */
   function stubAe(
     rows: Partial<Record<'events' | 'opensSince' | 'dimensionSince' | 'sampling', unknown[]>>,
   ) {
@@ -1874,7 +2285,7 @@ describe('GET /metrics/invite-funnel', () => {
       days: 30,
       opens: 12,
       joins: 5,
-      joinsByMethod: { convite_link: 1, convite_antigo: 0, codigo: 1, unknown: 3 },
+      joinsByMethod: { convite_link: 1, convite_antigo: 0, codigo: 1, request: 0, unknown: 3 },
       newMembers: 1,
       existingMembers: 1,
       unclassifiedJoins: 3,
@@ -1883,7 +2294,6 @@ describe('GET /metrics/invite-funnel', () => {
       joinDimensionSince: '2026-11-10 13:00:00',
       avgSampleInterval: 1,
     })
-    // Sob sampling, cada linha vale _sample_interval eventos.
     expect(queries[0]).toContain('SUM(_sample_interval) AS events')
     expect(queries[0]).toContain(`blob1 IN ('invite_opened', 'group_joined')`)
   })
@@ -1978,7 +2388,6 @@ describe('GET /metrics/signup-origins', () => {
     return db
   }
 
-  /** SQL API falsa, que escolhe a resposta pela forma da consulta. */
   function stubAe(rows: Partial<Record<'origins' | 'firstEvent' | 'sampling', unknown[]>>) {
     const queries: string[] = []
     vi.stubGlobal(
@@ -2054,7 +2463,9 @@ describe('GET /metrics/signup-origins', () => {
   })
 
   it('não devolve texto livre de blob', async () => {
-    stubAe({ origins: [{ origin: 'joao@example.com', guide_slug: 'joao@example.com', signups: 1 }] })
+    stubAe({
+      origins: [{ origin: 'joao@example.com', guide_slug: 'joao@example.com', signups: 1 }],
+    })
 
     const res = await get({ DB: signupsD1() })
 
@@ -2085,6 +2496,117 @@ describe('GET /metrics/signup-origins', () => {
     )
 
     const res = await get({ DB: signupsD1() })
+
+    expect(res.status).toBe(502)
+  })
+})
+
+describe('GET /metrics/quota', () => {
+  it('403 para usuário que não é o admin', async () => {
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders('outra@pessoa.com') },
+      makeEnv(),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('503 sem credenciais da SQL API', async () => {
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ CF_ACCOUNT_ID: undefined }),
+    )
+    expect(res.status).toBe(503)
+  })
+
+  it('devolve a última medição com percentual e faixa de cada métrica', async () => {
+    const fetchFake = fetchOk([
+      {
+        timestamp: '2026-11-14 00:05:03',
+        day: '2026-11-13',
+        d1_rows_read: 4_250_000,
+        d1_rows_written: 60_000,
+        worker_requests: 12_345,
+      },
+    ])
+    vi.stubGlobal('fetch', fetchFake)
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      latest: {
+        day: '2026-11-13',
+        measuredAt: '2026-11-14 00:05:03',
+        metrics: [
+          { metric: 'd1_rows_read', used: 4_250_000, limit: 5_000_000, percent: 85, threshold: 80 },
+          { metric: 'd1_rows_written', used: 60_000, limit: 100_000, percent: 60, threshold: 50 },
+          { metric: 'worker_requests', used: 12_345, limit: 100_000, percent: 12.3, threshold: null },
+        ],
+      },
+    })
+    const sql = (fetchFake.mock.calls[0] as unknown as [string, { body: string }])[1].body
+    expect(sql).toContain("blob1 = 'cloudflare_usage'")
+    expect(sql).toContain('ORDER BY timestamp DESC LIMIT 1')
+  })
+
+  it('sem medição devolve latest null', async () => {
+    vi.stubGlobal('fetch', fetchOk([]))
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ latest: null })
+  })
+
+  it('valor inválido no AE vira zero e dia fora do formato vira null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchOk([
+        {
+          timestamp: '2026-11-14 00:05:03',
+          day: '<script>',
+          d1_rows_read: 'abc',
+          d1_rows_written: -5,
+          worker_requests: 1000,
+        },
+      ]),
+    )
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    const body = (await res.json()) as {
+      latest: { day: string | null; metrics: { used: number }[] }
+    }
+    expect(body.latest.day).toBeNull()
+    expect(body.latest.metrics.map((m) => m.used)).toEqual([0, 0, 1000])
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
 
     expect(res.status).toBe(502)
   })

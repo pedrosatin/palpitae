@@ -1,10 +1,3 @@
-/**
- * Tetos de grupos por usuário. Decisão do operador em 13/11/2026, registrada em
- * `.scratch/seguranca-2026-11/spec.md` ("Tetos de grupos") e em `docs/security.md`.
- * Eles limitam o custo de `GET /groups`, das escritas em lote e do cron de
- * pontuação. Na data da decisão, o maior uso em produção era de 4 grupos criados
- * e 22 participações.
- */
 
 /** Grupos não excluídos que um usuário pode ter criado. */
 export const MAX_ACTIVE_GROUPS_OWNED = 20

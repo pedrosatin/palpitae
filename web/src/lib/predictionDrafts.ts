@@ -47,11 +47,6 @@ export function isMatchLocked(
   return nowMs >= Date.parse(match.start_time)
 }
 
-/**
- * Resolve os dois campos do placar. Sem rascunho, vale o palpite salvo. Devolve
- * `null` quando um campo fica vazio, seja edição pela metade ou jogo sem palpite
- * e sem rascunho. O card começa vazio, e um 0×0 só existe quando o usuário escolhe.
- */
 function resolveDraftScores(
   draft: ScoreDraft | undefined,
   prediction: Prediction | undefined,
@@ -62,11 +57,6 @@ function resolveDraftScores(
   return { home: Number(homeStr), away: Number(awayStr) }
 }
 
-/**
- * Works out the penalty winner for a drawn knockout score. `eligibleDraw` is
- * false unless the score is level and the match is decided on penalties; when
- * it is, the draft wins, else the saved prediction, else `null`.
- */
 function resolvePenaltyWinner(
   match: Match,
   home: number,
@@ -84,7 +74,6 @@ function resolvePenaltyWinner(
   return { eligibleDraw, winner }
 }
 
-/** True when the resolved score or penalty winner differs from the saved prediction. */
 function hasPredictionChange(
   home: number,
   away: number,
@@ -99,7 +88,6 @@ function hasPredictionChange(
   return scoreChanged || penaltyChanged
 }
 
-/** Palpite salvo com o placar trocado pelo rascunho, para o agregado da volta. */
 function withDraftScore(
   matchId: string,
   draft: ScoreDraft,
@@ -192,7 +180,6 @@ export type UnsavedDrafts = {
 export type PruneUnsavedDraftsInput = DraftEntries & {
   matches: Match[]
   predictions: Map<string, Prediction>
-  /** Hora que decide quais jogos já fecharam. Padrão: agora. */
   nowMs?: number
 }
 

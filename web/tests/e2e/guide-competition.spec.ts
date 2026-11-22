@@ -1,9 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
 
-/**
- * No CTA do guia do Brasileirão, `/entrar?from=…&competicao=…` atravessa o login
- * pelo Google e abre o formulário de criação com a Série A 2027 escolhida.
- */
 test.describe('Guia do Brasileirão com a competição escolhida na criação', () => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': 'http://localhost:5173',
@@ -32,7 +28,6 @@ test.describe('Guia do Brasileirão com a competição escolhida na criação', 
     status: 'upcoming',
   }
 
-  /** Simula a volta do OAuth com sessão válida, nenhum grupo e a lista de competições dada. */
   async function mockLoggedIn(page: Page, competitions: unknown[]) {
     await page.route('**/auth/me', async (route) => {
       await route.fulfill({
@@ -89,7 +84,6 @@ test.describe('Guia do Brasileirão com a competição escolhida na criação', 
     await expect(dialog.getByRole('heading', { name: 'Criar grupo' })).toBeVisible()
     await expect(dialog.getByLabel('Competição')).toHaveValue('bsa-2027')
     await expect(dialog.getByText(warning)).toHaveCount(0)
-    // Só o `competicao` sai da URL, para recarregar não reabrir o modal.
     await expect(page).toHaveURL((url) => url.pathname === '/' && url.search === `?from=${from}`)
   })
 
@@ -113,7 +107,6 @@ test.describe('Guia do Brasileirão com a competição escolhida na criação', 
     const select = dialog.getByLabel('Competição')
     await expect(select).toHaveValue('bsa-2026')
     await expect(dialog.getByText(warning)).toBeVisible()
-    // A Série A 2026 já começou, então o select também é descrito pelo aviso de campeonato em andamento.
     await expect(select).toHaveAccessibleDescription(/A competição do link ainda não está disponível/)
     await expect(select).toHaveAccessibleDescription(/Esse campeonato já começou/)
   })

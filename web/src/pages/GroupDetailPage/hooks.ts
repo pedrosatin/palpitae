@@ -1,12 +1,17 @@
-import { useState, useEffect } from 'react'
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
-import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
-import { buildApiUrl } from '../../config'
-import { invalidateApiCache } from '../../lib/api-cache'
-import { useConfirm } from '../../components/ConfirmModal'
 import { trackEvent } from '../../analytics/ga'
-import { isStandingsTabEligible } from '../../components/StandingsTab'
+import { useConfirm } from '../../components/ConfirmModal'
+import { buildApiUrl } from '../../config'
+import { roundStandingsQueryKey } from '../../hooks/useRoundStandings'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
+import { groupMembersQueryKey } from '../../lib/groupMembers'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
+import { isStandingsTabEligible } from '../../lib/standings'
 import { UNEXPECTED_RESPONSE } from '../../lib/responseShape'
+import { withoutParam } from '../../lib/searchParams'
 import {
   type Tab,
   type GroupDetail,
@@ -16,39 +21,71 @@ import {
   parseTab,
 } from './types'
 
+function paramsForTab(params: URLSearchParams, tab: Tab): URLSearchParams {
+  const next = withoutParam(params, 'rodada')
+  if (tab === DEFAULT_TAB) {
+    next.delete('tab')
+  } else {
+    next.set('tab', tab)
+  }
+  return next
+}
+
+export function groupDetailQueryKey(groupId: string) {
+  return ['groups', 'detail', groupId] as const
+}
+
+export function fetchGroupDetail(groupId: string): Promise<GroupDetail> {
+  return apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
+    .then((r) => {
+      if (!r.ok) throw new Error('Grupo não encontrado')
+      return r.json() as Promise<unknown>
+    })
+    .then((body) => {
+      const detail = parseGroupDetail(body)
+      if (!detail) throw new Error(UNEXPECTED_RESPONSE)
+      return detail
+    })
+}
+
+export function groupDetailQueryOptions(groupId: string) {
+  return queryOptions({
+    queryKey: groupDetailQueryKey(groupId),
+    queryFn: () => fetchGroupDetail(groupId),
+  })
+}
+
 export function useGroupDetail(groupId: string | undefined) {
-  const [group, setGroup] = useState<GroupDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    ...groupDetailQueryOptions(groupId ?? ''),
+    enabled: Boolean(groupId),
+  })
 
-  useEffect(() => {
-    if (!groupId) return
-    setLoading(true)
-    setError(null)
-    apiFetch(buildApiUrl(`/groups/${groupId}`))
-      .then((r) => {
-        if (!r.ok) throw new Error('Grupo não encontrado')
-        return r.json() as Promise<unknown>
+  const setGroup = useCallback(
+    (updater: GroupDetail | null | ((prev: GroupDetail | null) => GroupDetail | null)) => {
+      if (!groupId) return
+      queryClient.setQueryData<GroupDetail | undefined>(groupDetailQueryKey(groupId), (prev) => {
+        const current = prev ?? null
+        const next = typeof updater === 'function' ? updater(current) : updater
+        return next ?? undefined
       })
-      .then((body) => {
-        const detail = parseGroupDetail(body)
-        if (!detail) throw new Error(UNEXPECTED_RESPONSE)
-        setGroup(detail)
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [groupId])
+    },
+    [groupId, queryClient],
+  )
 
-  return { group, setGroup, loading, error }
+  return {
+    group: groupId ? (query.data ?? null) : null,
+    setGroup,
+    loading: groupId ? query.isPending : true,
+    error: query.error instanceof Error ? query.error.message : query.isError ? 'Grupo não encontrado' : null,
+  }
 }
 
 export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { pathname } = useLocation()
   const rawTab = parseTab(searchParams.get('tab'))
-  // Rodada pedida pela faixa "Próximo prazo" do painel. Ela vale uma vez. A aba
-  // Palpitar chama `clearRequestedRound` depois de abrir nela, e a troca de aba
-  // também tira o parâmetro. Recarregar ou voltar à aba abre a rodada padrão.
   const requestedRound = searchParams.get('rodada')
   const showStandings = isStandingsTabEligible(group?.competition_type, group?.competition_code)
   const activeTab =
@@ -56,41 +93,15 @@ export function useGroupTabs(group: GroupDetail | null) {
 
   function setActiveTab(tab: Tab) {
     trackEvent('click_group_detail_tab', { tab })
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('rodada')
-        if (tab === DEFAULT_TAB) {
-          next.delete('tab')
-        } else {
-          next.set('tab', tab)
-        }
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => paramsForTab(prev, tab), { replace: true })
   }
 
   function clearRequestedRound() {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('rodada')
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => withoutParam(prev, 'rodada'), { replace: true })
   }
 
   function tabHref(tab: Tab): string {
-    const params = new URLSearchParams(searchParams)
-    params.delete('rodada')
-    if (tab === DEFAULT_TAB) {
-      params.delete('tab')
-    } else {
-      params.set('tab', tab)
-    }
-    const qs = params.toString()
+    const qs = paramsForTab(searchParams, tab).toString()
     if (tab === DEFAULT_TAB) return qs ? `${pathname}?${qs}` : pathname
     return `?${qs}`
   }
@@ -138,6 +149,7 @@ export function useTabsOffset() {
 
 export function useGroupActions(groupId: string | undefined, user: User) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [leaving, setLeaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [rotatingInvite, setRotatingInvite] = useState(false)
@@ -158,16 +170,26 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setLeaving(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/members/${user.id}`), {
-        method: 'DELETE',
-      })
+      const res = await apiFetch(
+        buildApiUrl(
+          `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(user.id)}`,
+        ),
+        {
+          method: 'DELETE',
+        },
+      )
 
       if (!res.ok) {
         window.alert(await readApiError(res, 'Erro ao sair do grupo'))
         return
       }
 
-      invalidateApiCache('groups:')
+      queryClient.removeQueries({ queryKey: groupDetailQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupMembersQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: roundStandingsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: ['groups', 'join-requests', groupId] })
+      void invalidateGroupsList(queryClient)
       navigate('/', { replace: true })
     } catch {
       window.alert(CONNECTION_ERROR)
@@ -192,7 +214,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setDeleting(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}`), {
+      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`), {
         method: 'DELETE',
       })
 
@@ -201,7 +223,12 @@ export function useGroupActions(groupId: string | undefined, user: User) {
         return
       }
 
-      invalidateApiCache('groups:')
+      queryClient.removeQueries({ queryKey: groupDetailQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupMembersQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: roundStandingsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: ['groups', 'join-requests', groupId] })
+      void invalidateGroupsList(queryClient)
       navigate('/', { replace: true, state: { refreshGroups: true } })
     } catch {
       window.alert(CONNECTION_ERROR)
@@ -210,7 +237,6 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     }
   }
 
-  /** Troca o código de convite (só o dono). O código antigo para de funcionar. */
   async function rotateInvite(onRotated: (inviteCode: string) => void) {
     if (!groupId) return
     trackEvent('click_group_detail_trocar_convite')
@@ -227,9 +253,12 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setRotatingInvite(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/invite/rotate`), {
-        method: 'POST',
-      })
+      const res = await apiFetch(
+        buildApiUrl(`/groups/${encodeURIComponent(groupId)}/invite/rotate`),
+        {
+          method: 'POST',
+        },
+      )
       if (!res.ok) {
         window.alert(await readApiError(res, 'Erro ao trocar o código de convite'))
         return
@@ -240,7 +269,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
         return
       }
 
-      invalidateApiCache('groups:')
+      void invalidateGroupsList(queryClient)
       onRotated(body.invite_code)
     } catch {
       window.alert(CONNECTION_ERROR)

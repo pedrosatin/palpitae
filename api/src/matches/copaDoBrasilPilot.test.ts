@@ -50,10 +50,6 @@ const fakeExecutionCtx = {
   props: {},
 } as unknown as ExecutionContext
 
-/**
- * Converte a fixture real da Copa do Brasil em 2026 para o estado agendado
- * `pre` no futuro, para simular a descoberta inicial antes da bola rolar.
- */
 function buildScheduledCopaDoBrasilBoard(): EspnScoreboard {
   const clone = structuredClone(COPA_DO_BRASIL_BOARD)
   const baseMs = Date.parse('2099-04-01T22:00:00Z')
@@ -138,7 +134,6 @@ describe('Copa do Brasil em piloto', () => {
         fakeExecutionCtx,
       )
 
-    // 1. A migration 0021 cadastra a Copa do Brasil 2026 como cup, provider espn e visibility pilot.
     const seededRow = sqlite
       .prepare(
         `SELECT id, name, slug, external_id, provider, season, status, type, visibility
@@ -157,7 +152,6 @@ describe('Copa do Brasil em piloto', () => {
       visibility: 'pilot',
     })
 
-    // Piloto enxerga a Copa do Brasil; usuário comum não a vê em GET /competitions.
     const pilotCompsRes = await request('/competitions', 'pilot')
     expect(pilotCompsRes.status).toBe(200)
     const pilotComps = (await pilotCompsRes.json()) as {
@@ -178,7 +172,6 @@ describe('Copa do Brasil em piloto', () => {
     }
     expect(ordinaryComps.competitions.map((c) => c.id)).not.toContain(COPA_DO_BRASIL_ID)
 
-    // 2. Sincroniza jogos agendados pela rota POST /matches/sync mesmo sem FOOTBALL_API_KEY.
     stubEspnApi(buildScheduledCopaDoBrasilBoard())
 
     const syncRes = await request('/matches/sync', 'admin', {
@@ -203,7 +196,6 @@ describe('Copa do Brasil em piloto', () => {
       },
     })
 
-    // 3. Lista partidas como membro do grupo piloto e confere fases, rótulos e gate de pênaltis.
     const matchesRes = await request(`/matches?competition_id=${COPA_DO_BRASIL_ID}`, 'pilot')
     expect(matchesRes.status).toBe(200)
     const { matches } = (await matchesRes.json()) as {
@@ -310,7 +302,6 @@ describe('Copa do Brasil em piloto', () => {
       },
     ])
 
-    // 4. Grupo fechado cria bolão e palpita; usuário comum recebe 404.
     const createGroupRes = await request('/groups', 'pilot', {
       method: 'POST',
       body: JSON.stringify({
@@ -474,11 +465,9 @@ describe('Copa do Brasil em piloto', () => {
       ).status,
     ).toBe(200)
 
-    // 5. O ciclo automático com discoverFixtures e pollActiveMatches atualiza a partir da fixture real.
     stubEspnApi(COPA_DO_BRASIL_BOARD)
     await discoverFixtures(db, 'unused-key')
 
-    // Verifica que os 5 jogos encerrados e a semifinal agendada foram gravados conforme a fixture real.
     const dbMatches = sqlite
       .prepare(
         `SELECT external_id, start_time, status, home_score, away_score,
@@ -592,7 +581,6 @@ describe('Copa do Brasil em piloto', () => {
     expect(dbMatches[5].locked_at).toBeNull()
     expect(dbMatches[5].scored_at).toBeNull()
 
-    // 6. Confere também pollActiveMatches quando um jogo da Copa do Brasil cai na janela ativa sem scored_at.
     sqlite.prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401874095'`).run()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(Date.parse('2026-08-06T00:30:00Z') + 130 * 60 * 1000))
@@ -604,7 +592,6 @@ describe('Copa do Brasil em piloto', () => {
       .get() as { scored_at: string | null }
     expect(rescored.scored_at).toEqual(expect.any(String))
 
-    // 7. Verifica a pontuação do piloto no ranking com 15 pontos totais, 2 pontos de bônus de pênalti e 4 placares exatos.
     const membersRes = await request(`/groups/${group.id}/members`, 'pilot')
     expect(membersRes.status).toBe(200)
     const { members } = (await membersRes.json()) as {
@@ -633,7 +620,6 @@ describe('Copa do Brasil em piloto', () => {
     const { sqlite, db } = createSqliteD1()
     handles.push(sqlite)
 
-    // Semeia competição, times e partida do Brasileirão na football-data com clubes que também jogam a Copa do Brasil.
     sqlite.exec(`
       INSERT INTO competitions (id, name, slug, external_id, provider, season, status, type, visibility)
       VALUES ('comp-bsa', 'Campeonato Brasileiro Série A', 'campeonato-brasileiro-serie-a-2026', 'BSA', 'football-data', '2026', 'ongoing', 'league', 'public');
@@ -681,7 +667,6 @@ describe('Copa do Brasil em piloto', () => {
     })
     expect(second).toEqual(first)
 
-    // Roda o fallback da ESPN com a Copa do Brasil da ESPN e o Brasileirão da football-data.
     const now = Date.parse('2026-08-06T00:30:00Z') + 130 * 60 * 1000
     const updatedMap = await scoreWindowFromEspn(db, undefined, [COPA_DO_BRASIL_ID, 'comp-bsa'], {
       now,
@@ -721,7 +706,6 @@ describe('Copa do Brasil em piloto', () => {
       { provider: 'football-data', total: 1 },
     ])
 
-    // Preserva status 'ongoing', type 'cup', visibility 'pilot' e penalty_phases da Copa do Brasil após re-sync.
     const copaDoBrasil = sqlite
       .prepare(`SELECT status, type, visibility, penalty_phases FROM competitions WHERE id = ?`)
       .get(COPA_DO_BRASIL_ID) as Record<string, string>

@@ -17,9 +17,7 @@ export interface GroupRoundPick extends RoundPick {
 }
 
 export interface RoundScope {
-  /** Jogos encerrados da rodada. Só eles entram em qualquer conta do resumo. */
   finished: Match[]
-  /** Jogos adiados que ainda valem pontos. */
   postponed: number
 }
 
@@ -57,11 +55,8 @@ export function pickPoints(p: RoundPick): number {
 
 export interface RoundTally {
   points: number
-  /** Placares cravados. Sempre 0 num grupo que só pontua o resultado. */
   exact: number
-  /** Resultado certo sem cravar o placar. Num grupo só de resultado, todos os acertos. */
   correct: number
-  /** Jogos encerrados sem palpite. */
   missed: number
 }
 
@@ -95,7 +90,6 @@ export function tallyRound(finished: Match[], picks: RoundPick[], pointsExact: n
 export interface RoundStanding extends RoundTally {
   user_id: string
   display: string
-  /** Colocação na rodada. Pontos iguais dividem a mesma colocação. */
   position: number
   isYou: boolean
 }
@@ -156,7 +150,6 @@ export function pointsLabel(n: number): string {
  */
 export function highlightText(leaders: RoundStanding[]): string | null {
   if (leaders.length === 0) return null
-  // Quem vê a tela vem primeiro, para nunca cair no "e mais N".
   const ordered = [...leaders.filter((l) => l.isYou), ...leaders.filter((l) => !l.isYou)]
   const names = ordered.map((l) => (l.isYou ? 'você' : l.display))
   const subject = joinNames(names, LEADER_NAMES)

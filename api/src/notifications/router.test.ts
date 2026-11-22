@@ -71,10 +71,8 @@ describe('notifications router — unsubscribe', () => {
 
     expect(res.status).toBe(200)
     const text = await res.text()
-    // Must render a confirmation form — not the success message yet
     expect(text).toContain('<form')
     expect(text).toContain(token)
-    // Must NOT touch the database (e-mail scanner safety — RFC 8058)
     expect(captured.sqls).toHaveLength(0)
   })
 

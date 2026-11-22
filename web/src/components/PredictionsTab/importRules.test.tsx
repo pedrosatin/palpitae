@@ -1,8 +1,9 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
 import { usePredictionsTab } from './usePredictionsTab'
+import { renderWithQuery as render, renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
@@ -18,7 +19,6 @@ const prediction = (matchId: string, home: number, away: number) => ({
   locked: false,
 })
 
-/** Dois jogos abertos e um grupo irmão `source` que palpitou os dois. */
 function setup(
   siblings: unknown[] = [{ id: 'source', name: 'Origem', competition_id: 'c' }],
   initial: unknown[] = [],
@@ -60,7 +60,6 @@ describe('Leitura antiga depois de uma escrita', () => {
       importing = result.current.handleImport()
     })
     await waitFor(() => expect(state.pendingGets).toHaveLength(1))
-    // A listagem já saiu com o importado (2x1). O card salva 3x1 antes de ela chegar.
     act(() => result.current.handleSaved('m', 3, 1, null))
     await act(async () => {
       state.pendingGets[0](
@@ -76,7 +75,6 @@ describe('Leitura antiga depois de uma escrita', () => {
       predicted_home_score: 3,
       predicted_away_score: 1,
     })
-    // O que a importação trouxe para os outros jogos entra na tela.
     expect(result.current.predictions.get('m2')).toMatchObject({
       predicted_home_score: 0,
       predicted_away_score: 0,
@@ -89,7 +87,6 @@ describe('Leitura antiga com palpites preexistentes', () => {
     const state = setup(undefined, [prediction('m', 1, 1), prediction('m2', 0, 0)])
     const { result } = renderHook(() => usePredictionsTab('target', 'c'))
     await waitFor(() => expect(result.current.otherGroups).toHaveLength(1))
-    // Os dois jogos já têm palpite: só o seletor completo sobrescreve.
     act(() => result.current.setImportExpanded(true))
     await waitFor(() => expect(result.current.importSourceId).toBe('source'))
 
@@ -99,7 +96,6 @@ describe('Leitura antiga com palpites preexistentes', () => {
       importing = result.current.handleImport()
     })
     await waitFor(() => expect(state.pendingGets).toHaveLength(1))
-    // A importação sobrescreveu os dois (2x1 e 4x2). O card salva 3x1 só em `m`.
     act(() => result.current.handleSaved('m', 3, 1, null))
     await act(async () => {
       state.pendingGets[0](
@@ -133,11 +129,9 @@ describe('Barra de importação, modo do grupo', () => {
     const { result } = renderHook(() =>
       usePredictionsTab('target', 'c', undefined, null, undefined, 3),
     )
-    // O seletor completo, aberto pelo link, lista só o grupo de placar.
     act(() => result.current.setImportExpanded(true))
     await waitFor(() => expect(result.current.importOptions.map((g) => g.id)).toEqual(['exact']))
     act(() => result.current.setImportExpanded(false))
-    // Só o grupo só vencedor tem palpite faltando aqui, e ele não vira pendência.
     expect(result.current.importOptions).toEqual([])
     expect(result.current.importPending).toBe(false)
   })
@@ -148,11 +142,19 @@ describe('Barra de importação, modo do grupo', () => {
     expect(await screen.findByRole('option', { name: /Só vencedor/ })).toBeInTheDocument()
   })
 
+  it('irmão sem points_exact conta como placar e aparece na importação', async () => {
+    setup([{ id: 'source', name: 'Origem', competition_id: 'c' }])
+    const { result } = renderHook(() =>
+      usePredictionsTab('target', 'c', undefined, null, undefined, 3),
+    )
+    act(() => result.current.setImportExpanded(true))
+    await waitFor(() => expect(result.current.importOptions.map((g) => g.id)).toEqual(['source']))
+  })
+
   it('sem grupo compatível, não mostra o link de importação', async () => {
     setup([siblings[0]])
     const view = renderHook(() => usePredictionsTab('target', 'c', undefined, null, undefined, 3))
     await waitFor(() => expect(view.result.current.loading).toBe(false))
-    // A lista de grupos vem do cache preenchido pelo hook acima.
     render(<PredictionsTab groupId="target" competitionId="c" pointsExact={3} />)
     await screen.findByText(/Rodada/)
     await act(async () => {})

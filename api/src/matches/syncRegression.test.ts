@@ -151,7 +151,6 @@ describe('football-data result regression', () => {
       live.utcDate = '2026-10-24T23:00:00Z'
       respond(live)
       await syncFixtures(options)
-      // O placar parcial não é resultado: a linha só ganha placar no final.
       expect(sqlite.prepare('SELECT start_time,home_score,away_score FROM matches').get()).toEqual({
         start_time: live.utcDate,
         home_score: null,

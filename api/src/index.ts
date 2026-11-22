@@ -1,27 +1,36 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { defaultCacheControl } from './security/cacheControl'
 import { requestLimits, clearExpiredSecurityRecords } from './security/limits'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
+import { adminRouter } from './admin/router'
 import { authRouter } from './auth/router'
 import { competitionsRouter } from './competitions/router'
 import {
   DAILY_EXPORT_CRON,
   FIXTURE_DISCOVERY_CRON,
-  RESULT_POLLER_CRON,
+  isResultPollerTick,
+  LEGACY_RESULT_POLLER_CRON,
+  POLLER_AND_DRAIN_CRON,
   ROUND_REMINDER_CRON,
 } from './crons'
 import { jsonError, jsonNotFound } from './errorHandlers'
 import { groupsRouter } from './groups/router'
-import { discoverFixtures } from './matches/fixtureDiscovery'
+import { runProviderDrains } from './matches/drainCoordinator'
+import { espnDrain } from './matches/espnWork'
+import { footballDataDrain } from './matches/fdWork'
+import { DISCOVERY_CALL_BUDGET, discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
+import { mailjetCredentials } from './notifications/mailjet'
 import { reminderFetchBudget, sendRoundReminders } from './notifications/roundReminder'
 import { unsubSigningSecret } from './notifications/unsubscribeToken'
 import { logError, tryLogEvent } from './observability/events'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
+import { checkQuotaUsage } from './observability/quotaUsage'
 import { predictionsRouter } from './predictions/router'
 import { publicRouter } from './public/router'
 import type { AppContext, Env } from './types'
@@ -34,6 +43,7 @@ const OPTIONAL_CONFIG = [
   'BASE_URL',
   'CF_ACCOUNT_ID',
   'AE_SQL_TOKEN',
+  'CF_ANALYTICS_TOKEN',
 ] as const
 
 /** Registra, uma vez por execução agendada, cada configuração opcional ausente. */
@@ -47,6 +57,8 @@ function reportMissingConfig(env: Env): void {
 
 const app = new Hono<AppContext>()
 
+// Primeiro da fila, para cobrir também o que os middlewares seguintes respondem sozinhos.
+app.use('*', defaultCacheControl)
 app.use('*', secureHeaders())
 
 app.use(
@@ -79,19 +91,18 @@ app.route('/matches', matchesRouter)
 app.route('/predictions', predictionsRouter)
 app.route('/notifications', notificationsRouter)
 app.route('/metrics', metricsRouter)
+app.route('/admin', adminRouter)
 // Rotas sem autenticação. Devolvem só o que quem tem o link já vê (ver public/router.ts).
 app.route('/public', publicRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
-// Rota inexistente e exceção não tratada também respondem JSON com `{ error }`.
 app.notFound(jsonNotFound)
 app.onError(jsonError)
 
 export default {
   fetch: app.fetch,
 
-  // Cron Triggers (ver wrangler.toml). O controller.cron diz qual agendamento disparou.
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
       clearExpiredSecurityRecords(env.DB).catch((error: unknown) =>
@@ -107,21 +118,23 @@ export default {
     reportMissingConfig(env)
 
     if (controller.cron === DAILY_EXPORT_CRON) {
-      // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
+      // Uso das cotas do plano Free no dia anterior. Não lança: falha não afeta o export.
+      ctx.waitUntil(checkQuotaUsage(env, new Date(controller.scheduledTime)))
       return
     }
 
     if (controller.cron === FIXTURE_DISCOVERY_CRON) {
-      // Descobre jogos novos (mata-mata, remarcações) das competições ativas.
       ctx.waitUntil(
-        discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+        // O saldo de subrequests da invocação vale para a football-data e a ESPN juntas.
+        discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime, {
+          callBudget: DISCOVERY_CALL_BUDGET,
+        }),
       )
       return
     }
 
     if (controller.cron === ROUND_REMINDER_CRON) {
-      // E-mail do dia para quem tem jogo de hoje sem palpite (1x/dia).
       ctx.waitUntil(
         sendRoundReminders(
           env.DB,
@@ -130,17 +143,52 @@ export default {
           env.FRONTEND_URL,
           env.BASE_URL ? { secret: unsubSigningSecret(env), apiBaseUrl: env.BASE_URL } : undefined,
           undefined,
-          { fetchBudget: reminderFetchBudget(env.REMINDER_FETCH_BUDGET), pilotAccess: env },
+          {
+            fetchBudget: reminderFetchBudget(env.REMINDER_FETCH_BUDGET),
+            pilotAccess: env,
+            mailjet: mailjetCredentials(env.MAILJET_API_KEY, env.MAILJET_API_SECRET),
+          },
         ),
       )
       return
     }
 
-    if (controller.cron === RESULT_POLLER_CRON) {
-      // Result poller — resultados da janela ativa + pontuação (ADR-007).
+    if (controller.cron === LEGACY_RESULT_POLLER_CRON) {
       ctx.waitUntil(
-        pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+        pollActiveMatches(
+          env.DB,
+          env.FOOTBALL_API_KEY ?? '',
+          env.AE,
+          controller.scheduledTime,
+          env,
+        ),
       )
+      return
+    }
+
+    if (controller.cron === POLLER_AND_DRAIN_CRON) {
+      if (isResultPollerTick(controller.scheduledTime)) {
+        ctx.waitUntil(
+          pollActiveMatches(
+            env.DB,
+            env.FOOTBALL_API_KEY ?? '',
+            env.AE,
+            controller.scheduledTime,
+            env,
+          ),
+        )
+      } else {
+        ctx.waitUntil(
+          runProviderDrains(
+            env.DB,
+            [
+              footballDataDrain({ apiKey: env.FOOTBALL_API_KEY ?? '', ae: env.AE }),
+              espnDrain({ ae: env.AE }),
+            ],
+            { ae: env.AE },
+          ),
+        )
+      }
       return
     }
 

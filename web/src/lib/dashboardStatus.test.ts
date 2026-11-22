@@ -17,7 +17,6 @@ import {
   type RoundStatusFields,
 } from './dashboardStatus'
 
-// Quinta, 12/11/2026, 12:00 em Brasília.
 const NOW = Date.parse('2026-11-12T15:00:00Z')
 
 function deadline(startTime: string, round = '35'): DeadlineMatch {
@@ -78,7 +77,6 @@ describe('groupRoundStatus e texto do card', () => {
 
     expect(complete('Semifinais', 'fp')).toBe('Semifinais completas ✓ · próximo jogo sáb 18:30')
     expect(complete('Playoffs', 'mp')).toBe('Playoffs completos ✓ · próximo jogo sáb 18:30')
-    // Um rótulo renomeado na API traz a concordância dele, sem regra sobre o texto.
     expect(complete('Repescagem', 'fs')).toBe('Repescagem completa ✓ · próximo jogo sáb 18:30')
     expect(complete('Mata-mata', 'ms')).toBe('Mata-mata completo ✓ · próximo jogo sáb 18:30')
   })
@@ -287,7 +285,6 @@ describe('horários que mudam o painel', () => {
           next_match_at: '2026-11-13T00:00:00Z',
           round_ends_at: '2026-11-20T00:30:00Z',
         }),
-        // Só adiado sem data: pendente e sem horário.
         group('b', { pending_predictions: 1 }),
         { id: 'c', name: 'API antiga', pending_predictions: 0 },
       ]),
@@ -305,7 +302,6 @@ describe('horários que mudam o painel', () => {
 describe('datas no fuso de Brasília', () => {
   it('usa hoje, amanhã, o dia da semana e a data conforme a distância', () => {
     expect(formatShortWhen('2026-11-12T22:00:00Z', NOW)).toBe('hoje 19:00')
-    // 01:30 UTC de sexta ainda é quinta em Brasília.
     expect(formatShortWhen('2026-11-13T01:30:00Z', NOW)).toBe('hoje 22:30')
     expect(formatShortWhen('2026-11-13T22:00:00Z', NOW)).toBe('amanhã 19:00')
     expect(formatShortWhen('2026-11-14T21:30:00Z', NOW)).toBe('sáb 18:30')

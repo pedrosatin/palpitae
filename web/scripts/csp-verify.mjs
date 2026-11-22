@@ -30,7 +30,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 export const CSP_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Report-Only']
 export const MAX_HEADER_LENGTH = 2000
 
-/** Tipos de `<script>` que o navegador executa. Os demais são blocos de dados. */
 const EXECUTABLE_TYPES = new Set(['', 'text/javascript', 'application/javascript', 'module'])
 
 export function sha256(content) {
@@ -94,20 +93,30 @@ export function originAllowed(url, sources, selfOrigin) {
   })
 }
 
+const SCAN_TOKENS = /<!--[\s\S]*?(?:-->|$)|<(script|style)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi
+
 /** Scripts, estilos e atributos inline de um HTML. */
 export function scanHtml(html) {
   const inlineScripts = []
   const externalScripts = []
-  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
-    const attrs = match[1]
-    const src = /(?:^|\s)src\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)
-    const type = (/(?:^|\s)type\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1] ?? '').toLowerCase()
-    if (src) externalScripts.push(src[1])
-    else if (EXECUTABLE_TYPES.has(type)) inlineScripts.push(match[2])
+  const inlineStyles = []
+  let markup = ''
+  let last = 0
+  for (const match of html.matchAll(SCAN_TOKENS)) {
+    markup += html.slice(last, match.index)
+    last = match.index + match[0].length
+    const [, tag, attrs, body] = match
+    if (!tag) continue
+    if (tag.toLowerCase() === 'script') {
+      const src = /(?:^|\s)src\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)
+      const type = (/(?:^|\s)type\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1] ?? '').toLowerCase()
+      if (src) externalScripts.push(src[1])
+      else if (EXECUTABLE_TYPES.has(type)) inlineScripts.push(body)
+    } else {
+      inlineStyles.push(body)
+    }
   }
-  const inlineStyles = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)].map((m) => m[1])
-  // Sem os conteúdos de <script>/<style>, para não confundir código com atributo.
-  const markup = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+  markup += html.slice(last)
   const inlineAttributes = [...markup.matchAll(/<[a-z][^>]*?\s(style|on[a-z]+)\s*=/gi)].map((m) =>
     m[1].toLowerCase(),
   )

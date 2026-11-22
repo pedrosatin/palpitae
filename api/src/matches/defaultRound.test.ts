@@ -8,7 +8,7 @@ import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import { defaultRoundSql, leftoverCutoff, roundRuleBinds } from './defaultRound'
-import { isoSeconds } from './sync'
+import { isoSeconds } from './matchUpsert'
 
 // "Agora" da auditoria de produção: 07/11/2026.
 const NOW = '2026-11-07T15:00:00.000Z'
@@ -88,7 +88,6 @@ function round(n: string, starts: string[], extra: Partial<Row> = {}): Row[] {
   return starts.map((start) => ({ round: n, start, ...extra }))
 }
 
-/** Brasileirão 2026 em 07/11: 1–34 encerradas, 21 com CHA×VAS remarcado, 35 toda futura. */
 function brasileiraoNovembro(): Row[] {
   const rows: Row[] = []
   for (let r = 1; r <= 34; r++) {

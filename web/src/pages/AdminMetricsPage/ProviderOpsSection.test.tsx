@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildAlerts } from './overview'
 import ProviderOpsSection, {
   isFailureStatus,
   summarizeHttp,
@@ -7,6 +8,7 @@ import ProviderOpsSection, {
   type CompetitionNames,
   type OpsResponse,
 } from './ProviderOpsSection'
+import type { OverviewResponse } from './types'
 
 const COMP_A = '11111111-2222-4333-8444-555555555555'
 const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
@@ -35,7 +37,6 @@ function http(
 function makeOps(overrides: Partial<OpsResponse> = {}): OpsResponse {
   return {
     days: 30,
-    // Muito no passado: a coleta cobre o período inteiro, sem aviso.
     httpFirstSeenAt: '2020-01-01 00:00:00',
     httpByProvider: [],
     httpByCompetition: [],
@@ -111,20 +112,17 @@ describe('ProviderOpsSection', () => {
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(2)
 
-    // Ordenado por falhas: ESPN/poller (15 falhas) antes de football-data (2).
     const espn = within(rows[0])
     expect(espn.getByText('ESPN')).toBeInTheDocument()
     expect(espn.getByText('Poller de resultados')).toBeInTheDocument()
-    // 300 + 12 + 3 = 315 tentativas estimadas; sucesso amostrado → "≈".
     expect(espn.getByText('≈315')).toBeInTheDocument()
     expect(espn.getByText('15')).toBeInTheDocument()
-    expect(espn.getByText('4,8%')).toBeInTheDocument() // 15 / 315
+    expect(espn.getByText('4,8%')).toBeInTheDocument()
     expect(espn.getByText('403 ×12 · sem resposta ×3')).toBeInTheDocument()
 
     const fd = within(rows[1])
     expect(fd.getByText('football-data.org')).toBeInTheDocument()
     expect(fd.getByText('Descoberta de jogos')).toBeInTheDocument()
-    // Só falhas (contagem exata): sem "≈".
     expect(fd.queryByText(/≈/)).not.toBeInTheDocument()
     expect(fd.getByText('100%')).toBeInTheDocument()
   })
@@ -152,7 +150,6 @@ describe('ProviderOpsSection', () => {
     expect(within(table).getByText('Libertadores')).toBeInTheDocument()
     expect(screen.getByText(/Linha ausente é falta de dado, não prova de zero/)).toBeInTheDocument()
 
-    // Mesma competição e provedor somam: 5 falhas em 105 tentativas.
     const brasileirao = within(table).getByText('Brasileirão Série A 2026').closest('tr')!
     expect(within(brasileirao).getByText('≈105')).toBeInTheDocument()
     expect(within(brasileirao).getByText('4,8%')).toBeInTheDocument()
@@ -180,17 +177,16 @@ describe('ProviderOpsSection', () => {
     const rows = within(table).getAllByRole('row').slice(1)
     const brasileirao = within(rows[0])
     expect(brasileirao.getByText('Brasileirão Série A 2026')).toBeInTheDocument()
-    expect(brasileirao.getByText('4')).toBeInTheDocument() // erros: 3 + 1
+    expect(brasileirao.getByText('4')).toBeInTheDocument()
     expect(
       brasileirao.getByText('Poller de resultados ×3 · Descoberta de jogos ×1'),
     ).toBeInTheDocument()
-    expect(brasileirao.getByText('10')).toBeInTheDocument() // execuções do fallback
-    expect(brasileirao.getByText('7')).toBeInTheDocument() // jogos atualizados pelo fallback
+    expect(brasileirao.getByText('10')).toBeInTheDocument()
+    expect(brasileirao.getByText('7')).toBeInTheDocument()
 
     expect(within(table).getByText('sem liga')).toBeInTheDocument()
     expect(within(table).getByText('Sincronização manual ×2')).toBeInTheDocument()
     expect(screen.getByText(/Erros de sync valem para qualquer provedor/)).toBeInTheDocument()
-    // Nunca apresenta o erro de sync como exclusivo da football-data.
     expect(screen.queryByText(/API Football/)).not.toBeInTheDocument()
   })
 
@@ -251,7 +247,6 @@ describe('ProviderOpsSection', () => {
     expect(stage.getByText('Libertadores')).toBeInTheDocument()
     expect(stage.getByText('Fase desconhecida')).toBeInTheDocument()
     expect(stage.getByText('round-of-32')).toBeInTheDocument()
-    // 6 eventos somados em 3 execuções: o mesmo descarte se repete, 2 por execução.
     const numbers = (row: HTMLElement) =>
       within(row)
         .getAllByRole('cell')
@@ -263,7 +258,6 @@ describe('ProviderOpsSection', () => {
     expect(
       screen.getByText(/volta a ser descartado e contado em cada execução/),
     ).toBeInTheDocument()
-    // Sem competição gravada, a linha mostra o código do provedor.
     expect(tbd.getByText('bra.copa_do_brazil')).toBeInTheDocument()
     expect(tbd.getByText('Time ausente')).toBeInTheDocument()
     expect(tbd.getByText('time a definir')).toBeInTheDocument()
@@ -319,6 +313,66 @@ describe('ProviderOpsSection', () => {
     expect(screen.queryByRole('heading', { name: /Eventos descartados/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /fora do calendário/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /sem pontuação/ })).not.toBeInTheDocument()
+  })
+
+  it('lista a fila de trabalho dos provedores com idade', () => {
+    render(
+      <ProviderOpsSection
+        ops={makeOps({
+          pendingWork: [
+            {
+              provider: 'football-data',
+              status: 'pending',
+              items: 3,
+              oldest_age_minutes: 90,
+              max_attempts: 2,
+            },
+            {
+              provider: 'espn',
+              status: 'failed',
+              items: 1,
+              oldest_age_minutes: 4000,
+              max_attempts: 6,
+            },
+          ],
+        })}
+        names={names}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: 'Fila de trabalho dos provedores' })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(within(rows[0]).getByText('football-data.org')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('pendente')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('3')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('90 min')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('ESPN')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('falhou')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('3 d')).toBeInTheDocument()
+  })
+
+  it('fila vazia diz que não há item aberto', () => {
+    render(<ProviderOpsSection ops={makeOps({ pendingWork: [] })} names={names} />)
+    expect(screen.getByText('Nenhum item aberto ou falho na fila.')).toBeInTheDocument()
+    expect(screen.queryByText('Fila indisponível.')).not.toBeInTheDocument()
+  })
+
+  it('consulta da fila falhou mostra fila indisponível', () => {
+    render(
+      <ProviderOpsSection ops={makeOps({ pendingWorkError: true })} names={names} />,
+    )
+    expect(screen.getByText('Fila indisponível.')).toBeInTheDocument()
+    expect(screen.queryByText('Nenhum item aberto ou falho na fila.')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('table', { name: 'Fila de trabalho dos provedores' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('API anterior à fila não mostra a seção', () => {
+    render(<ProviderOpsSection ops={makeOps()} names={names} />)
+    expect(
+      screen.queryByRole('heading', { name: /Fila de trabalho dos provedores/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('lista as competições com jogo encerrado que ficou sem pontuação', () => {
@@ -444,5 +498,56 @@ describe('helpers de HTTP', () => {
         }),
       ),
     ).toBe(5)
+  })
+})
+
+describe('buildAlerts fila de provedores', () => {
+  const emptyOverview = {
+    days: 7,
+    totals: [],
+    daily: [],
+    poller: [],
+    predictions: { active_users: 0, total: 0 },
+    cache: [],
+    loginFailures: [],
+    apiCallsDaily: [],
+    recentErrors: [],
+    sampling: { avg_sample_interval: 1 },
+    whales: [],
+    lastRuns: [],
+    emailHealth: { rounds: 0, sent: 0, failed: 0 },
+    latency: [],
+    predictionsDaily: [],
+  } as OverviewResponse
+
+  it('pendingWorkError mantém aviso no topo', () => {
+    const alerts = buildAlerts(emptyOverview, makeOps({ pendingWorkError: true }), null)
+    expect(alerts.some((a) => a.key === 'provider-work')).toBe(true)
+    expect(alerts.find((a) => a.key === 'provider-work')?.label).toMatch(/indisponível/)
+  })
+
+  it('fila vazia não acende aviso; fila com itens acende', () => {
+    expect(
+      buildAlerts(emptyOverview, makeOps({ pendingWork: [] }), null).some(
+        (a) => a.key === 'provider-work',
+      ),
+    ).toBe(false)
+    expect(
+      buildAlerts(
+        emptyOverview,
+        makeOps({
+          pendingWork: [
+            {
+              provider: 'espn',
+              status: 'pending',
+              items: 2,
+              oldest_age_minutes: 10,
+              max_attempts: 1,
+            },
+          ],
+        }),
+        null,
+      ).find((a) => a.key === 'provider-work')?.label,
+    ).toMatch(/2 item/)
   })
 })

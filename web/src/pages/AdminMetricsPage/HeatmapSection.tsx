@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import AdminPills from '../AdminPills'
 import shared from '../admin-shared.module.css'
 import { SERIES_COLORS } from './charts'
+import { DAY_MS, formatCount } from './format'
 import styles from './AdminMetricsPage.module.css'
 
 /**
@@ -28,7 +30,6 @@ export interface HeatmapResponse {
 export type HeatmapMeasure = 'predictions' | 'saves' | 'logins'
 
 export interface HeatmapGrid {
-  /** `cells[diaDaSemana][hora]`, com domingo = 0, no fuso de Brasília. */
   cells: number[][]
   total: number
   max: number
@@ -36,7 +37,6 @@ export interface HeatmapGrid {
 }
 
 const HOUR_MS = 60 * 60 * 1000
-const DAY_MS = 24 * HOUR_MS
 const BRT_OFFSET_MS = 3 * HOUR_MS
 
 const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
@@ -54,7 +54,6 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const MEASURES: {
   value: HeatmapMeasure
   label: string
-  /** Substantivo para frases e tooltips. */
   noun: string
   field: 'predictions' | 'prediction_saves' | 'logins'
   event: 'prediction_saved' | 'login_success'
@@ -86,7 +85,6 @@ const MEASURES: {
   },
 ]
 
-/** Timestamp da SQL API (`YYYY-MM-DD HH:MM:SS`, UTC) ou ISO → epoch ms; NaN se inválido. */
 function parseUtc(ts: string): number {
   const iso = ts.includes('T') ? ts : ts.replace(' ', 'T')
   return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`)
@@ -126,11 +124,6 @@ export function buildHeatmapGrid(
   return { cells, total, max: peak?.value ?? 0, peak }
 }
 
-function formatNumber(n: number): string {
-  return Math.round(n).toLocaleString('pt-BR')
-}
-
-/** Cabe na célula estreita: 950, 1,2k, 12k. */
 function compact(n: number): string {
   const rounded = Math.round(n)
   if (rounded < 1000) return String(rounded)
@@ -142,7 +135,6 @@ function hourRange(hour: number): string {
   return `${hour}h a ${(hour + 1) % 24}h`
 }
 
-/** `YYYY-MM-DD HH:MM:SS` UTC → `dd/mm hh:mm BRT`. */
 function formatBrt(ts: string): string {
   const t = parseUtc(ts)
   if (!Number.isFinite(t)) return ts
@@ -151,7 +143,6 @@ function formatBrt(ts: string): string {
   return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} BRT`
 }
 
-/** Ausência de coleta não é zero: avisa quando o tipo não cobre o período inteiro. */
 function CoverageNotice({
   data,
   noun,
@@ -170,7 +161,6 @@ function CoverageNotice({
     )
   }
   const first = parseUtc(firstSeen)
-  // Folga de um dia: a retenção de 90 dias do Analytics Engine come o início da janela de 90d.
   if (Number.isFinite(first) && first > Date.now() - data.days * DAY_MS + DAY_MS) {
     return (
       <p className={styles.samplingWarning}>
@@ -230,7 +220,7 @@ function Grid({
                           }
                         : undefined
                     }
-                    title={`${WEEKDAYS_LONG[weekday]}, ${hourRange(hour)} BRT: ${approx}${formatNumber(value)} ${measure.noun}`}
+                    title={`${WEEKDAYS_LONG[weekday]}, ${hourRange(hour)} BRT: ${approx}${formatCount(value)} ${measure.noun}`}
                   >
                     {compact(value)}
                   </td>
@@ -289,24 +279,25 @@ function HeatmapBody({
       </p>
       <div className={styles.filterRow}>
         <span className={styles.filterLabel}>Série</span>
-        <div className={`${shared.periods} ${styles.filterPills}`} role="group" aria-label="Série">
-          {MEASURES.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              aria-pressed={m.value === measure.value}
-              className={m.value === measure.value ? shared.periodActive : shared.period}
-              onClick={() => onMeasureChange(m.value)}
-            >
-              <span
-                className={styles.seriesDot}
-                style={{ backgroundColor: m.color }}
-                aria-hidden="true"
-              />
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <AdminPills
+          options={MEASURES.map((m) => ({
+            value: m.value,
+            label: (
+              <>
+                <span
+                  className={styles.seriesDot}
+                  style={{ backgroundColor: m.color }}
+                  aria-hidden="true"
+                />
+                {m.label}
+              </>
+            ),
+          }))}
+          value={measure.value}
+          onChange={onMeasureChange}
+          className={`${shared.periods} ${styles.filterPills}`}
+          ariaLabel="Série"
+        />
       </div>
       {estimated && (
         <p className={styles.samplingWarning}>
@@ -321,14 +312,14 @@ function HeatmapBody({
         <>
           <h3 className={styles.subTitle}>
             {measure.label} · {estimated ? '≈' : ''}
-            {formatNumber(grid.total)} no período
+            {formatCount(grid.total)} no período
           </h3>
           <Grid grid={grid} measure={measure} estimated={estimated} />
           {grid.peak && (
             <p className={styles.hint}>
               Maior movimento: {WEEKDAYS_LONG[grid.peak.weekday]}, {hourRange(grid.peak.hour)}, com{' '}
               {estimated ? '≈' : ''}
-              {formatNumber(grid.peak.value)}. O cabeçalho das colunas é a hora inicial.
+              {formatCount(grid.peak.value)}. O cabeçalho das colunas é a hora inicial.
             </p>
           )}
         </>

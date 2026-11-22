@@ -1,11 +1,9 @@
-import { openRoundsSql, roundRuleBinds } from '../matches/defaultRound'
 import { lockedSql } from '../matches/locking'
 import { KNOCKOUT_PHASES } from '../matches/rounds'
 
 /** Fases de mata-mata como lista SQL. São constantes do código, sem entrada do usuário. */
 const KNOCKOUT_PHASES_SQL = KNOCKOUT_PHASES.map((phase) => `'${phase}'`).join(', ')
 
-/** Chave de prazo `start_time|fora|id`, só para jogo com horário futuro e sem adiamento. */
 const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
                 THEN m.start_time || '|' || (r.position <> 1) || '|' || m.id END`
 
@@ -41,13 +39,13 @@ const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
  *   liga, a lista fica vazia. O palpite não é lido aqui: o índice único de
  *   `predictions` responde se ele existe sem ler a linha.
  *
- * Tudo sai de uma varredura só do índice coberto da competição, que numera as
- * candidatas e já traz a rodada padrão e as que ficaram para trás. Os jogos de
- * cada rodada vêm de `idx_matches_comp_round_start` com a rodada já resolvida,
- * e o palpite de cada jogo vem do índice único de `predictions`. O `CROSS JOIN`
- * fixa essa ordem. Com `JOIN` o SQLite pode começar pelos jogos e varrer a
- * competição. Um campo a mais no painel entra neste JSON. Outra subquery por
- * campo leria o índice da competição de novo para cada grupo.
+ * As rodadas abertas chegam em JSON por `openRoundsJsonExpr`, calculadas uma
+ * vez por competição em `groupsListSql`. Os jogos de cada rodada vêm de
+ * `idx_matches_comp_round_start` com a rodada já resolvida, e o palpite de cada
+ * jogo vem do índice único de `predictions`. O `CROSS JOIN` fixa essa ordem.
+ * Com `JOIN`, o SQLite pode começar pelos jogos e varrer a competição. Um
+ * campo a mais no painel entra neste JSON. Outra subquery por campo repetiria
+ * as leituras de jogos e palpites para cada grupo.
  *
  * Sem rodada aberta, `pending` fica 0 e os horários ficam nulos.
  *
@@ -57,13 +55,24 @@ const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
  * porque a linha existe em `predictions`. TBD não entra: o sync ESPN descarta
  * placeholders antes de persistir.
  *
- * Fragmento correlacionado ao alias do grupo (padrão `g`) e ao da competição
- * do grupo (padrão `c`), de onde vem `penalty_phases`, sem ler `competitions` de
- * novo a cada jogo. Binds na ordem de `pendingSummaryBinds`.
+ * Fragmento correlacionado aos aliases do grupo e da competição, de onde vem
+ * `penalty_phases`, sem ler `competitions` de novo a cada jogo. As rodadas
+ * abertas vêm do JSON de `openRoundsJsonExpr`, calculado na CTE de
+ * competições, e os binds seguem a ordem de `pendingSummaryBinds`.
  */
-export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): string {
+export function pendingSummarySql(
+  groupAlias: string,
+  competitionAlias: string,
+  openRoundsJsonExpr: string,
+): string {
   const competition = `${groupAlias}.competition_id`
   const penaltyPhases = `${competitionAlias}.penalty_phases`
+  const roundsSource = `(
+              SELECT
+                json_extract(je.value, '$.round') AS round,
+                json_extract(je.value, '$.position') AS position
+              FROM json_each(COALESCE(${openRoundsJsonExpr}, '[]')) je
+            ) r`
   return `(
             SELECT json_object(
               'pending', COUNT(*) - COUNT(p.match_id),
@@ -85,7 +94,7 @@ export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): str
               'round', MIN(CASE WHEN r.position = 1 THEN r.round END),
               'round_ends_at', MAX(CASE WHEN r.position = 1 THEN m.start_time END)
             )
-            FROM (${openRoundsSql(competition, 'mr')}) r
+            FROM ${roundsSource}
             CROSS JOIN matches m
               ON m.competition_id = ${competition}
              AND m.round = r.round
@@ -100,22 +109,19 @@ export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): str
 
 /** Binds na ordem exigida por `pendingSummarySql`. */
 export function pendingSummaryBinds(nowIso: string, userId: string): string[] {
-  return [nowIso, nowIso, nowIso, ...roundRuleBinds(nowIso), userId, nowIso, nowIso]
+  return [nowIso, nowIso, nowIso, userId, nowIso, nowIso]
 }
 
 /** Jogo palpitado que pode pedir o pênalti, a conferir em `missingPenalties`. */
 export type PenaltyCandidate = {
   match_id: string
   phase: string
-  /** Chave de prazo `start_time|fora|id`. Null para adiado ou horário passado. */
   deadline: string | null
 }
 
 export type PendingSummary = {
   pending: number
-  /** Jogo sem palpite (ou com pênalti faltando) que começa primeiro. */
   deadline: { match_id: string; start_time: string } | null
-  /** Chave crua de `deadline`, para comparar com a dos pênaltis faltando. */
   deadline_key: string | null
   next_match_at: string | null
   round: string | null
@@ -133,7 +139,6 @@ const EMPTY_SUMMARY: PendingSummary = {
   penalty_candidates: [],
 }
 
-/** Separa `start_time|fora|id` em horário e jogo. Chave fora do formato vira null. */
 function parseDeadlineKey(key: string | null): PendingSummary['deadline'] {
   if (!key) return null
   const first = key.indexOf('|')
@@ -171,7 +176,6 @@ function parsePenaltyCandidate(raw: unknown): PenaltyCandidate | null {
   return { match_id, phase, deadline: typeof deadline === 'string' ? deadline : null }
 }
 
-/** Lista de `penalty_candidates`. Item fora do formato é descartado. */
 function parsePenaltyCandidates(raw: unknown): PenaltyCandidate[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item) => parsePenaltyCandidate(item) ?? [])

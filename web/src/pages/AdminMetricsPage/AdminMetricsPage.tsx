@@ -1,27 +1,42 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
 import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import AdminPageShell, { AdminLoadError } from '../AdminPageShell'
 import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
-import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
-import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
-import { lastDays } from './dates'
+import ArchiveSection, { ArchiveQuerySection, loadArchiveQuery } from './ArchiveSection'
+import BusinessSection from './BusinessSection'
+import { BarChart, ChartLegend, StackedBarChart } from './charts'
+import { formatNumber, parseSqlUtc } from './format'
+import { KpiCard } from './KpiCard'
 import { eventLabel } from './labels'
-import { evaluateLoginFailureAlert } from './loginFailureAlert'
+import {
+  buildAlerts,
+  buildArchiveDays,
+  buildArchiveStats,
+  buildKpis,
+  buildStackedSeries,
+  buildWhaleShare,
+  CRON_INFO,
+  dailyTotals,
+  isStale,
+} from './overview'
 import CompetitionActivitySection, {
   type CompetitionActivityResponse,
 } from './CompetitionActivitySection'
 import HeatmapSection, { type HeatmapResponse } from './HeatmapSection'
 import InviteFunnelSection, { type InviteFunnelResponse } from './InviteFunnelSection'
 import SignupOriginsSection, { type SignupOriginsResponse } from './SignupOriginsSection'
-import ProviderOpsSection, {
-  totalHttpFailures,
-  type CompetitionNames,
-  type OpsResponse,
-} from './ProviderOpsSection'
+import QuotaUsageSection, { type QuotaUsageResponse } from './QuotaUsageSection'
+import ProviderOpsSection, { type CompetitionNames, type OpsResponse } from './ProviderOpsSection'
+import type {
+  ArchiveQueryResponse,
+  ArchiveResponse,
+  BusinessResponse,
+  MetricsAlert,
+  OverviewResponse,
+} from './types'
 
 /**
  * Dashboard admin de métricas server-side (Analytics Engine + R2).
@@ -32,408 +47,33 @@ import ProviderOpsSection, {
  * página mostra "acesso restrito". Não há link de navegação — URL direta.
  */
 
-interface OverviewResponse {
-  days: number
-  totals: { event_type: string; count: string | number }[]
-  daily: { day: string; event_type: string; count: string | number }[]
-  poller: {
-    status: string
-    runs: string | number
-    avg_duration_ms: string | number
-    max_duration_ms: string | number
-  }[]
-  predictions: { active_users: string | number; total: string | number }
-  cache: { result: string; count: string | number }[]
-  loginFailures: { reason: string; count: string | number }[]
-  apiCallsDaily: { day: string; api_calls: string | number }[]
-  recentErrors: {
-    timestamp: string
-    event_type: string
-    blob2: string
-    blob3: string
-    blob4: string
-  }[]
-  sampling: { avg_sample_interval: string | number }
-  whales: { user_hash: string; predictions: string | number }[]
-  lastRuns: { event_type: string; last_run: string }[]
-  emailHealth: {
-    rounds: string | number
-    sent: string | number
-    failed: string | number
-  }
-  latency: {
-    route: string
-    requests: string | number
-    avg_ms: string | number
-    max_ms: string | number
-    avg_db_ms: string | number
-  }[]
-  predictionsDaily: { day: string; users: string | number }[]
-}
-
-// KPIs de negócio a partir do D1 (estado real da base) — GET /metrics/business.
-interface BusinessResponse {
-  days: number
-  usersTotal: number
-  usersInGroup: number
-  usersWhoPredicted: number
-  usersCreatedInPeriod: number
-  groupsCreatedInPeriod: number
-  avgGroupsPerUser: number
-  medianGroupsPerUser: number
-  // Ausentes numa API anterior ao snapshot por campeonato — a página cai no
-  // top 10 legado (`topCompetitions`) enquanto o deploy da API não chega.
-  activeGroupDays?: number
-  competitions?: CompetitionSnapshot[]
-  topCompetitions: { competition: string; groups: number }[]
-}
-
-// Uma linha por temporada cadastrada (inclusive sem grupo) — só agregados.
-interface CompetitionSnapshot {
-  id: string
-  name: string
-  slug: string
-  season: string | null
-  provider: string | null
-  visibility: string
-  status: string
-  groups_current: number
-  members: number
-  active_groups_14d: number
-  // Saúde de resultados (D1). Ausentes numa API anterior a esse recorte —
-  // a página mostra "—" / aviso em vez de tratar a falta como zero.
-  overdue_no_score?: number
-  finished_unscored?: number
-}
-
-interface ArchiveResponse {
-  // `events` = contagem real do dia (customMetadata do export); null em
-  // arquivo antigo que o backfill de metadata ainda não alcançou.
-  files: {
-    key: string
-    size: number
-    uploaded: string
-    events: number | null
-  }[]
-}
-
-// Análise sob demanda do arquivo frio: agrega o CORPO dos NDJSON de um período
-// (GET /metrics/archive/query). Único jeito de dissecar dados além da janela do AE.
-interface ArchiveQueryResponse {
-  from: string
-  to: string
-  filesRead: number
-  totalEvents: number
-  byType: { event_type: string; count: number }[]
-  byDay: { day: string; count: number }[]
-}
-
-// Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
-const MAX_CHART_TYPES = SERIES_COLORS.length
-
-/**
- * Monta as barras empilhadas: um segmento por tipo de evento por dia, tipos
- * ordenados por volume total, excedentes da paleta agrupados em "outros".
- * Dias sem evento entram zerados (buraco visível = dia sem tráfego).
- */
-function buildStackedSeries(
-  daily: OverviewResponse['daily'],
-  totals: OverviewResponse['totals'],
-  days: number,
-) {
-  const ranked = totals.map((t) => t.event_type)
-  const top = ranked.slice(0, MAX_CHART_TYPES)
-  const colorFor = new Map(top.map((type, i) => [type, SERIES_COLORS[i]]))
-  const hasOthers = ranked.length > top.length
-
-  const byDay = new Map<string, Map<string, number>>()
-  for (const row of daily) {
-    const day = row.day.slice(0, 10) // "YYYY-MM-DD hh:mm:ss" → "YYYY-MM-DD"
-    const type = colorFor.has(row.event_type) ? row.event_type : 'outros'
-    const perType = byDay.get(day) ?? new Map<string, number>()
-    perType.set(type, (perType.get(type) ?? 0) + Number(row.count))
-    byDay.set(day, perType)
-  }
-
-  const order = hasOthers ? [...top, 'outros'] : top
-  const series = lastDays(days).map((label) => {
-    const perType = byDay.get(label)
-    return {
-      label,
-      segments: order
-        .map((type) => ({
-          type,
-          value: perType?.get(type) ?? 0,
-          color: colorFor.get(type) ?? OTHER_COLOR,
-        }))
-        .filter((s) => s.value > 0),
-    }
-  })
-
-  const legend = order.map((type) => ({
-    type,
-    color: colorFor.get(type) ?? OTHER_COLOR,
-  }))
-  return { series, legend }
-}
-
-function buildApiCallsSeries(
-  apiCallsDaily: OverviewResponse['apiCallsDaily'],
-  days: number,
-): { label: string; total: number }[] {
-  const byDay = new Map(apiCallsDaily.map((r) => [r.day.slice(0, 10), Number(r.api_calls)]))
-  return lastDays(days).map((label) => ({
-    label,
-    total: byDay.get(label) ?? 0,
-  }))
-}
-
-/** DAU: usuários distintos palpitando por dia, alinhado à janela do período. */
-function buildDauSeries(
-  predictionsDaily: OverviewResponse['predictionsDaily'],
-  days: number,
-): { label: string; total: number }[] {
-  const byDay = new Map(predictionsDaily.map((r) => [r.day.slice(0, 10), Number(r.users)]))
-  return lastDays(days).map((label) => ({
-    label,
-    total: byDay.get(label) ?? 0,
-  }))
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('pt-BR')
-}
-
-function formatBytes(size: number): string {
-  if (size === 0) return '0 B (vazio)'
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
 function formatTimestamp(ts: string): string {
-  // SQL API devolve "YYYY-MM-DD hh:mm:ss" (UTC) — encurta pra dd/mm hh:mm.
   const [date, time] = ts.split(' ')
   if (!date || !time) return ts
   const [, m, d] = date.split('-')
   return `${d}/${m} ${time.slice(0, 5)}`
 }
 
-/** Duração legível: ms cru até 1 s, segundos até 1 min, depois minutos. */
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
   return `${(ms / 60_000).toFixed(1)} min`
 }
 
-/** "há X min/h/dias" a partir de um timestamp UTC da SQL API. */
 function formatAgo(ts: string): string {
-  const date = new Date(`${ts.replace(' ', 'T')}Z`)
-  if (Number.isNaN(date.getTime())) return ts
-  const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000))
+  const time = parseSqlUtc(ts)
+  if (Number.isNaN(time)) return ts
+  const mins = Math.max(0, Math.round((Date.now() - time) / 60_000))
   if (mins < 60) return `há ${mins} min`
   if (mins < 48 * 60) return `há ${Math.round(mins / 60)} h`
   return `há ${Math.round(mins / (24 * 60))} dias`
-}
-
-/**
- * Pulso dos crons: nome amigável + limite de "atrasado" (minutos). Última
- * execução além do limite pinta de vermelho — cron provavelmente parado.
- */
-const CRON_INFO: Record<string, { label: string; staleAfterMin: number }> = {
-  poller_run: {
-    label: 'Poller de resultados (a cada 30 min)',
-    staleAfterMin: 45,
-  },
-  fixture_discovery_run: {
-    label: 'Descoberta de jogos (diário)',
-    staleAfterMin: 26 * 60,
-  },
-  cron_round_reminder: {
-    label: 'Lembrete de rodada (diário)',
-    staleAfterMin: 26 * 60,
-  },
-}
-
-function isStale(ts: string, staleAfterMin: number): boolean {
-  const date = new Date(`${ts.replace(' ', 'T')}Z`)
-  if (Number.isNaN(date.getTime())) return false
-  return Date.now() - date.getTime() > staleAfterMin * 60_000
-}
-
-function KpiCard({
-  label,
-  value,
-  hint,
-  status,
-}: {
-  label: string
-  value: string
-  hint?: string
-  /** Cor do valor conforme severidade — 'ok' (default) é o verde de marca. */
-  status?: 'ok' | 'warn' | 'danger'
-}) {
-  const valueClass =
-    status === 'danger'
-      ? `${styles.kpiValue} ${styles.kpiValueDanger}`
-      : status === 'warn'
-        ? `${styles.kpiValue} ${styles.kpiValueWarn}`
-        : styles.kpiValue
-  return (
-    <div className={styles.kpi}>
-      <span className={valueClass}>{value}</span>
-      <span className={styles.kpiLabel}>{label}</span>
-      {hint && <span className={styles.kpiHint}>{hint}</span>}
-    </div>
-  )
-}
-
-type MetricsAlert = { key: string; label: string; level: 'warn' | 'danger' }
-
-function buildKpis(overview: OverviewResponse) {
-  const totalOf = (type: string) =>
-    Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
-  const hits = Number(overview.cache.find((c) => c.result === 'hit')?.count ?? 0)
-  const misses = Number(overview.cache.find((c) => c.result === 'miss')?.count ?? 0)
-  const cacheTotal = hits + misses
-  const groupsCreated = totalOf('group_created')
-  const groupsJoined = totalOf('group_joined')
-  return {
-    activeUsers: Number(overview.predictions.active_users ?? 0),
-    predictions: Number(overview.predictions.total ?? 0),
-    groupsCreated,
-    // Conversão de convite: entradas por grupo criado no período.
-    joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
-    logins: totalOf('login_success'),
-    cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
-    emailUnsubs: totalOf('email_unsubscribed'),
-    emailResubs: totalOf('email_resubscribed'),
-  }
-}
-
-// Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
-function buildWhaleShare(overview: OverviewResponse, totalPredictions: number) {
-  if (totalPredictions === 0 || overview.whales.length === 0) return null
-  const shareOf = (n: number) =>
-    Math.min(
-      100,
-      Math.round(
-        (overview.whales.slice(0, n).reduce((sum, w) => sum + Number(w.predictions), 0) /
-          totalPredictions) *
-          100,
-      ),
-    )
-  return { top1: shareOf(1), top5: shareOf(5) }
-}
-
-/**
- * Eventos que ficam só na lista de inspeção "Erros recentes".
- * Não disparam o chip genérico do topo: login tem alerta proporcional próprio;
- * oauth_error é etapa anterior ao callback e também entra na inspeção.
- */
-const RECENT_ERROR_INSPECTION_ONLY = new Set(['login_failure', 'oauth_error'])
-
-// Triagem rápida: o que precisa de atenção agora, pro topo da página.
-function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): MetricsAlert[] {
-  const list: MetricsAlert[] = []
-
-  for (const r of overview.lastRuns) {
-    const info = CRON_INFO[r.event_type]
-    if (info && isStale(r.last_run, info.staleAfterMin)) {
-      list.push({
-        key: `stale-${r.event_type}`,
-        label: `${info.label} atrasado`,
-        level: 'danger',
-      })
-    }
-  }
-  const actionableRecentErrors = overview.recentErrors.filter(
-    (e) => !RECENT_ERROR_INSPECTION_ONLY.has(e.event_type),
-  )
-  if (actionableRecentErrors.length > 0) {
-    list.push({
-      key: 'errors',
-      label: `${actionableRecentErrors.length} erro(s) recente(s)`,
-      level: 'danger',
-    })
-  }
-  const httpFailures = totalHttpFailures(ops)
-  if (httpFailures > 0) {
-    list.push({
-      key: 'provider-http',
-      label: `${httpFailures} falha(s) HTTP de provedor`,
-      level: 'warn',
-    })
-  }
-  const emailFailed = Number(overview.emailHealth.failed)
-  if (emailFailed > 0) {
-    list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
-  }
-  // totals só lista event_types presentes no período (GROUP BY); ausência de
-  // login_success é zero legítimo, não "dado faltando".
-  const loginSuccess = Number(
-    overview.totals.find((t) => t.event_type === 'login_success')?.count ?? 0,
-  )
-  const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
-  const loginAlert = evaluateLoginFailureAlert({
-    loginSuccess,
-    loginFailures: loginFailTotal,
-    avgSampleInterval: Number(overview.sampling.avg_sample_interval ?? 1),
-  })
-  if (loginAlert) {
-    list.push({ key: 'login', label: loginAlert.label, level: 'warn' })
-  }
-  return list
-}
-
-type ArchiveFile = ArchiveResponse['files'][number]
-
-// Verifica a integridade do export nos últimos 14 dias.
-function buildArchiveDays(files: ArchiveFile[]) {
-  const byDay = new Map(files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]))
-  const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
-  return lastDays(14, 1)
-    .reverse()
-    .map((day) => {
-      const key = day.replaceAll('-', '/')
-      const file = byDay.get(key) ?? null
-      return { day, file, beforeFirstExport: !file && day < oldest }
-    })
-}
-
-// Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
-// enxerga além da janela de ~3 meses do Analytics Engine.
-function buildArchiveStats(files: ArchiveFile[]) {
-  const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
-  const totalEvents = files.reduce((sum, f) => sum + (f.events ?? 0), 0)
-  const missingMeta = files.filter((f) => f.events === null).length
-  const oldestDay = files
-    .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
-    .sort()[0]
-
-  const byMonth = new Map<string, number>()
-  for (const f of files) {
-    const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
-    byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
-  }
-  const monthly = [...byMonth.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([label, total]) => ({ label, total }))
-
-  return {
-    totalDays: files.length,
-    totalBytes,
-    totalEvents,
-    missingMeta,
-    oldestDay,
-    monthly,
-  }
 }
 
 function useMetricsData(
   overview: OverviewResponse | null,
   archive: ArchiveResponse | null,
   ops: OpsResponse | null,
+  business: BusinessResponse | null,
 ) {
   const stacked = useMemo(
     () =>
@@ -444,18 +84,21 @@ function useMetricsData(
   )
 
   const apiCallsSeries = useMemo(
-    () => (overview ? buildApiCallsSeries(overview.apiCallsDaily, overview.days) : []),
+    () =>
+      overview
+        ? dailyTotals(overview.apiCallsDaily, (r) => Number(r.api_calls), overview.days)
+        : [],
     [overview],
   )
 
   const dauSeries = useMemo(
-    () => (overview ? buildDauSeries(overview.predictionsDaily, overview.days) : []),
+    () =>
+      overview ? dailyTotals(overview.predictionsDaily, (r) => Number(r.users), overview.days) : [],
     [overview],
   )
 
   const kpis = useMemo(() => (overview ? buildKpis(overview) : null), [overview])
 
-  // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
   const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
   const isSampling = avgSample > 1.01
 
@@ -464,7 +107,10 @@ function useMetricsData(
     [overview, kpis],
   )
 
-  const alerts = useMemo(() => (overview ? buildAlerts(overview, ops) : []), [overview, ops])
+  const alerts = useMemo(
+    () => (overview ? buildAlerts(overview, ops, business) : []),
+    [overview, ops, business],
+  )
 
   const archiveFiles = archive && archive.files.length > 0 ? archive.files : null
 
@@ -538,305 +184,6 @@ function OverviewKpisRow({
   )
 }
 
-function BusinessSection({ business }: { business: BusinessResponse }) {
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>Visão geral do produto</h2>
-      <div className={styles.kpiRow}>
-        <KpiCard
-          label="usuários"
-          value={formatNumber(business.usersTotal)}
-          hint="total, lifetime"
-        />
-        <KpiCard
-          label="usuários em algum grupo"
-          value={formatNumber(business.usersInGroup)}
-          hint="lifetime"
-        />
-        <KpiCard
-          label="usuários que já palpitaram"
-          value={formatNumber(business.usersWhoPredicted)}
-          hint="lifetime"
-        />
-        <KpiCard
-          label="contas criadas"
-          value={formatNumber(business.usersCreatedInPeriod)}
-          hint={`últimos ${business.days}d`}
-        />
-        <KpiCard
-          label="grupos criados"
-          value={formatNumber(business.groupsCreatedInPeriod)}
-          hint={`últimos ${business.days}d`}
-        />
-        <KpiCard
-          label="grupos por usuário"
-          value={business.avgGroupsPerUser.toFixed(1)}
-          hint={`mediana ${business.medianGroupsPerUser}`}
-        />
-      </div>
-
-      {business.competitions ? (
-        <>
-          <CompetitionsTable
-            competitions={business.competitions}
-            activeGroupDays={business.activeGroupDays ?? 14}
-          />
-          <ResultsHealthTable competitions={business.competitions} />
-        </>
-      ) : (
-        <LegacyTopCompetitions topCompetitions={business.topCompetitions} />
-      )}
-    </section>
-  )
-}
-
-const VISIBILITY_FILTERS = [
-  { value: 'all', label: 'Todas' },
-  { value: 'public', label: 'Públicas' },
-  { value: 'pilot', label: 'Piloto' },
-]
-
-const STATUS_FILTERS = [
-  { value: 'all', label: 'Todos' },
-  { value: 'ongoing', label: 'Em andamento' },
-  { value: 'upcoming', label: 'Próximos' },
-  { value: 'finished', label: 'Encerrados' },
-]
-
-const VISIBILITY_LABELS: Record<string, string> = { public: 'pública', pilot: 'piloto' }
-
-const STATUS_LABELS: Record<string, string> = {
-  ongoing: 'em andamento',
-  upcoming: 'próximo',
-  finished: 'encerrado',
-}
-
-function FilterPills({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string
-  options: { value: string; label: string }[]
-  value: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <div className={styles.filterRow}>
-      <span className={styles.filterLabel}>{label}</span>
-      <div className={`${shared.periods} ${styles.filterPills}`} role="group" aria-label={label}>
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={o.value === value}
-            className={o.value === value ? shared.periodActive : shared.period}
-            onClick={() => onChange(o.value)}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function CompetitionsTable({
-  competitions,
-  activeGroupDays,
-}: {
-  competitions: CompetitionSnapshot[]
-  activeGroupDays: number
-}) {
-  const [visibility, setVisibility] = useState('all')
-  const [status, setStatus] = useState('all')
-
-  const filtered = competitions.filter(
-    (c) =>
-      (visibility === 'all' || c.visibility === visibility) &&
-      (status === 'all' || c.status === status),
-  )
-  const withoutGroups = filtered.filter((c) => c.groups_current === 0).length
-
-  function changeFilter(filter: 'visibility' | 'status', value: string) {
-    trackEvent('click_admin_metrics_filtro_campeonato', { filter, value })
-    if (filter === 'visibility') setVisibility(value)
-    else setStatus(value)
-  }
-
-  return (
-    <>
-      <h3 className={styles.subTitle}>Grupos por campeonato</h3>
-      <FilterPills
-        label="Visibilidade"
-        options={VISIBILITY_FILTERS}
-        value={visibility}
-        onChange={(v) => changeFilter('visibility', v)}
-      />
-      <FilterPills
-        label="Status"
-        options={STATUS_FILTERS}
-        value={status}
-        onChange={(v) => changeFilter('status', v)}
-      />
-      <p className={styles.hint}>
-        {filtered.length} de {competitions.length} temporada(s) · {withoutGroups} sem grupo · ativo
-        = grupo com palpite nos últimos {activeGroupDays} dias
-      </p>
-      {filtered.length === 0 ? (
-        <p className={styles.hint}>Nenhuma temporada com esses filtros.</p>
-      ) : (
-        <div className={styles.tableScroll}>
-          <table className={styles.table} aria-label="Grupos por campeonato">
-            <thead>
-              <tr>
-                <th>campeonato</th>
-                <th>temporada</th>
-                <th>provider</th>
-                <th>visibilidade</th>
-                <th>status</th>
-                <th className={styles.num}>grupos</th>
-                <th className={styles.num}>membros</th>
-                <th className={styles.num}>ativos {activeGroupDays}d</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => (
-                <tr key={c.id}>
-                  <td title={c.id}>{c.name}</td>
-                  <td className={styles.nowrap} title={c.slug}>
-                    {c.season ?? c.slug}
-                  </td>
-                  <td className={styles.nowrap}>{c.provider ?? '—'}</td>
-                  <td className={c.visibility === 'pilot' ? styles.statusWarn : undefined}>
-                    {VISIBILITY_LABELS[c.visibility] ?? c.visibility}
-                  </td>
-                  <td className={styles.nowrap}>{STATUS_LABELS[c.status] ?? c.status}</td>
-                  <td
-                    className={`${styles.num} ${c.groups_current === 0 ? styles.statusMuted : ''}`}
-                  >
-                    {formatNumber(c.groups_current)}
-                  </td>
-                  <td className={styles.num}>{formatNumber(c.members)}</td>
-                  <td className={styles.num}>{formatNumber(c.active_groups_14d)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  )
-}
-
-/** Contagem de saúde de resultados; "—" quando a API ainda não manda o campo. */
-function HealthCount({ value }: { value: number | undefined }) {
-  if (value === undefined) return <>—</>
-  return <span className={value > 0 ? styles.statusWarn : styles.statusMuted}>{value}</span>
-}
-
-/**
- * Buraco de feed (jogo sem placar após kickoff + 3h) versus backlog de
- * pontuação (finished sem scored_at), por temporada. Quem tem pendência vem
- * primeiro; zeros continuam visíveis.
- */
-function ResultsHealthTable({ competitions }: { competitions: CompetitionSnapshot[] }) {
-  if (competitions.length === 0) return null
-
-  const hasHealth = competitions.some(
-    (c) => c.overdue_no_score !== undefined || c.finished_unscored !== undefined,
-  )
-  if (!hasHealth) {
-    return (
-      <>
-        <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
-        <p className={styles.hint}>Indisponível: a API ainda não envia esses números.</p>
-      </>
-    )
-  }
-
-  const pending = (c: CompetitionSnapshot) => (c.overdue_no_score ?? 0) + (c.finished_unscored ?? 0)
-  const sorted = [...competitions].sort((a, b) => pending(b) - pending(a))
-  const withOverdue = competitions.filter((c) => (c.overdue_no_score ?? 0) > 0).length
-  const withUnscored = competitions.filter((c) => (c.finished_unscored ?? 0) > 0).length
-
-  return (
-    <>
-      <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
-      <p className={styles.hint}>
-        {withOverdue} temporada(s) com jogo atrasado · {withUnscored} com jogo encerrado sem
-        pontuação · atrasado = agendado ou ao vivo, sem placar completo, 3h após o início (adiados
-        ficam de fora)
-      </p>
-      <div className={styles.tableScroll}>
-        <table className={styles.table} aria-label="Saúde dos resultados por campeonato">
-          <thead>
-            <tr>
-              <th>campeonato</th>
-              <th>temporada</th>
-              <th>status</th>
-              <th className={styles.num}>atrasados sem placar</th>
-              <th className={styles.num}>encerrados sem pontuação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((c) => (
-              <tr key={c.id}>
-                <td title={c.id}>{c.name}</td>
-                <td className={styles.nowrap} title={c.slug}>
-                  {c.season ?? c.slug}
-                </td>
-                <td className={styles.nowrap}>{STATUS_LABELS[c.status] ?? c.status}</td>
-                <td className={styles.num}>
-                  <HealthCount value={c.overdue_no_score} />
-                </td>
-                <td className={styles.num}>
-                  <HealthCount value={c.finished_unscored} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  )
-}
-
-/** Top 10 de uma API anterior ao snapshot por campeonato. */
-function LegacyTopCompetitions({
-  topCompetitions,
-}: {
-  topCompetitions: BusinessResponse['topCompetitions']
-}) {
-  return (
-    <>
-      <h3 className={styles.subTitle}>Campeonatos com mais grupos ativos</h3>
-      {topCompetitions.length === 0 ? (
-        <p className={styles.hint}>Nenhum grupo ativo.</p>
-      ) : (
-        <div>
-          {topCompetitions.map((c, index) => {
-            const max = topCompetitions[0].groups
-            const pct = max > 0 ? Math.round((c.groups / max) * 100) : 0
-            return (
-              <div key={`${c.competition}-${index}`} className={styles.miniBarRow}>
-                <span className={styles.miniBarLabel} title={c.competition}>
-                  {c.competition}
-                </span>
-                <span className={styles.miniBarTrack}>
-                  <span className={styles.miniBarFill} style={{ width: `${pct}%` }} />
-                </span>
-                <span className={styles.miniBarValue}>{formatNumber(c.groups)}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </>
-  )
-}
-
 function EventsSection({
   overview,
   stacked,
@@ -849,14 +196,14 @@ function EventsSection({
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Eventos por dia · últimos {overview.days} dias</h2>
         <StackedBarChart days={stacked.series} ariaLabel="Eventos por dia, por tipo" />
-        <div className={styles.legend}>
-          {stacked.legend.map((l) => (
-            <span key={l.type} className={styles.legendItem} title={l.type}>
-              <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
-              {eventLabel(l.type)}
-            </span>
-          ))}
-        </div>
+        <ChartLegend
+          items={stacked.legend.map((l) => ({
+            key: l.type,
+            color: l.color,
+            label: eventLabel(l.type),
+            title: l.type,
+          }))}
+        />
       </section>
 
       <section className={styles.section}>
@@ -868,8 +215,6 @@ function EventsSection({
             <tbody>
               {overview.totals.map((t) => (
                 <tr key={t.event_type}>
-                  {/* title mantém o event_type cru — é a chave do esquema
-                      posicional em docs/observability.md */}
                   <td title={t.event_type}>{eventLabel(t.event_type)}</td>
                   <td className={styles.num}>{formatNumber(Number(t.count))}</td>
                 </tr>
@@ -1112,7 +457,6 @@ function RecentErrorsSection({ overview }: { overview: OverviewResponse }) {
                 <td className={styles.nowrap} title={e.event_type}>
                   {eventLabel(e.event_type)}
                 </td>
-                {/* blobs posicionais variam por tipo de evento — mostra cru */}
                 <td className={styles.detail}>
                   {[e.blob2, e.blob3, e.blob4].filter(Boolean).join(' · ')}
                 </td>
@@ -1125,169 +469,10 @@ function RecentErrorsSection({ overview }: { overview: OverviewResponse }) {
   )
 }
 
-function ArchiveSection({
-  archiveStats,
-  archiveDays,
-}: {
-  archiveStats: ReturnType<typeof useMetricsData>['archiveStats']
-  archiveDays: ReturnType<typeof useMetricsData>['archiveDays']
-}) {
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>Arquivo frio (R2)</h2>
-      {!archiveStats ? (
-        <p className={styles.hint}>
-          Nenhum arquivo no bucket — em dev local o R2 é simulado e começa vazio; em produção, ver
-          se o cron de export (00:05 UTC) está rodando.
-        </p>
-      ) : (
-        <>
-          <div className={styles.kpiRow}>
-            <KpiCard label="dias arquivados" value={formatNumber(archiveStats.totalDays)} />
-            <KpiCard
-              label="eventos arquivados"
-              value={`${archiveStats.missingMeta > 0 ? '≥ ' : ''}${formatNumber(archiveStats.totalEvents)}`}
-            />
-            <KpiCard label="tamanho total" value={formatBytes(archiveStats.totalBytes)} />
-            <KpiCard label="desde" value={archiveStats.oldestDay} />
-          </div>
-
-          <h3 className={styles.subTitle}>Eventos por mês · histórico completo</h3>
-          <BarChart
-            series={archiveStats.monthly}
-            ariaLabel="Eventos arquivados por mês"
-            unit=" eventos"
-            tickLabel={(l) => `${l.slice(5, 7)}/${l.slice(2, 4)}`}
-          />
-          {archiveStats.missingMeta > 0 && (
-            <p className={styles.hint}>
-              {archiveStats.missingMeta}{' '}
-              {archiveStats.missingMeta === 1 ? 'arquivo ainda sem' : 'arquivos ainda sem'} contagem
-              de eventos (export antigo) — o cron re-grava a metadata aos poucos; até lá os totais
-              acima são piso ("≥").
-            </p>
-          )}
-
-          <h3 className={styles.subTitle}>Integridade · últimos 14 dias</h3>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>dia</th>
-                <th className={styles.num}>eventos</th>
-                <th className={styles.num}>tamanho</th>
-              </tr>
-            </thead>
-            <tbody>
-              {archiveDays.map(({ day, file, beforeFirstExport }) => (
-                <tr key={day}>
-                  <td>{day}</td>
-                  {file ? (
-                    <>
-                      <td className={styles.num}>{file.events ?? '—'}</td>
-                      <td className={styles.num}>{formatBytes(file.size)}</td>
-                    </>
-                  ) : beforeFirstExport ? (
-                    <td className={styles.num} colSpan={2}>
-                      —
-                    </td>
-                  ) : (
-                    <td className={`${styles.num} ${styles.statusError}`} colSpan={2}>
-                      faltando
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className={styles.hint}>
-            <strong>faltando</strong> = o export diário não gravou o NDJSON desse dia (cron falhou;
-            o backfill re-tenta sozinho enquanto o dia estiver na janela de ~3 meses do Analytics
-            Engine). "—" = dia anterior ao primeiro export.
-          </p>
-        </>
-      )}
-    </section>
-  )
-}
-
-/** Bounds UTC de um mês "YYYY-MM": primeiro e último dia (YYYY-MM-DD). */
-function monthBounds(month: string): { from: string; to: string } {
-  const [y, m] = month.split('-').map(Number)
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
-  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` }
-}
-
-function ArchiveQuerySection({
-  months,
-  selected,
-  loading,
-  result,
-  onSelect,
-}: {
-  months: { label: string; total: number }[]
-  selected: string | null
-  loading: boolean
-  result: ArchiveQueryResponse | null
-  onSelect: (month: string) => void
-}) {
-  if (months.length === 0) return null
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>Análise do arquivo (além da janela do AE)</h2>
-      <p className={styles.hint}>
-        Lê o corpo dos NDJSON de um mês e agrega por tipo — enxerga dados que já saíram dos ~3 meses
-        do Analytics Engine.
-      </p>
-      <div className={shared.periods}>
-        {months.map((m) => (
-          <button
-            key={m.label}
-            type="button"
-            className={m.label === selected ? shared.periodActive : shared.period}
-            onClick={() => {
-              trackEvent('click_admin_metrics_arquivo_mes', { month: m.label })
-              onSelect(m.label)
-            }}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      {loading && <p className={styles.hint}>Lendo arquivos…</p>}
-
-      {result && !loading && (
-        <>
-          <p className={styles.hint}>
-            {result.from} a {result.to} · {result.filesRead} arquivo(s) ·{' '}
-            <strong>{result.totalEvents}</strong> eventos
-          </p>
-          {result.byType.length === 0 ? (
-            <p className={styles.hint}>Nenhum evento arquivado nesse mês.</p>
-          ) : (
-            <table className={styles.table}>
-              <tbody>
-                {result.byType.map((t) => (
-                  <tr key={t.event_type}>
-                    <td title={t.event_type}>{eventLabel(t.event_type)}</td>
-                    <td className={styles.num}>{t.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
-/** Corpo de uma seção opcional: rede, status de erro ou JSON inválido viram null. */
 async function optionalJson<T>(res: Response | null): Promise<T | null> {
   return res?.ok ? ((await res.json().catch(() => null)) as T | null) : null
 }
 
-/** Tudo o que a página mostra para um período, lido de uma vez. */
 interface MetricsSnapshot {
   overview: OverviewResponse
   business: BusinessResponse | null
@@ -1297,9 +482,9 @@ interface MetricsSnapshot {
   heatmap: HeatmapResponse | null
   inviteFunnel: InviteFunnelResponse | null
   signupOrigins: SignupOriginsResponse | null
+  quota: QuotaUsageResponse | null
 }
 
-/** Nada carregado: período em carga, com falha ou sem acesso. */
 const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
   overview: null,
   business: null,
@@ -1309,27 +494,26 @@ const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
   heatmap: null,
   inviteFunnel: null,
   signupOrigins: null,
+  quota: null,
 }
 
-/**
- * Lê todas as seções do período. Não lança: 403 do overview vira `forbidden`,
- * qualquer outra falha do overview (ou corpo inválido de negócio/arquivo) vira
- * `failed`. Seção secundária que falha fica null, nunca com o dado de outro período.
- */
-async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
+async function loadMetrics(
+  days: number,
+  signal: AbortSignal,
+): Promise<AdminLoad<MetricsSnapshot>> {
   const params = new URLSearchParams({ days: String(days) })
   try {
-    const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes] =
+    const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes, quotaRes] =
       await Promise.all([
-        apiFetch(buildApiUrl('/metrics/overview', params)),
-        apiFetch(buildApiUrl('/metrics/business', params)),
-        apiFetch(buildApiUrl('/metrics/archive')),
-        // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
-        apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/overview', params), { signal }),
+        apiFetch(buildApiUrl('/metrics/business', params), { signal }),
+        apiFetch(buildApiUrl('/metrics/archive'), { signal }),
+        apiFetch(buildApiUrl('/metrics/ops', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/competition-activity', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/heatmap', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/invite-funnel', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/signup-origins', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/quota'), { signal }).catch(() => null),
       ])
     if (ovRes.status === 403) return { kind: 'forbidden' }
     if (!ovRes.ok) return { kind: 'failed' }
@@ -1337,7 +521,6 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
       kind: 'ok',
       data: {
         overview: (await ovRes.json()) as OverviewResponse,
-        // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
         business: bizRes.ok ? ((await bizRes.json()) as BusinessResponse) : null,
         archive: arRes.ok ? ((await arRes.json()) as ArchiveResponse) : null,
         ops: await optionalJson<OpsResponse>(opsRes),
@@ -1345,6 +528,7 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
         heatmap: await optionalJson<HeatmapResponse>(heatmapRes),
         inviteFunnel: await optionalJson<InviteFunnelResponse>(funnelRes),
         signupOrigins: await optionalJson<SignupOriginsResponse>(originsRes),
+        quota: await optionalJson<QuotaUsageResponse>(quotaRes),
       },
     }
   } catch {
@@ -1352,28 +536,23 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
   }
 }
 
-/** GET /metrics/archive/query de um mês. Falha vira null: o mês fica sem resultado. */
-async function loadArchiveQuery(month: string): Promise<ArchiveQueryResponse | null> {
-  try {
-    const res = await apiFetch(
-      buildApiUrl('/metrics/archive/query', new URLSearchParams(monthBounds(month))),
-    )
-    return res.ok ? ((await res.json()) as ArchiveQueryResponse) : null
-  } catch {
-    return null
-  }
-}
-
 export default function AdminMetricsPage() {
   useDocumentTitle('Métricas')
 
   const [days, setDays] = useState<number>(30)
-  const { data, error, loading, retry } = useAdminLoad(days, loadMetrics)
-  const { overview, business, archive, ops, activity, heatmap, inviteFunnel, signupOrigins } =
-    data ?? NO_METRICS
+  const { data, error, loading, retry } = useAdminLoad('metrics', days, loadMetrics)
+  const {
+    overview,
+    business,
+    archive,
+    ops,
+    activity,
+    heatmap,
+    inviteFunnel,
+    signupOrigins,
+    quota,
+  } = data ?? NO_METRICS
 
-  // Análise do arquivo frio, sob demanda (um mês por vez) — independente do período.
-  // Só o último mês pedido grava resultado e encerra o "Lendo arquivos…".
   const [queryMonth, setQueryMonth] = useState<string | null>(null)
   const [queryResult, setQueryResult] = useState<ArchiveQueryResponse | null>(null)
   const [queryLoading, setQueryLoading] = useState(false)
@@ -1381,7 +560,6 @@ export default function AdminMetricsPage() {
   useEffect(() => {
     const queries = latestQuery
     return () => {
-      // Desmontou: nenhum pedido em voo é o último.
       queries.current += 1
     }
   }, [])
@@ -1397,7 +575,7 @@ export default function AdminMetricsPage() {
     alerts,
     archiveDays,
     archiveStats,
-  } = useMetricsData(overview, archive, ops)
+  } = useMetricsData(overview, archive, ops, business)
 
   const competitionNames: CompetitionNames = useMemo(
     () =>
@@ -1451,6 +629,8 @@ export default function AdminMetricsPage() {
                 merece atenção.
               </p>
             )}
+
+            <QuotaUsageSection data={quota} />
 
             {business && <BusinessSection business={business} />}
 

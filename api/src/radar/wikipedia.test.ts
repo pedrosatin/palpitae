@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchPageviews } from './wikipedia'
+import { fetchPageviews, WIKIMEDIA_TIMEOUT_MS } from './wikipedia'
 
 function mockFetch(response: Response) {
   const spy = vi.fn(async (_url: string, _init?: RequestInit) => response)
@@ -56,5 +56,24 @@ describe('fetchPageviews', () => {
     await expect(fetchPageviews('Premier League', '2026-08-10', '2026-08-18')).rejects.toThrow(
       /500/,
     )
+  })
+
+  it('aborta a requisição pendurada pelo timeout', async () => {
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal)
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => realTimeout(20))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+          }),
+      ),
+    )
+
+    await expect(
+      fetchPageviews('Premier League', '2026-08-10', '2026-08-18'),
+    ).rejects.toMatchObject({ name: 'TimeoutError' })
+    expect(timeoutSpy).toHaveBeenCalledWith(WIKIMEDIA_TIMEOUT_MS)
   })
 })

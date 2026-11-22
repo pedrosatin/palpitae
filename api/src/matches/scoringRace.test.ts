@@ -15,7 +15,6 @@ import { syncFixtures } from './sync'
  */
 
 const KICKOFF = '2026-11-08T15:30:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = Date.parse(KICKOFF) + 120 * 60_000
 
 function fdMatch(status: string, home: number | null = null, away: number | null = null) {
@@ -32,7 +31,6 @@ function fdMatch(status: string, home: number | null = null, away: number | null
   }
 }
 
-/** football-data responde `provider.match`; a ESPN do fallback, nenhum evento. */
 function stubProvider() {
   const provider = { match: fdMatch('TIMED') }
   vi.stubGlobal(
@@ -57,7 +55,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/** Jogo agendado no banco e um palpite por placar em `picks`, no mesmo grupo. */
 async function setup(picks: [number, number][]) {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -86,7 +83,6 @@ async function setup(picks: [number, number][]) {
   return { sqlite, db, provider }
 }
 
-/** Placar, marcador, pontos de cada palpite e ranking, sem horários. */
 function readState(sqlite: DatabaseSync) {
   return {
     match: sqlite
@@ -103,10 +99,6 @@ function readState(sqlite: DatabaseSync) {
   }
 }
 
-/**
- * Segura a execução no primeiro batch que grava pontos de palpite. `reached`
- * resolve quando ela chega lá; `release` deixa seguir.
- */
 function checkpoint() {
   let arrive!: () => void
   let release!: () => void
@@ -119,10 +111,6 @@ function checkpoint() {
   return { reached, release, wait }
 }
 
-/**
- * Segunda conexão ao mesmo banco. Antes do primeiro batch que grava pontos de
- * palpite, espera o checkpoint. Os demais batches passam direto.
- */
 function connection(db: D1Database, gate: ReturnType<typeof checkpoint>): D1Database {
   const pointWrites = new WeakSet<object>()
   let held = false
@@ -147,7 +135,6 @@ function connection(db: D1Database, gate: ReturnType<typeof checkpoint>): D1Data
   } as unknown as D1Database
 }
 
-/** Falha simulada do D1 dentro do batch: o SQLite aborta a instrução e o batch volta atrás. */
 function failWrites(sqlite: DatabaseSync, table: 'predictions' | 'leaderboard', when = '1') {
   for (const op of ['INSERT', 'UPDATE']) {
     sqlite.exec(`CREATE TEMP TRIGGER fail_${table}_${op.toLowerCase()} BEFORE ${op} ON ${table}
@@ -159,7 +146,6 @@ function stopFailing(sqlite: DatabaseSync, table: 'predictions' | 'leaderboard')
   sqlite.exec(`DROP TRIGGER fail_${table}_insert; DROP TRIGGER fail_${table}_update`)
 }
 
-/** Ana crava 1-0, Beto crava 2-0, Caio aposta no visitante. */
 const PICKS: [number, number][] = [
   [1, 0],
   [2, 0],
@@ -205,7 +191,6 @@ describe('pontuação com discovery e poller ao mesmo tempo', () => {
       pollActiveMatches(connection(db, poller), 'test', undefined, NOW),
       discoverFixtures(connection(db, discovery), 'test', undefined, NOW),
     ])
-    // Barreira: as duas leram o jogo sem scored_at antes de qualquer gravação.
     await Promise.all([poller.reached, discovery.reached])
     poller.release()
     discovery.release()
@@ -220,9 +205,9 @@ describe('pontuação com discovery e poller ao mesmo tempo', () => {
     const poller = checkpoint()
 
     const polling = pollActiveMatches(connection(db, poller), 'test', undefined, NOW)
-    await poller.reached // o poller leu 1-0 e ainda não gravou
+    await poller.reached
     provider.match = fdMatch('FINISHED', 2, 0)
-    await discoverFixtures(db, 'test', undefined, NOW) // corrige para 2-0 e pontua
+    await discoverFixtures(db, 'test', undefined, NOW)
     poller.release()
     await polling
 
@@ -235,9 +220,9 @@ describe('pontuação com discovery e poller ao mesmo tempo', () => {
     const poller = checkpoint()
 
     const polling = pollActiveMatches(connection(db, poller), 'test', undefined, NOW)
-    await poller.reached // o poller leu 1-0 e ainda não gravou
+    await poller.reached
     provider.match = fdMatch('FINISHED', 2, 0)
-    await syncFixtures({ competitionCode: 'PPL', season: 2026, db, apiKey: 'test' }) // só a correção
+    await syncFixtures({ competitionCode: 'PPL', season: 2026, db, apiKey: 'test' })
     poller.release()
     await polling
 
@@ -255,7 +240,6 @@ describe('pontuação com discovery e poller ao mesmo tempo', () => {
 
 describe('pontuação após falha parcial', () => {
   it('falha num lote de pontos não marca o jogo, e o retry pontua todos os palpites', async () => {
-    // Os pontos dos 120 palpites, o scored_at e o ranking vão na mesma gravação.
     const { sqlite, db, provider } = await setup(Array.from({ length: 120 }, () => [1, 0]))
     provider.match = fdMatch('FINISHED', 1, 0)
     failWrites(sqlite, 'predictions', `OLD.id = 'p001'`)
@@ -285,7 +269,7 @@ describe('pontuação após falha parcial', () => {
 
     provider.match = fdMatch('FINISHED', 2, 0)
     failWrites(sqlite, 'leaderboard')
-    await discoverFixtures(db, 'test', undefined, NOW) // a falha fica no log da rotina
+    await discoverFixtures(db, 'test', undefined, NOW)
 
     const pending = readState(sqlite)
     expect(pending.match).toEqual({ status: 'finished', home_score: 2, away_score: 0, scored: 0 })
@@ -341,13 +325,13 @@ describe('correção da ida enquanto a volta é pontuada', () => {
       const stale = checkpoint()
       const fresh = checkpoint()
 
-      const staleRun = scoreUnprocessedMatches('c1', connection(db, stale)) // lê a volta com a ida 1-0
+      const staleRun = scoreUnprocessedMatches('c1', connection(db, stale))
       await stale.reached
       // Efeito do upsert do sync numa correção: placar novo e scored_at nulo.
       sqlite.exec(
         `UPDATE matches SET home_score = 0, away_score = 1, scored_at = NULL WHERE id = 'leg1'`,
       )
-      const freshRun = scoreUnprocessedMatches('c1', connection(db, fresh)) // lê ida e volta
+      const freshRun = scoreUnprocessedMatches('c1', connection(db, fresh))
       await fresh.reached
 
       const order = staleLast
@@ -387,6 +371,38 @@ describe('correção da ida enquanto a volta é pontuada', () => {
         { user_id: 'u001', total_points: 3 },
         { user_id: 'u002', total_points: 3 + 3 + 2 },
       ])
+    },
+  )
+})
+
+describe('correções de contexto durante a pontuação', () => {
+  it.each(['home_team_id', 'away_team_id', 'phase', 'leg', 'start_time'])(
+    'recusa o snapshot anterior à alteração de %s',
+    async (field) => {
+      const { sqlite, db, provider } = await setup(PICKS)
+      provider.match = fdMatch('FINISHED', 1, 0)
+      await syncFixtures({ competitionCode: 'PPL', season: 2026, db, apiKey: 'test' })
+      const beforePoints = readState(sqlite).points
+      const gate = checkpoint()
+      const run = scoreUnprocessedMatches(
+        String(sqlite.prepare('SELECT competition_id FROM matches').get()!.competition_id),
+        connection(db, gate),
+      )
+      await gate.reached
+      sqlite.exec("INSERT INTO teams (id,name,slug) VALUES ('other','Outro','outro')")
+      const value =
+        field === 'phase'
+          ? 'FINAL'
+          : field === 'leg'
+            ? 2
+            : field === 'start_time'
+              ? '2026-11-09T15:30:00Z'
+              : 'other'
+      sqlite.prepare(`UPDATE matches SET ${field} = ?`).run(value)
+      gate.release()
+      await run
+      expect(readState(sqlite).match).toMatchObject({ scored: 0 })
+      expect(readState(sqlite).points).toEqual(beforePoints)
     },
   )
 })

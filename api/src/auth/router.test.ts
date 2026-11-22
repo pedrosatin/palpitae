@@ -34,6 +34,11 @@ function fakeEnv(email: string): AppContext['Bindings'] {
               async run() {
                 return { success: true }
               },
+              // O limitador mede as linhas lidas e troca o `first` por `all`.
+              async all() {
+                const row = await this.first()
+                return { results: row ? [row] : [] }
+              },
               async first() {
                 if (sql.includes('INSERT INTO request_limits')) return { hits: 1 }
                 if (isSessionQuery(sql)) return activeSessionRow(email)
@@ -365,7 +370,6 @@ describe('auth router', () => {
   })
 
   it('treats a session of a missing user as signed out on the me endpoint', async () => {
-    // Override fakeEnv specifically for this test
     function fakeEnvNotFound(): AppContext['Bindings'] {
       return {
         ...fakeEnv(''),
@@ -376,6 +380,11 @@ describe('auth router', () => {
                 return {
                   async run() {
                     return { success: true }
+                  },
+                  async all() {
+                    return {
+                      results: sql.includes('INSERT INTO request_limits') ? [{ hits: 1 }] : [],
+                    }
                   },
                   async first() {
                     if (sql.includes('INSERT INTO request_limits')) return { hits: 1 }
@@ -400,9 +409,6 @@ describe('auth router', () => {
     expect(body).toEqual({ authenticated: false })
   })
 
-  // Visita anônima é o caso comum (toda visita chama /auth/me). Responder 200
-  // em vez de 401 evita que o navegador logue essa checagem de rotina como
-  // erro no console (reprovava Best Practices no Lighthouse).
   it('returns 200 with authenticated: false from me endpoint when there is no session cookie', async () => {
     const res = await app.fetch(
       new Request('http://localhost/auth/me'),
@@ -430,7 +436,6 @@ describe('auth router', () => {
       fakeEnv('user@example.com'),
     )
     const setCookies = res.headers.getSetCookie()
-    // By default the base url is http://localhost:8787 which does not start with https
     expect(setCookies.some((c) => c.includes('Secure'))).toBe(false)
     expect(setCookies.some((c) => c.includes('Domain='))).toBe(false)
   })

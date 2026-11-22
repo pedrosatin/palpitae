@@ -6,6 +6,8 @@ import type { AppContext } from '../types'
 import { signJwt } from '../auth/jwt'
 import { withSessionAccounts } from '../testing/session'
 import * as observability from '../observability'
+import { FootballDataQuotaError } from './footballDataQuota'
+import { FootballDataSlotBusyError } from './providerBudget'
 
 const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
   syncFixturesSpy: vi.fn(),
@@ -20,7 +22,6 @@ vi.mock('./scoring', () => ({
   scoreUnprocessedMatches: scoreUnprocessedMatchesSpy,
 }))
 
-// Nas contas deste arquivo, o id é o próprio e-mail (ver os tokens).
 function fakeEnv(
   db: D1Database,
   overrides: Partial<AppContext['Bindings']> = {},
@@ -46,7 +47,6 @@ function createMatchesDbMock(
   function resultsFor(sql: string): { results: unknown[] } {
     if (sql.includes('FROM matches m')) {
       if (sql.includes('JOIN competitions') && sql.includes('SELECT m.id, m.home_score')) {
-        // This is from scoring logic we shouldn't increment router main query
       } else {
         if (counter) counter.mainQueries++
       }
@@ -72,7 +72,7 @@ function createMatchesDbMock(
             async first() {
               if (sql.includes('FROM revoked_sessions')) return null
               if (sql.includes('FROM competitions c')) {
-                return { visibility: 'public', last_scored_at: null }
+                return { visibility: 'public', matches_version: 0 }
               }
               if (sql.includes('FROM competitions WHERE id = ?')) {
                 return {
@@ -198,9 +198,9 @@ describe('matches router – GET /', () => {
     const body = (await response.json()) as {
       matches: Array<Record<string, unknown>>
     }
-    expect(body.matches[0].decides_on_penalties).toBe(true) // FINAL ∈ gate
-    expect(body.matches[1].decides_on_penalties).toBe(false) // GROUP_STAGE ∉ gate
-    expect(body.matches[0]).not.toHaveProperty('penalty_phases') // raw gate stripped
+    expect(body.matches[0].decides_on_penalties).toBe(true)
+    expect(body.matches[1].decides_on_penalties).toBe(false)
+    expect(body.matches[0]).not.toHaveProperty('penalty_phases')
   })
 
   it('returns empty matches without scheduling external sync', async () => {
@@ -251,7 +251,6 @@ describe('matches router – GET /', () => {
       delete (globalThis as { caches?: unknown }).caches
     })
 
-    /** Cache-Control da resposta ao navegador e da cópia guardada na borda. */
     async function cacheHeadersFor(
       matchRows: { status: string }[],
     ): Promise<{ browser: string | null; edge: string | null }> {
@@ -281,20 +280,20 @@ describe('matches router – GET /', () => {
 
     it('caches an all-finished list for 24h at the edge and 60s in the browser', async () => {
       expect(await cacheHeadersFor([{ status: 'finished' }, { status: 'finished' }])).toEqual({
-        browser: 'public, max-age=60',
+        browser: 'private, max-age=60',
         edge: 'public, max-age=86400',
       })
     })
 
     it('uses a short TTL for a list with not-yet-finished scheduled matches', async () => {
       expect(await cacheHeadersFor([{ status: 'finished' }, { status: 'scheduled' }])).toEqual({
-        browser: 'public, max-age=60',
+        browser: 'private, max-age=60',
         edge: 'public, max-age=60',
       })
     })
 
     it('uses a short TTL for an empty list and keeps it out of the edge cache', async () => {
-      expect(await cacheHeadersFor([])).toEqual({ browser: 'public, max-age=60', edge: null })
+      expect(await cacheHeadersFor([])).toEqual({ browser: 'private, max-age=60', edge: null })
     })
   })
 
@@ -338,7 +337,7 @@ describe('matches router – GET /', () => {
 
       const first = makeCtx()
       const r1 = await app.fetch(await newRequest(), env, first.ctx)
-      await first.settle() // let waitUntil(cache.put(...)) run
+      await first.settle()
       expect(r1.status).toBe(200)
 
       const second = makeCtx()
@@ -357,7 +356,6 @@ describe('matches router – GET /', () => {
         default_round: null,
       })
 
-      // Only the first request queried D1; the second came from the edge cache.
       expect(counter.mainQueries).toBe(1)
     })
   })
@@ -447,13 +445,15 @@ describe('matches router – GET /', () => {
       const response = await runSync(await syncRequest(ADMIN), env)
 
       expect(response.status).toBe(200)
-      expect(syncFixturesSpy).toHaveBeenCalledWith({
-        competitionCode: 'WC',
-        season: 2026,
-        matchday: undefined,
-        apiKey: env.FOOTBALL_API_KEY,
-        db: env.DB,
-      })
+      expect(syncFixturesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          competitionCode: 'WC',
+          season: 2026,
+          matchday: undefined,
+          apiKey: env.FOOTBALL_API_KEY,
+          db: env.DB,
+        }),
+      )
       await expect(response.json()).resolves.toMatchObject({
         ok: true,
       })
@@ -492,6 +492,68 @@ describe('matches router – GET /', () => {
         email: 'admin@palpitae.test',
       }, 'secret', 3600)
       userToken = await signJwt({ sub: 'user@example.com', email: 'user@example.com' }, 'secret', 3600)
+    })
+
+    it('sem vaga no orçamento, o sync administrativo fica pendente na fila', async () => {
+      syncFixturesSpy.mockRejectedValue(new FootballDataSlotBusyError())
+      const batch = vi.fn(async () => [])
+      const db = { ...createMatchesDbMock([]), batch }
+
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const response = await app.fetch(
+        new Request('http://localhost/matches/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: 'session=' + adminToken },
+          body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+        }),
+        {
+          ...fakeEnv(db as unknown as D1Database),
+          ADMIN_EMAIL: 'admin@palpitae.test',
+          FOOTBALL_API_KEY: 'fake-api-key',
+        },
+        { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as unknown as ExecutionContext,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
+      expect(batch).toHaveBeenCalledTimes(1)
+      expect(syncFixturesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ coordinate: true, competitionCode: 'WC', season: 2022 }),
+      )
+    })
+
+    it('com a cota da football-data esgotada, o sync administrativo fica pendente com o prazo da cota', async () => {
+      const retryAt = Date.now() + 5 * 60_000
+      syncFixturesSpy.mockRejectedValue(new FootballDataQuotaError(retryAt))
+      const batch = vi.fn(async () => [])
+      const bind = vi.fn()
+      const db = {
+        ...createMatchesDbMock([]),
+        batch,
+        prepare: vi.fn(() => ({ bind: bind.mockReturnThis() })),
+      }
+
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const response = await app.fetch(
+        new Request('http://localhost/matches/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: 'session=' + adminToken },
+          body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+        }),
+        {
+          ...fakeEnv(db as unknown as D1Database),
+          ADMIN_EMAIL: 'admin@palpitae.test',
+          FOOTBALL_API_KEY: 'fake-api-key',
+        },
+        { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as unknown as ExecutionContext,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
+      expect(batch).toHaveBeenCalledTimes(1)
+      expect(bind.mock.calls.some((args) => args.includes(retryAt))).toBe(true)
     })
 
     it('returns 500 and logs error when syncFixtures fails', async () => {

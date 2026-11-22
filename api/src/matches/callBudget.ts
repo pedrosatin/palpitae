@@ -1,4 +1,5 @@
-import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types'
+import type { D1Database } from '@cloudflare/workers-types'
+import { interceptD1 } from '../d1Intercept'
 
 /**
  * Orçamento de chamadas de uma invocação do Worker (ADR-024).
@@ -14,12 +15,32 @@ export const INVOCATION_CALL_LIMIT = 50
 /** Chamadas que a rotina pode fazer (`limit`) e as que já fez (`used`). */
 export type CallBudget = { readonly limit: number; used: number }
 
+/**
+ * A chamada não cabe no saldo da rotina: nada foi chamado. Quem a recebe devolve
+ * o trabalho para retomar depois, sem contar falha do provedor.
+ */
+export class CallBudgetExhaustedError extends Error {
+  constructor() {
+    super('saldo de chamadas da invocação esgotado')
+    this.name = 'CallBudgetExhaustedError'
+  }
+}
+
+/**
+ * Porteiro das chamadas de uma rotina que divide a invocação com outras (o dreno
+ * da fila, ADR-027). A rotina o consulta antes de gastar, em vez de deixar o
+ * limite da plataforma falhar a chamada 51.
+ */
+export type CallGate = {
+  /** Cobra um `fetch` antes de iniciá-lo; lança `CallBudgetExhaustedError` se não couber. */
+  chargeFetch(): void
+  /** Chamadas que ainda cabem a esta rotina agora. */
+  callsLeft(): number
+}
+
 export function callsLeft(budget: CallBudget): number {
   return Math.max(0, budget.limit - budget.used)
 }
-
-/** Métodos de `D1PreparedStatement` que mandam a consulta ao D1. */
-const STATEMENT_CALLS = new Set<PropertyKey>(['first', 'run', 'all', 'raw'])
 
 /**
  * Devolve o mesmo D1, somando em `budget.used` cada chamada que sai por ele:
@@ -27,48 +48,8 @@ const STATEMENT_CALLS = new Set<PropertyKey>(['first', 'run', 'all', 'raw'])
  * quem decide parar é a rotina que consulta o orçamento.
  */
 export function countD1Calls(db: D1Database, budget: CallBudget): D1Database {
-  // O `batch` do D1 lê campos internos de cada instrução: recebe as originais.
-  const originals = new WeakMap<object, D1PreparedStatement>()
-
-  const countStatement = (statement: D1PreparedStatement): D1PreparedStatement => {
-    const counted = new Proxy(statement, {
-      get(target, prop) {
-        const value: unknown = Reflect.get(target, prop, target)
-        if (typeof value !== 'function') return value
-        if (prop === 'bind') {
-          return (...values: unknown[]) => countStatement(target.bind(...values))
-        }
-        if (STATEMENT_CALLS.has(prop)) {
-          return (...args: unknown[]) => {
-            budget.used += 1
-            return value.apply(target, args)
-          }
-        }
-        return value.bind(target)
-      },
-    })
-    originals.set(counted, statement)
-    return counted
-  }
-
-  return new Proxy(db, {
-    get(target, prop) {
-      const value: unknown = Reflect.get(target, prop, target)
-      if (typeof value !== 'function') return value
-      if (prop === 'prepare') return (sql: string) => countStatement(target.prepare(sql))
-      if (prop === 'batch') {
-        return (statements: D1PreparedStatement[]) => {
-          budget.used += 1
-          return target.batch(statements.map((statement) => originals.get(statement) ?? statement))
-        }
-      }
-      if (prop === 'exec') {
-        return (sql: string) => {
-          budget.used += 1
-          return target.exec(sql)
-        }
-      }
-      return value.bind(target)
-    },
+  return interceptD1(db, (_call, proceed) => {
+    budget.used += 1
+    return proceed()
   })
 }

@@ -1,6 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// O aviso de cookies só existe com um id do GA, e ele não pode cobrir os demais testes.
 const consentPort = process.env.CONSENT_TEST_PORT || '5174'
 const consentUrl = `http://localhost:${consentPort}`
 
@@ -8,9 +7,10 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  retries: 1,
+  failOnFlakyTests: true,
+  workers: process.env.CI ? 4 : undefined,
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',

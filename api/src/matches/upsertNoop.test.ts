@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { MATCH_UPSERT_SQL } from './sync'
+import { MATCH_UPSERT_SQL } from './matchUpsert'
 
 // O sync reenvia a rodada inteira a cada tick. O upsert só pode gravar quando
 // algum campo muda, sem perder nenhuma das regras do DO UPDATE.
@@ -100,6 +100,15 @@ describe('MATCH_UPSERT_SQL sem mudança não grava', () => {
   it('reenviar o mesmo jogo agendado não grava', () => {
     expect(upsert(base)).toBe(1)
     expect(upsert(base)).toBe(0)
+  })
+
+  it('horário vencido grava a trava uma vez mesmo sem mudança do provedor', () => {
+    const match = { ...base, startTime: NOW }
+    expect(upsert(match)).toBe(1)
+    expect(stored().locked_at).toBeNull()
+    expect(upsert(match)).toBe(1)
+    expect(stored().locked_at).toBe(NOW)
+    expect(upsert(match)).toBe(0)
   })
 
   it('reenviar o mesmo jogo encerrado e já travado não grava', () => {

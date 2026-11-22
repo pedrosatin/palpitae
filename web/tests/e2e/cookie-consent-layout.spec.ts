@@ -1,4 +1,7 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
+
+const GROUP_ID = '00000000-0000-4000-8000-0000000000d1'
+
 async function mock(page: Page) {
   await page.route('https://www.googletagmanager.com/**', (r) => r.abort())
   await page.route('**/auth/me', (r) =>
@@ -11,7 +14,7 @@ async function mock(page: Page) {
   await page.route('**/api/**', (r) => {
     const p = new URL(r.request().url()).pathname
     const group = {
-      id: 'group-demo',
+      id: GROUP_ID,
       name: 'Grupo de demonstração',
       competition_id: 'comp-demo',
       competition_name: 'Liga de demonstração',
@@ -26,7 +29,7 @@ async function mock(page: Page) {
     if (p.endsWith('/auth/me')) return r.fallback()
     let json: object = {}
     if (p === '/api/groups') json = { groups: [], matched_invite_group_id: null }
-    else if (p === '/api/groups/group-demo') json = { group }
+    else if (p === `/api/groups/${GROUP_ID}`) json = { group }
     else if (p === '/api/competitions')
       json = {
         competitions: [
@@ -94,7 +97,7 @@ for (const [width, height] of [
     const submit = page.locator('button[type="submit"]')
     await expect(submit).toBeEnabled()
     await expectUncovered(submit, banner)
-    await page.goto('/grupos/group-demo')
+    await page.goto(`/grupos/${GROUP_ID}`)
     const save = page.getByRole('button', { name: /Salvar todos/ })
     await expect(save).toBeVisible()
     await expectUncovered(save, banner)
@@ -124,7 +127,7 @@ for (const [width, height] of [
   test(`preferências acessíveis com Salvar todos em ${width}x${height}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await mock(page)
-    await page.goto('/grupos/group-demo')
+    await page.goto(`/grupos/${GROUP_ID}`)
     await expect(page.getByRole('button', { name: /Salvar todos/ })).toBeVisible()
     await page.getByRole('button', { name: 'Recusar', exact: true }).click()
     const preferences = page.getByRole('button', { name: 'Preferências de cookies' })

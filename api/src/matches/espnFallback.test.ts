@@ -61,10 +61,6 @@ function buildFakeAe() {
   return { writeDataPoint: vi.fn() }
 }
 
-// Fábrica de evento ESPN no shape real do scoreboard (validado ao vivo):
-// date ISO (pode vir sem segundos, ex. "2026-10-05T22:30Z"), status.type.state e
-// completed (true só no fim de jogo), competitions[0].competitors[] com
-// homeAway/team.displayName/score string.
 function espnEvent(opts: {
   date: string
   state?: string
@@ -96,7 +92,6 @@ function espnEvent(opts: {
   }
 }
 
-/** Mock do fetch que responde por URL (slug/dates) com os eventos informados. */
 function mockFetch(byDate: Record<string, unknown[]>) {
   const fetchMock = vi.fn(async (url: string | URL) => {
     const u = url.toString()
@@ -119,8 +114,7 @@ function mockFetch(byDate: Record<string, unknown[]>) {
 
 const NOW = Date.parse('2026-10-05T22:00:00Z')
 
-/** Kickoff dentro da janela do poller (start+115..200min ≤ now). */
-const IN_WINDOW_START = '2026-10-05T19:45:00Z' // now - 135min
+const IN_WINDOW_START = '2026-10-05T19:45:00Z'
 
 function row(overrides: Partial<WindowRow> = {}): WindowRow {
   return {
@@ -194,7 +188,9 @@ describe('scoreWindowFromEspn', () => {
     ] as const
     // A rodada cobre os 20 clubes do mapa.
     expect(fixtures.flatMap((f) => f.sync).sort()).toEqual(
-      Object.values(FOOTBALL_DATA_CLUBS).map((club) => club.name).sort(),
+      Object.values(FOOTBALL_DATA_CLUBS)
+        .map((club) => club.name)
+        .sort(),
     )
     mockFetch({
       '20261005': fixtures.map(({ espn: [home, away] }, i) =>
@@ -267,15 +263,13 @@ describe('scoreWindowFromEspn', () => {
   })
 
   it('tolera kickoff até ±150min entre start_time interno e date do evento', async () => {
-    // exatamente 150min de diferença (pra menos) — ainda casa
-    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T17:15:00Z' })] }) // start - 150min
+    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T17:15:00Z' })] })
     const { db, captured } = buildFakeDb([row()])
 
     await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
     expect(captured.updates).toHaveLength(1)
 
-    // 151min de diferença — não casa mais, jogo pulado
-    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T22:16:00Z' })] }) // start + 151min
+    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T22:16:00Z' })] })
     const db2 = buildFakeDb([row()])
     const result = await scoreWindowFromEspn(db2.db, undefined, ['c1'], { now: NOW })
     expect(db2.captured.updates).toHaveLength(0)
@@ -350,13 +344,36 @@ describe('scoreWindowFromEspn', () => {
     expect(result.get('c1')).toBe(0)
   })
 
+  it('pula evento final com placar vazio (nunca grava 0 × 0 que a ESPN não informou)', async () => {
+    mockFetch({
+      '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '', awayScore: '' })],
+    })
+    const { db, captured } = buildFakeDb([row()])
+
+    const result = await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+    expect(captured.updates).toHaveLength(0)
+    expect(result.get('c1')).toBe(0)
+  })
+
+  it('pula placar decimal como "3.0", igual ao espnSync', async () => {
+    mockFetch({
+      '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '3.0', awayScore: '1' })],
+    })
+    const { db, captured } = buildFakeDb([row()])
+
+    const result = await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+    expect(captured.updates).toHaveLength(0)
+    expect(result.get('c1')).toBe(0)
+  })
+
   it('UPDATE grava placar + status e é condicional a status != finished (shape da SQL)', async () => {
     mockFetch({ '20261005': [espnEvent({ date: IN_WINDOW_START })] })
     const { db, captured } = buildFakeDb([row()])
 
     await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
 
-    // Guard contra corrida com o caminho primário: só regrava jogo não-finalizado.
     expect(captured.updateSql).toContain("SET home_score = ?, away_score = ?, status = 'finished'")
     expect(captured.updateSql).toContain("AND status != 'finished'")
     // Correções limpam scored_at; pênaltis ficam para o primário. Nenhum INSERT.
@@ -447,7 +464,17 @@ describe('scoreWindowFromEspn', () => {
         '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '2', awayScore: '1' })],
       })
 
+      const version = () =>
+        Number(
+          sqlite.prepare("SELECT matches_version FROM competitions WHERE id = 'c1'").get()!
+            .matches_version,
+        )
+      const beforeVersion = version()
       await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+      expect(version()).toBeGreaterThan(beforeVersion)
+      const afterVersion = version()
+      await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+      expect(version()).toBe(afterVersion)
 
       expect(
         sqlite.prepare('SELECT status,home_score,away_score,scored_at FROM matches').get(),
@@ -519,7 +546,7 @@ describe('scoreWindowFromEspn', () => {
     const points = ae.writeDataPoint.mock.calls
       .map((c) => c[0])
       .filter((p) => p.blobs?.[0] === 'match_results_fallback')
-    expect(points).toHaveLength(2) // um logError por competição
+    expect(points).toHaveLength(2)
     expect(points[0].blobs?.[2]).toBe('network down')
     consoleSpy.mockRestore()
   })
@@ -543,12 +570,34 @@ describe('scoreWindowFromEspn', () => {
       await scoreWindowFromEspn(db, ae, ['comp-a'], { now: NOW })
 
       const attempts = attemptsOf(ae)
-      // Duas datas (dia do jogo e anterior), uma tentativa cada: 403 não retenta.
       expect(attempts).toHaveLength(2)
       for (const a of attempts) {
         expect(a.blobs).toEqual(['provider_http_attempt', 'espn', 'comp-a', '403', 'fallback'])
         expect(a.doubles?.[1]).toBe(1)
       }
+    })
+
+    it('consulta o dia do jogo antes do anterior e registra o erro do dia do jogo', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.99)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) =>
+          String(input).includes('dates=20261005')
+            ? new Response('Unauthorized', { status: 401 })
+            : new Response('Forbidden', { status: 403 }),
+        ),
+      )
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { db } = buildFakeDb([row()])
+      const ae = buildFakeAe()
+
+      await scoreWindowFromEspn(db, ae, ['comp-a'], { now: NOW })
+
+      expect(attemptsOf(ae).map((a) => a.blobs?.[3])).toEqual(['401', '403'])
+      const errors = ae.writeDataPoint.mock.calls
+        .map((c) => c[0])
+        .filter((p) => p.blobs?.[0] === 'match_results_fallback')
+      expect(errors[0].blobs?.[2]).toContain('401')
     })
 
     it('sucesso só vira evento quando cai na amostra, com peso 10', async () => {

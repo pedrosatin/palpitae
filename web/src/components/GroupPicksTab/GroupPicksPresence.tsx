@@ -13,7 +13,6 @@ import { predictionsPath } from '../../lib/rounds'
 import { WhatsAppShareButton } from '../ShareButtons'
 import styles from './GroupPicksTab.module.css'
 
-/** Círculos por card. Acima disso aparece só o total restante. */
 const MAX_INITIALS = 12
 
 /**

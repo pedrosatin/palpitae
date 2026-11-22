@@ -11,24 +11,20 @@ export type ReplicateFeedback = {
   id: number
   ok: boolean
   message: string
-  /** Jogos do envio que falhou, para tentar de novo. */
   matchIds?: string[]
 }
 
 export type ReplicateStatus = {
-  /** Envios ainda sem resposta. */
   inFlight: number
   feedback: ReplicateFeedback[]
 }
 
-/** Confirmações que ficam na barra ao mesmo tempo. As mais antigas saem primeiro. */
 const MAX_FEEDBACK = 3
 
 const EMPTY: ReplicateStatus = { inFlight: 0, feedback: [] }
 
 const statuses = new Map<string, ReplicateStatus>()
 const listeners = new Set<() => void>()
-/** Telas que mostram cada contexto agora. */
 const viewers = new Map<string, number>()
 let nextId = 0
 

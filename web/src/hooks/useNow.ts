@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 
-/** Maior atraso que o `setTimeout` aceita. Acima dele o timer dispararia na hora. */
 const MAX_TIMEOUT_MS = 2 ** 31 - 1
 
-/** Primeiro horário de `startTimes` depois de `now`, em ms. `null` quando não há. */
 function nextStart(startTimes: readonly string[], now: number): number | null {
   let next: number | null = null
   for (const startTime of startTimes) {
@@ -28,13 +26,10 @@ export function useNow(intervalMs: number, startTimes: readonly string[] = []): 
   }, [intervalMs])
 
   const next = nextStart(startTimes, now)
-  // Início além do limite do `setTimeout` espera o intervalo trazer `now` para perto.
   const fits = next !== null && next - now <= MAX_TIMEOUT_MS
   useEffect(() => {
     if (next === null || !fits) return
     const delay = next - Date.now()
-    // O relógio do sistema pode estar alguns ms atrás do timer. Sem o `max`, a hora
-    // ficaria antes do início e o card só travaria no intervalo seguinte.
     const id = setTimeout(() => setNow(Math.max(Date.now(), next)), Math.max(0, delay))
     return () => clearTimeout(id)
   }, [next, fits])

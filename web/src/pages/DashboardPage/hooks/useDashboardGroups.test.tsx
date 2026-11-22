@@ -1,9 +1,10 @@
+import { QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
+import { createTestQueryClient } from '../../../test-utils'
 import { useDashboardGroups } from './useDashboardGroups'
 import { apiFetch } from '../../../lib/api'
-import { invalidateApiCache } from '../../../lib/api-cache'
 
 vi.mock('../../../lib/api', () => ({
   apiFetch: vi.fn(),
@@ -34,10 +35,20 @@ const mockGroups = [
 ]
 
 describe('useDashboardGroups', () => {
+  function makeWrapper(
+    queryClient = createTestQueryClient(),
+    initialEntries?: Array<string | { pathname: string; state?: unknown }>,
+  ) {
+    return ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+      </QueryClientProvider>
+    )
+  }
+
   beforeEach(() => {
     vi.restoreAllMocks()
     mockApiFetch.mockReset()
-    invalidateApiCache()
   })
 
   it('fetches and returns groups successfully', async () => {
@@ -49,7 +60,7 @@ describe('useDashboardGroups', () => {
     )
 
     const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
-      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+      wrapper: makeWrapper(),
     })
 
     expect(result.current.loading).toBe(true)
@@ -71,9 +82,7 @@ describe('useDashboardGroups', () => {
     mockApiFetch.mockResolvedValueOnce(
       mockResponse({ groups: mockGroups, matched_invite_group_id: null }),
     )
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <MemoryRouter>{children}</MemoryRouter>
-    )
+    const wrapper = makeWrapper(createTestQueryClient())
     const first = renderHook(() => useDashboardGroups({ userId: 'u1' }), { wrapper })
     await waitFor(() => expect(first.result.current.groups).toEqual(mockGroups))
     first.unmount()
@@ -94,7 +103,7 @@ describe('useDashboardGroups', () => {
     mockApiFetch.mockResolvedValueOnce(mockResponse({ error: 'Server Error' }, false))
 
     const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
-      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+      wrapper: makeWrapper(),
     })
 
     await waitFor(() => {
@@ -106,19 +115,23 @@ describe('useDashboardGroups', () => {
   })
 
   it('limpa o erro quando a nova carga dá certo', async () => {
+    let resolveRetry!: (res: Response) => void
     mockApiFetch
       .mockResolvedValueOnce(mockResponse({ error: 'Server Error' }, false))
-      .mockResolvedValueOnce(mockResponse({ groups: mockGroups, matched_invite_group_id: null }))
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveRetry = resolve)))
 
     const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
-      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+      wrapper: makeWrapper(),
     })
     await waitFor(() => expect(result.current.error).toBe('Falha ao carregar grupos'))
 
     act(() => result.current.fetchGroups(true))
-    expect(result.current.loading).toBe(true)
+    await waitFor(() => expect(result.current.loading).toBe(true))
     expect(result.current.error).toBeNull()
 
+    await act(async () => {
+      resolveRetry(mockResponse({ groups: mockGroups, matched_invite_group_id: null }))
+    })
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.error).toBeNull()
     expect(result.current.groups).toEqual(mockGroups)
@@ -131,7 +144,7 @@ describe('useDashboardGroups', () => {
       .mockResolvedValueOnce(mockResponse({ groups: mockGroups, matched_invite_group_id: null }))
 
     const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
-      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+      wrapper: makeWrapper(),
     })
     act(() => result.current.fetchGroups(true))
     await waitFor(() => expect(result.current.groups).toEqual(mockGroups))
@@ -152,7 +165,7 @@ describe('useDashboardGroups', () => {
         useDashboardGroups({ userId: 'u1', normalizedPendingInvite: invite }),
       {
         initialProps: { invite: 'ABCD-EF23' } as { invite?: string },
-        wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+        wrapper: makeWrapper(),
       },
     )
     rerender({ invite: undefined })
@@ -163,7 +176,6 @@ describe('useDashboardGroups', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.joinOpen).toBe(false)
     expect(result.current.groups).toEqual(mockGroups)
-    // A lista já carregada vale sem o convite: tirar o código da URL não refaz a busca.
     expect(mockApiFetch).toHaveBeenCalledTimes(1)
   })
 
@@ -178,7 +190,7 @@ describe('useDashboardGroups', () => {
     const { result } = renderHook(
       () => useDashboardGroups({ userId: 'u1', normalizedPendingInvite: 'some-code' }),
       {
-        wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+        wrapper: makeWrapper(),
       },
     )
 
@@ -203,7 +215,7 @@ describe('useDashboardGroups', () => {
     const { result } = renderHook(
       () => useDashboardGroups({ userId: 'u1', normalizedPendingInvite: 'some-code' }),
       {
-        wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+        wrapper: makeWrapper(),
       },
     )
 
@@ -221,7 +233,7 @@ describe('useDashboardGroups', () => {
     )
 
     const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
-      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+      wrapper: makeWrapper(),
     })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
@@ -237,11 +249,7 @@ describe('useDashboardGroups', () => {
     )
 
     const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
-      wrapper: ({ children }) => (
-        <MemoryRouter initialEntries={[{ pathname: '/', state: { refreshGroups: true } }]}>
-          {children}
-        </MemoryRouter>
-      ),
+wrapper: makeWrapper(createTestQueryClient(), [{ pathname: '/', state: { refreshGroups: true } }]),
     })
 
     await waitFor(() => {

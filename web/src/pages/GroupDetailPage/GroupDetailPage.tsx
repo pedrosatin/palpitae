@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
@@ -6,15 +7,16 @@ import JoinGroupModal from '../../components/JoinGroupModal'
 import GroupRulesModal from '../../components/GroupRulesModal'
 import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
+import GroupLinkSection from './GroupLinkSection'
 import RenameGroupModal from './RenameGroupModal'
 import ErrorState from '../../components/ErrorState'
 import ErrorBoundary, { TabError } from '../../components/ErrorBoundary'
 import { apiFetch } from '../../lib/api'
 import { buildApiUrl } from '../../config'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { groupsQueryKey } from '../../lib/groupsList'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
-import { type User, TAB_LABELS, parseGroupDetail } from './types'
+import { type User, TAB_LABELS, isGroupId, parseGroupDetail } from './types'
 import GroupTabs from './GroupTabs'
 import GroupTabContent from './GroupTabContent'
 import { useGroupDetail, useGroupTabs, useTabsOffset, useGroupActions } from './hooks'
@@ -25,23 +27,87 @@ interface GroupDetailPageProps {
   onLogout: () => void
 }
 
-/** Tempo na tela da confirmação de entrada no grupo. */
 const JOINED_NOTICE_MS = 6000
 
-export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps) {
+interface GroupPageFrameProps extends GroupDetailPageProps {
+  modals?: ReactNode
+  children: ReactNode
+}
+
+function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProps) {
   const navigate = useNavigate()
-  const location = useLocation()
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [joinOpen, setJoinOpen] = useState(false)
+
+  function openGroup(nextGroup: { id: string }) {
+    void queryClient.invalidateQueries({ queryKey: groupsQueryKey, refetchType: 'none' })
+    navigate(`/grupos/${nextGroup.id}`)
+  }
+
+  return (
+    <>
+      <Header
+        user={user}
+        onCreateGroup={() => setCreateOpen(true)}
+        onJoinGroup={() => setJoinOpen(true)}
+        onLogout={onLogout}
+      />
+      <main className={styles.root}>{children}</main>
+      <CreateGroupModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={openGroup}
+      />
+      <JoinGroupModal isOpen={joinOpen} onClose={() => setJoinOpen(false)} onJoined={openGroup} />
+      {modals}
+    </>
+  )
+}
+
+function GroupNotFound() {
+  useDocumentTitle(undefined)
+  return (
+    <>
+      <ErrorState message="Grupo não encontrado" />
+      <Link to="/" className={styles.backLink}>
+        ← Voltar para Meus grupos
+      </Link>
+    </>
+  )
+}
+
+/**
+ * Lê o id da rota. Id ausente volta para a home e id com formato inválido mostra
+ * "Grupo não encontrado", então nenhuma requisição sai para a API com ele.
+ */
+export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps) {
   const { groupId } = useParams<{ groupId: string }>()
 
+  if (!groupId) return <Navigate to="/" replace />
+
+  if (!isGroupId(groupId)) {
+    return (
+      <GroupPageFrame user={user} onLogout={onLogout}>
+        <GroupNotFound />
+      </GroupPageFrame>
+    )
+  }
+
+  return <GroupDetailContent groupId={groupId} user={user} onLogout={onLogout} />
+}
+
+interface GroupDetailContentProps extends GroupDetailPageProps {
+  groupId: string
+}
+
+function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
-  const {
-    activeTab,
-    showStandings,
-    tabHref,
-    handleTabClick,
-    requestedRound,
-    clearRequestedRound,
-  } = useGroupTabs(group)
+  const { activeTab, showStandings, tabHref, handleTabClick, requestedRound, clearRequestedRound } =
+    useGroupTabs(group)
   const tabsOffset = useTabsOffset()
   const {
     leaveGroup,
@@ -55,8 +121,6 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
 
   const [settingsVersion, setSettingsVersion] = useState(0)
   const [renameOpen, setRenameOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [joinOpen, setJoinOpen] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
 
   const isAdmin = group?.is_admin ?? false
@@ -68,25 +132,12 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     () => (location.state as { joinedGroupName?: string } | null)?.joinedGroupName ?? null,
   )
 
-  // Tira a confirmação do histórico, para o recarregamento não repetir o aviso.
   useEffect(() => {
     if (!joinedGroupName) return
     navigate({ pathname: location.pathname, search: location.search }, { replace: true })
     const timer = setTimeout(() => setJoinedGroupName(null), JOINED_NOTICE_MS)
     return () => clearTimeout(timer)
   }, [joinedGroupName])
-
-  if (!groupId) return <Navigate to="/" replace />
-
-  function handleGroupCreated(nextGroup: { id: string }) {
-    invalidateApiCache('groups:')
-    navigate(`/grupos/${nextGroup.id}`)
-  }
-
-  function handleGroupJoined(nextGroup: { id: string }) {
-    invalidateApiCache('groups:')
-    navigate(`/grupos/${nextGroup.id}`)
-  }
 
   function openRename() {
     if (!group) return
@@ -95,23 +146,39 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   }
 
   async function handlePointsClassifiedChanged() {
-    const response = await apiFetch(buildApiUrl(`/groups/${groupId}`))
+    const response = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
     const refreshed = response.ok ? parseGroupDetail(await response.json()) : null
     if (!refreshed) throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
     setGroup(refreshed)
     setSettingsVersion((value) => value + 1)
   }
 
-  function openRules() {
-    setRulesOpen(true)
-  }
-
-  function closeRules() {
-    setRulesOpen(false)
-  }
-
   function handleGroupRenamed(name: string) {
     setGroup((prev) => (prev ? { ...prev, name } : prev))
+  }
+
+  function handleJoinRequestsEnabledChanged(enabled: boolean) {
+    setGroup((prev) => (prev ? { ...prev, join_requests_enabled: enabled } : prev))
+  }
+
+  function handleJoinRequestDecided(action: 'approve' | 'reject') {
+    setGroup((prev) =>
+      prev
+        ? {
+            ...prev,
+            pending_join_request_count: Math.max(0, (prev.pending_join_request_count ?? 1) - 1),
+            ...(action === 'approve'
+              ? { member_count: (prev.member_count ?? 0) + 1 }
+              : {}),
+          }
+        : prev,
+    )
+  }
+
+  function handleMemberRemoved() {
+    setGroup((prev) =>
+      prev ? { ...prev, member_count: Math.max(0, (prev.member_count ?? 1) - 1) } : prev,
+    )
   }
 
   function handleRotateInvite() {
@@ -120,37 +187,22 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     )
   }
 
-  const header = (
-    <Header
-      user={user}
-      onCreateGroup={() => setCreateOpen(true)}
-      onJoinGroup={() => setJoinOpen(true)}
-      onLogout={onLogout}
-    />
-  )
-
   const modals = (
     <>
-      <CreateGroupModal
-        isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={handleGroupCreated}
-      />
-      <JoinGroupModal
-        isOpen={joinOpen}
-        onClose={() => setJoinOpen(false)}
-        onJoined={handleGroupJoined}
-      />
       <RenameGroupModal
         isOpen={renameOpen}
         onClose={() => setRenameOpen(false)}
-        groupId={groupId!}
+        groupId={groupId}
         currentName={group?.name ?? ''}
         currentPointsClassified={group?.points_classified ?? 0}
+        currentJoinRequestsEnabled={group?.join_requests_enabled ?? true}
         onPointsClassifiedChanged={handlePointsClassifiedChanged}
         onRenamed={handleGroupRenamed}
+        onJoinRequestsEnabledChanged={handleJoinRequestsEnabledChanged}
       />
-      {group && <GroupRulesModal isOpen={rulesOpen} onClose={closeRules} group={group} />}
+      {group && (
+        <GroupRulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} group={group} />
+      )}
       {confirmDialog}
     </>
   )
@@ -176,19 +228,17 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           </p>
         )}
 
-        {/* Group header */}
         <GroupHeader
           group={group}
           isAdmin={isAdmin}
           onOpenRename={openRename}
-          onOpenRules={openRules}
+          onOpenRules={() => setRulesOpen(true)}
           onDeleteGroup={deleteGroup}
           deleting={deleting}
           onLeaveGroup={leaveGroup}
           leaving={leaving}
         />
 
-        {/* Convite do admin. Fica escondido quando a competição acabou. */}
         {isAdmin && group.invite_code && !isFinished && (
           <GroupInviteSection
             inviteCode={group.invite_code}
@@ -199,17 +249,20 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           />
         )}
 
-        {/* Tabs */}
+        {group.public_id && !isFinished && (isAdmin || group.join_requests_enabled !== false) && (
+          <GroupLinkSection publicId={group.public_id} groupName={group.name} />
+        )}
+
         <GroupTabs
           activeTab={activeTab}
           showStandings={showStandings}
           isAdmin={isAdmin}
+          pendingJoinRequestCount={group.pending_join_request_count ?? 0}
           tabsOffset={tabsOffset}
           tabHref={tabHref}
           onTabClick={handleTabClick}
         />
 
-        {/* Aba que quebra no render mostra o erro no lugar dela; trocar de aba sai dele. */}
         <ErrorBoundary
           resetKey={`${groupId}:${activeTab}`}
           fallback={(reset) => <TabError onRetry={reset} />}
@@ -222,9 +275,11 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
             showStandings={showStandings}
             isAdmin={isAdmin}
             userId={user.id}
-            onOpenRules={openRules}
+            onOpenRules={() => setRulesOpen(true)}
             requestedRound={requestedRound}
             onRequestedRoundApplied={clearRequestedRound}
+            onMemberRemoved={handleMemberRemoved}
+            onJoinRequestDecided={handleJoinRequestDecided}
           />
         </ErrorBoundary>
       </>
@@ -232,10 +287,8 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   }
 
   return (
-    <>
-      {header}
-      <main className={styles.root}>{content}</main>
-      {modals}
-    </>
+    <GroupPageFrame user={user} onLogout={onLogout} modals={modals}>
+      {content}
+    </GroupPageFrame>
   )
 }

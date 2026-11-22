@@ -1,15 +1,7 @@
 import { type CompetitionType } from '../../components/StandingsTab'
 import { hasShape, isRecord } from '../../lib/responseShape'
 
-export interface User {
-  id: string
-  email: string
-  nickname?: string
-  avatar_url?: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
+export type { User } from '../../types'
 
 export interface GroupDetail {
   id: string
@@ -17,15 +9,13 @@ export interface GroupDetail {
   competition_id: string
   competition_name: string | null
   competition_type: CompetitionType | null
-  /** Código canônico (`competitions.external_id`), ex. bra.camp.gaucho. */
   competition_code: string | null
-  /**
-   * O servidor deriva o valor dos jogos. Liga vira 'finished' quando não tem
-   * jogo pendente. Copa precisa também da final encerrada.
-   */
   competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
   is_admin: boolean
   invite_code: string | null
+  public_id?: string | null
+  join_requests_enabled?: boolean
+  pending_join_request_count?: number
   created_at: string
   points_exact: number
   points_penalty?: number
@@ -36,6 +26,16 @@ export interface GroupDetail {
   user_position: number | null
   user_points: number
   exact_hits: number
+}
+
+const GROUP_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Diz se o segmento da URL tem o formato de id de grupo (UUID). Um id manipulado,
+ * como `../auth/me`, nunca chega à montagem de URL da API.
+ */
+export function isGroupId(value: string | undefined): value is string {
+  return value !== undefined && GROUP_ID_PATTERN.test(value)
 }
 
 /**

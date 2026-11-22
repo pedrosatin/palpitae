@@ -10,11 +10,9 @@
 }
 
 .lockedCard {
-  /* 0.92 mantém o texto terciário acima de 4.5:1 sobre o card esmaecido. */
   opacity: 0.92;
 }
 
-/* ── Meta row ───────────────────────────── */
 .meta {
   display: flex;
   flex-wrap: wrap;
@@ -22,7 +20,6 @@
   gap: var(--space-2);
 }
 
-/* "sáb, 14/11 · 18:30" cabe numa linha em 390 px e não deve quebrar. */
 .date {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
@@ -31,7 +28,8 @@
 
 .badgeFinished,
 .badgeLocked,
-.badgePostponed {
+.badgePostponed,
+.badgePending {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   padding: 2px 8px;
@@ -50,19 +48,18 @@
   border: 1px solid var(--color-border);
 }
 
-/* Adiado — cor de aviso para separar de "bloqueado": aqui o palpite segue aberto. */
 .badgePostponed {
   background-color: var(--color-warning-bg, #f59e0b1a);
   color: var(--color-warning, #f59e0b);
   border: 1px solid var(--color-warning-border, #f59e0b40);
 }
 
-/*
- * Estado do palpite num jogo aberto, à direita da data. O texto diz o estado, e a
- * cor reforça. Sem palpite fica em contorno amarelo. Alterado e não salvo fica em
- * amarelo cheio, porque a edição se perde se o usuário sair. Salvo fica em verde
- * com a marca de confirmação. Todos passam de 4,5:1 sobre a superfície do card.
- */
+.badgePending {
+  background-color: var(--color-warning-bg, #f59e0b1a);
+  color: var(--color-warning, #f59e0b);
+  border: 1px solid var(--color-warning-border, #f59e0b40);
+}
+
 .status {
   margin-left: auto;
   display: inline-flex;
@@ -92,7 +89,6 @@
   background-color: rgb(73 242 27 / 0.08);
 }
 
-/* ── Teams row ──────────────────────────── */
 .matchRow {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -125,7 +121,6 @@
   line-height: var(--line-height-tight);
 }
 
-/* ── Score area ─────────────────────────── */
 .scoreArea {
   display: flex;
   align-items: center;
@@ -153,7 +148,6 @@
   font-size: var(--font-size-sm);
 }
 
-/* ── Prediction area ────────────────────── */
 .predictionArea {
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-3);
@@ -162,7 +156,6 @@
   gap: var(--space-2);
 }
 
-/* Ida e agregado da volta. Os nomes longos quebram linha em 390 px. */
 .tieInfo {
   display: flex;
   flex-direction: column;
@@ -177,18 +170,12 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/*
- * The control row keeps one shared height across states (locked line, score
- * steppers, 1X2 buttons) so a locked card and an open card line up in the grid
- * instead of differing by the stepper's extra height.
- */
 .lockedPrediction,
 .inputRow,
 .outcomeRow {
   min-height: 38px;
 }
 
-/* Locked state */
 .lockedPrediction {
   display: flex;
   align-items: center;
@@ -245,7 +232,6 @@
   margin: 0;
 }
 
-/* Input state */
 .inputRow {
   display: flex;
   align-items: center;
@@ -254,7 +240,6 @@
   row-gap: var(--space-2);
 }
 
-/* Stepper (−/+) wrapper */
 .stepper {
   display: inline-flex;
   align-items: stretch;
@@ -310,20 +295,17 @@
   -moz-appearance: textfield;
 }
 
-/* Placar travado durante o envio, com o mesmo esmaecido dos +/−. */
 .scoreInput:read-only {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* Campo vazio de jogo sem palpite. O traço some quando o usuário escolhe um número. */
 .scoreInput::placeholder {
   color: var(--color-text-secondary);
   font-weight: var(--font-weight-regular);
   opacity: 1;
 }
 
-/* Inside a stepper, remove side border-radius and collapse borders */
 .stepper .scoreInput {
   border-radius: 0;
 }
@@ -338,7 +320,6 @@
   box-shadow: 0 0 0 2px rgb(73 242 27 / 0.15);
 }
 
-/* Dentro do stepper o contorno fica recuado para não ser coberto pelos botões. */
 .scoreInput:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
@@ -377,13 +358,10 @@
   cursor: not-allowed;
 }
 
-/* Durante o envio o botão segue focável e ignora o clique. */
 .saveBtn[aria-disabled='true'] {
   cursor: progress;
 }
 
-/* Palpite salvo e sem mudança. É estado, então não tem fundo de ação nem opacidade
-   reduzida. O contorno vem por sombra interna para não mudar a altura do botão. */
 .saveBtn.saveBtnDone,
 .saveBtn.saveBtnDone:hover {
   background-color: transparent;
@@ -398,7 +376,6 @@
   margin: 0;
 }
 
-/* ── Outcome-only (1X2) buttons ─────────── */
 .outcomeRow {
   display: flex;
   align-items: center;
@@ -407,7 +384,6 @@
   justify-content: center;
 }
 
-/* No box of its own — the three buttons stay flex children of .outcomeRow. */
 .outcomeButtons {
   display: contents;
 }
@@ -449,7 +425,6 @@
   color: var(--color-primary);
 }
 
-/* ── Penalty shootout ───────────────────── */
 .penaltyResult {
   display: block;
   margin-top: var(--space-1);
@@ -458,12 +433,6 @@
   text-align: center;
 }
 
-/*
- * Inline penalty pick — sits at the right of the active control row, beside the
- * save button, so a draw-marked card stays the same height as a locked/finished
- * one. A ball icon flags it as a shootout. Once a winner is chosen it collapses
- * to a PenaltyBadge chip (.penaltyChipSlot) to keep the row compact.
- */
 .penaltyInline,
 .penaltyChipSlot {
   margin-left: auto;
@@ -481,8 +450,6 @@
   margin-right: var(--space-1);
 }
 
-/* In 1X2 mode the three outcome buttons fill the row, so the penalty pick
-   drops to its own centred line below them. */
 .outcomeRow .penaltyInline,
 .outcomeRow .penaltyChipSlot {
   flex-basis: 100%;
@@ -550,9 +517,6 @@
   color: var(--color-text-muted);
 }
 
-/* ── Touch targets ──────────────────────── */
-/* Em tela de toque, os −/+ e os botões de pênalti ganham a área mínima de
-   44×44 px. Com mouse, o stepper mantém 28 px de largura. */
 @media (pointer: coarse) {
   .stepBtn {
     width: 44px;
@@ -564,13 +528,6 @@
   }
 }
 
-/* ── Mobile adjustments ─────────────────── */
-/*
- * No celular, os dois steppers ficam centrados na primeira linha. Salvar ou
- * Atualizar desce para uma linha própria, de largura cheia e 44 px de altura, e
- * a escolha de pênaltis também. Vale até 420 px e, em tela de toque, até 600 px.
- * Num iPhone de 430 px os −/+ de 44 px ocupam a linha e o botão não cabe ao lado.
- */
 @media (max-width: 420px), (pointer: coarse) and (max-width: 600px) {
   .inputRow {
     justify-content: center;
@@ -604,11 +561,6 @@
   }
 }
 
-/*
- * Em 320 px o card tem 246 px úteis e os dois steppers pedem 271 px. Abaixo de
- * 360 px o card perde padding lateral, o campo do placar encolhe e os controles
- * ficam mais juntos. Os −/+ seguem com 44 px e os steppers cabem numa linha só.
- */
 @media (max-width: 359px) {
   .card {
     padding-inline: var(--space-3);

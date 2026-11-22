@@ -178,7 +178,9 @@ Eventos da config de pontuação/visibilidade no grupo (CreateGroupModal + Match
 > seguem **não** rastreados — só o clique intencional no vencedor do pênalti gera evento.
 
 Compartilhamento do convite (`ShareButtons`, usado em GroupInviteSection + CreateGroupSuccessView).
-O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal de sucesso:
+O `<contexto>` é `group_detail` na página do grupo, `create_group` no modal de sucesso,
+`group_link` no link público de pedido de entrada e `exact_milestone` no cartão do marco
+de placares exatos:
 
 | Evento | Disparo | Params |
 |---|---|---|
@@ -214,8 +216,10 @@ recomendados do GA4.
 | Evento | Disparo | Params |
 |---|---|---|
 | `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
-| `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
-| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal) |
+| `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`/`group_link`/`exact_milestone`) |
+| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. A conversão do caminho por pedido fica no evento de servidor `group_joined` com `entry_method=request`, não neste evento do navegador. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal). O cliente não envia `request`. |
+| `join_request` | Visitante autenticado enviou pedido em `POST /groups/join-requests`. | (sem parâmetros) |
+| `approve_join_request` | Dono aprovou um pedido na aba Membros. Sem dado pessoal. | (sem parâmetros) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o
@@ -249,7 +253,9 @@ Modal genérico (componente `Modal`):
 
 | Evento | Disparo | Params |
 |---|---|---|
-| `click_modal_fechar` | clique no botão ✕ de qualquer modal (backdrop/ESC seguem não rastreados) | `{ modal }` (título do modal) |
+| `click_modal_fechar` | clique no botão ✕ de qualquer modal; backdrop e ESC seguem sem rastreamento | `{ modal }` |
+
+O parâmetro `modal` recebe o identificador fixo da prop `analyticsId` do componente `Modal`, em vez do título visível. Os valores usados hoje são `palpites_membro`, `criar_grupo`, `entrar_grupo`, `regras_grupo`, `compartilhar_resultado`, `configurar_grupo`, `lembretes_palpite`, `jogos_grupo` e `confirmacao`.
 
 Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
 
@@ -265,3 +271,52 @@ Rodada com jogo adiado ou remarcado (PredictionsTab — ver ADR-013 e ADR-019):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_predictions_rodada_adiada` | clique em "Ver rodada" no aviso de rodada com jogo adiado ou remarcado (pula para a rodada onde o palpite segue aberto) | `{ round }` |
+
+## Allow-list de parâmetros por evento
+
+`trackEvent` em `web/src/analytics/ga.ts` filtra os parâmetros antes de chamar `gtag`. Apenas as chaves declaradas para cada evento em `EVENT_ALLOWED_PARAMS` seguem para o GA4. Chaves fora da lista e parâmetros enviados para eventos sem entrada na tabela são descartados. Quando nenhuma chave permitida sobra após o filtro, o evento sai sem objeto de parâmetros.
+
+Para aceitar um parâmetro novo em produção, adicione a chave correspondente em `EVENT_ALLOWED_PARAMS` e atualize a tabela abaixo.
+
+| Evento | Parâmetros permitidos |
+|---|---|
+| `click_modal_fechar` | `modal` |
+| `entrar_origem` | `origem` |
+| `login` | `method`, `origem` |
+| `share_invite` | `method`, `context` |
+| `join_group` | `entry_method` |
+| `join_request` | (nenhum) |
+| `approve_join_request` | (nenhum) |
+| `submit_criar_grupo` | `origem` |
+| `click_create_group_preset_selecionado` | `preset` |
+| `click_create_group_ajuda_pontuacao` | `campo` |
+| `click_group_picks_ver_quem_palpitou` | `open` |
+| `change_group_picks_rodada` | `round` |
+| `click_group_picks_rodada_anterior` | `round` |
+| `click_group_picks_proxima_rodada` | `round` |
+| `click_leaderboard_rodada_anterior` | `round` |
+| `click_leaderboard_proxima_rodada` | `round` |
+| `change_leaderboard_rodada` | `round` |
+| `click_matchcard_salvar` | `match_id` |
+| `click_matchcard_resultado` | `match_id`, `outcome` |
+| `click_prediction_penalty_winner` | `match_id`, `winner` |
+| `change_predictions_rodada` | `round` |
+| `click_predictions_rodada_adiada` | `round` |
+| `click_predictions_rodada_anterior` | `round` |
+| `click_predictions_proxima_rodada` | `round` |
+| `click_predictions_salvar_todos` | `count`, `round` |
+| `change_predictions_aplicar_outros_grupos` | `enabled` |
+| `click_predictions_aplicar_outros_grupos` | `groups` |
+| `click_standings_ver_grupo` | `group` |
+| `click_admin_metrics_filtro_campeonato` | `filter`, `value` |
+| `click_admin_metrics_arquivo_mes` | `month` |
+| `click_admin_metrics_periodo` | `days` |
+| `click_admin_radar_periodo` | `days` |
+| `click_admin_radar_ordenar` | `sort` |
+| `click_admin_radar_filtrar_status` | `status` |
+| `click_dashboard_encerrados_toggle` | `open` |
+| `click_group_detail_abrir_convite` | `open` |
+| `click_group_detail_tab` | `tab` |
+| `click_landing_guia` | `guia` |
+| `click_settings_toggle_lembretes` | `enabled` |
+| `click_settings_confirmar_lembretes` | `enabled` |

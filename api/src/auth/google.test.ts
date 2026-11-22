@@ -422,7 +422,6 @@ describe('verifyGoogleIdToken', () => {
     mockFetchJwks()
     const token = await generateToken()
     const parts = token.split('.')
-    // Muddle the signature
     const invalidToken = `${parts[0]}.${parts[1]}.badsignature`
     await expect(verifyGoogleIdToken(invalidToken, clientId, expectedNonce)).rejects.toThrow(
       'ID token signature invalid',

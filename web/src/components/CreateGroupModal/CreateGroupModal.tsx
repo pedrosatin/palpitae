@@ -13,7 +13,6 @@ interface CreateGroupModalProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
-  /** Slug da competição que vem escolhida no select, pedido pelo link de um guia. */
   preferredCompetitionSlug?: string
 }
 
@@ -55,14 +54,10 @@ export default function CreateGroupModal({
     handleSubmit,
   } = useCreateGroupForm({ isOpen, onClose, onCreated, preferredCompetitionSlug })
 
-  // Grupos já calculados no hook no carregamento (fonte única de verdade);
-  // sem um dos grupos não há <optgroup> — um título sozinho só adicionaria ruído.
-  const groups = competitionGroups
-  const hasBothGroups = groups.ongoing.length > 0 && groups.upcoming.length > 0
+  const { ongoing, upcoming } = competitionGroups
+  const hasBothGroups = ongoing.length > 0 && upcoming.length > 0
   const selected = competitions.find((c) => c.id === competitionId)
   const selectedOngoing = selected?.status === 'ongoing'
-  // Os dois avisos podem aparecer juntos, quando a competição do link falta e a
-  // primeira da lista já começou. O select descreve-se pelos que estiverem na tela.
   const describedBy =
     [
       preferredCompetitionUnavailable && UNAVAILABLE_HINT_ID,
@@ -80,8 +75,35 @@ export default function CreateGroupModal({
     ))
   }
 
+  function renderCompetitionControl() {
+    if (loadingCompetitions) {
+      return <p className={styles.loadingText}>Carregando competições...</p>
+    }
+    if (competitions.length === 0) {
+      return <p className={styles.emptyText}>Nenhuma competição disponível no momento.</p>
+    }
+    return (
+      <Select
+        id="group-competition"
+        value={competitionId}
+        onChange={(e) => setCompetitionId(e.target.value)}
+        aria-describedby={describedBy}
+        required
+      >
+        {hasBothGroups ? (
+          <>
+            <optgroup label="Em andamento">{renderOptions(ongoing)}</optgroup>
+            <optgroup label="Em breve">{renderOptions(upcoming)}</optgroup>
+          </>
+        ) : (
+          renderOptions(competitions)
+        )}
+      </Select>
+    )
+  }
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo" analyticsId="criar_grupo">
       {created ? (
         <CreateGroupSuccessView created={created} onClose={handleClose} />
       ) : (
@@ -109,28 +131,7 @@ export default function CreateGroupModal({
             <label className={shared.label} htmlFor="group-competition">
               Competição
             </label>
-            {loadingCompetitions ? (
-              <p className={styles.loadingText}>Carregando competições...</p>
-            ) : competitions.length === 0 ? (
-              <p className={styles.emptyText}>Nenhuma competição disponível no momento.</p>
-            ) : (
-              <Select
-                id="group-competition"
-                value={competitionId}
-                onChange={(e) => setCompetitionId(e.target.value)}
-                aria-describedby={describedBy}
-                required
-              >
-                {hasBothGroups ? (
-                  <>
-                    <optgroup label="Em andamento">{renderOptions(groups.ongoing)}</optgroup>
-                    <optgroup label="Em breve">{renderOptions(groups.upcoming)}</optgroup>
-                  </>
-                ) : (
-                  renderOptions(competitions)
-                )}
-              </Select>
-            )}
+            {renderCompetitionControl()}
             {preferredCompetitionUnavailable && (
               <p id={UNAVAILABLE_HINT_ID} role="status" className={styles.statusHint}>
                 A competição do link ainda não está disponível. Escolha outra na lista.

@@ -2,13 +2,14 @@
 
 import '@testing-library/jest-dom'
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { groupsListQueryKey } from '../../lib/groupsList'
+import { createTestQueryClient, renderWithQuery as render } from '../../test-utils'
 import { RenameGroupModal } from './RenameGroupModal'
 import { apiFetch } from '../../lib/api'
 import { trackEvent } from '../../analytics/ga'
-import { invalidateApiCache } from '../../lib/api-cache'
 
 vi.mock('../../lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api')>()),
@@ -17,10 +18,6 @@ vi.mock('../../lib/api', async (importOriginal) => ({
 
 vi.mock('../../analytics/ga', () => ({
   trackEvent: vi.fn(),
-}))
-
-vi.mock('../../lib/api-cache', () => ({
-  invalidateApiCache: vi.fn(),
 }))
 
 describe('RenameGroupModal', () => {
@@ -65,7 +62,9 @@ describe('RenameGroupModal', () => {
       json: async () => ({}),
     } as unknown as Response)
 
-    render(<RenameGroupModal {...defaultProps} />)
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    render(<RenameGroupModal {...defaultProps} />, { queryClient })
 
     const input = screen.getByDisplayValue('Old Name')
     await user.clear(input)
@@ -82,7 +81,7 @@ describe('RenameGroupModal', () => {
     })
 
     expect(trackEvent).toHaveBeenCalledWith('submit_renomear_grupo')
-    expect(invalidateApiCache).toHaveBeenCalledWith('groups:')
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
     expect(defaultProps.onRenamed).toHaveBeenCalledWith('New Name')
     expect(defaultProps.onClose).toHaveBeenCalled()
   })

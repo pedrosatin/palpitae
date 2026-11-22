@@ -35,7 +35,7 @@ describe('isMatchLocked', () => {
 
   it('lida com horários em formatos diferentes (com e sem milissegundos)', () => {
     const startSemMilis = '2026-08-01T12:00:00Z'
-    const nowComMilis = '2026-08-01T12:00:00.123Z' // 123ms depois, deveria estar travado
+    const nowComMilis = '2026-08-01T12:00:00.123Z'
     expect(isMatchLocked({ start_time: startSemMilis, postponed: 0 }, nowComMilis)).toBe(true)
   })
   it('trava imediatamente jogo ao vivo (live) mesmo se adiado ou futuro', () => {

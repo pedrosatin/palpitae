@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
 import { buildApiUrl } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../../lib/api'
-import { ScoringPreset } from '../constants'
+import { DEFAULT_SCORING, ScoringPreset } from '../constants'
 import { selectableCompetitions } from '../competitionStatus'
 import type { CompetitionSelectGroups } from '../competitionStatus'
 import { Competition, CreatedGroup } from '../types'
@@ -12,11 +13,28 @@ interface UseCreateGroupFormProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
-  /**
-   * Slug da competição que vem escolhida, pedido pelo link de um guia. Vale
-   * enquanto o pai passar o valor; o painel o descarta ao fechar o modal.
-   */
   preferredCompetitionSlug?: string
+}
+
+type CompetitionsPayload = {
+  list: Competition[]
+  groups: CompetitionSelectGroups
+}
+
+const EMPTY_GROUPS: CompetitionSelectGroups = { ongoing: [], upcoming: [] }
+
+function competitionsQueryOptions(enabled: boolean) {
+  return {
+    queryKey: ['competitions', 'selectable'] as const,
+    enabled,
+    staleTime: 60_000,
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<CompetitionsPayload> => {
+      const r = await apiFetch(buildApiUrl('/competitions'), { signal })
+      if (!r.ok) throw new Error('Não foi possível carregar as competições')
+      const data = (await r.json()) as { competitions: Competition[] }
+      return selectableCompetitions(data.competitions)
+    },
+  }
 }
 
 export function useCreateGroupForm({
@@ -25,38 +43,29 @@ export function useCreateGroupForm({
   onCreated,
   preferredCompetitionSlug,
 }: UseCreateGroupFormProps) {
-  const [competitions, setCompetitions] = useState<Competition[]>([])
-  const [competitionGroups, setCompetitionGroups] = useState<CompetitionSelectGroups>({
-    ongoing: [],
-    upcoming: [],
-  })
-  const [loadingCompetitions, setLoadingCompetitions] = useState(false)
+  const competitionsQuery = useQuery(competitionsQueryOptions(isOpen))
+  const competitions = competitionsQuery.data?.list ?? []
+  const competitionGroups = competitionsQuery.data?.groups ?? EMPTY_GROUPS
+  const loadingCompetitions =
+    isOpen &&
+    (competitionsQuery.isPending || (competitions.length === 0 && competitionsQuery.isFetching))
 
   const [name, setName] = useState('')
-  // Só a escolha feita no select. Vazio, vale a competição padrão abaixo.
   const [chosenCompetitionId, setCompetitionId] = useState('')
-  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>('classic')
-  const [pointsExact, setPointsExact] = useState(3)
-  const [pointsWinner, setPointsWinner] = useState(1)
-  const [pointsPenalty, setPointsPenalty] = useState(1)
-  const [pointsClassified, setPointsClassified] = useState(0)
+  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>(DEFAULT_SCORING.preset)
+  const [pointsExact, setPointsExact] = useState(DEFAULT_SCORING.exact)
+  const [pointsWinner, setPointsWinner] = useState(DEFAULT_SCORING.winner)
+  const [pointsPenalty, setPointsPenalty] = useState(DEFAULT_SCORING.penalty)
+  const [pointsClassified, setPointsClassified] = useState(DEFAULT_SCORING.classified)
   const [predictionsVisibility, setPredictionsVisibility] = useState<'hidden' | 'public'>('hidden')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
 
-  // Cada abertura do formulário tem um número. Fechar o modal troca o número, e a
-  // resposta de um envio feito antes não mexe no formulário reaberto. O envio em
-  // andamento fica num ref para que um segundo submit, antes do novo render, não
-  // crie outro grupo.
   const formInstanceRef = useRef(0)
   const inFlightRef = useRef(false)
 
-  // O padrão é a competição pedida pelo link, se ela estiver na lista
-  // selecionável, ou a primeira da lista. Quando ela fica fora da lista, por
-  // falta de cadastro ou porque a competição está encerrada, o modal mostra um
-  // aviso junto do select.
   const preferredCompetition = preferredCompetitionSlug
     ? competitions.find((c) => c.slug === preferredCompetitionSlug)
     : undefined
@@ -64,40 +73,25 @@ export function useCreateGroupForm({
   const preferredCompetitionUnavailable =
     Boolean(preferredCompetitionSlug) && competitions.length > 0 && !preferredCompetition
 
-  // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
-  // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
   const showPenaltyField =
     competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
 
-  useEffect(() => {
-    if (!isOpen || competitions.length > 0) return
-    setLoadingCompetitions(true)
-    // apiFetch em vez de fetch cru: em dev o modal roda cross-origin (5173 →
-    // 8787) e sem credentials o cookie de sessão não vai — 401 garantido.
-    apiFetch(buildApiUrl('/competitions'))
-      .then((r) => r.json() as Promise<{ competitions: Competition[] }>)
-      .then((data) => {
-        // Encerradas saem; em andamento entram primeiro no select e são o
-        // default — campeonato prestes a virar só fallback. Os grupos saem
-        // daqui uma única vez; o modal não reparticiona a lista.
-        const { list, groups } = selectableCompetitions(data.competitions)
-        setCompetitions(list)
-        setCompetitionGroups(groups)
-      })
-      .catch(() => setError('Não foi possível carregar as competições'))
-      .finally(() => setLoadingCompetitions(false))
-  }, [isOpen, competitions.length])
+  const competitionsError =
+    isOpen && competitionsQuery.isError && !competitionsQuery.isFetching
+      ? 'Não foi possível carregar as competições'
+      : null
+  const displayError = error ?? competitionsError
 
   function reset() {
     formInstanceRef.current += 1
     inFlightRef.current = false
     setName('')
     setCompetitionId('')
-    setScoringPreset('classic')
-    setPointsExact(3)
-    setPointsWinner(1)
-    setPointsPenalty(1)
-    setPointsClassified(0)
+    setScoringPreset(DEFAULT_SCORING.preset)
+    setPointsExact(DEFAULT_SCORING.exact)
+    setPointsWinner(DEFAULT_SCORING.winner)
+    setPointsPenalty(DEFAULT_SCORING.penalty)
+    setPointsClassified(DEFAULT_SCORING.classified)
     setPredictionsVisibility('hidden')
     setError(null)
     setCreated(null)
@@ -153,8 +147,6 @@ export function useCreateGroupForm({
       const origem = getGuideOrigin()
       if (origem) trackEvent('submit_criar_grupo', { origem })
       else trackEvent('submit_criar_grupo')
-      // O grupo existe mesmo que o modal tenha fechado: a tela de pronto só vale
-      // para o formulário que enviou, mas o pai ainda recebe `onCreated` (o painel recarrega a lista).
       if (isCurrent()) setCreated(data.group!)
       onCreated(data.group!)
     } catch (err) {
@@ -190,7 +182,7 @@ export function useCreateGroupForm({
     predictionsVisibility,
     setPredictionsVisibility,
     submitting,
-    error,
+    error: displayError,
     created,
     showPenaltyField,
     handleClose,

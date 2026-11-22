@@ -1,6 +1,7 @@
-import { formatSince } from './ProviderOpsSection'
-import { OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
+import { ChartLegend, OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
 import { lastDays } from './dates'
+import { formatCount, formatSince, isNewerThanPeriod } from './format'
+import { competitionLabel } from './labels'
 import styles from './AdminMetricsPage.module.css'
 
 /**
@@ -32,16 +33,9 @@ export interface CompetitionActivityResponse {
   }[]
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-// Séries nomeadas além do top da paleta agrupam em "outros".
 const MAX_SERIES = SERIES_COLORS.length
 const OTHERS = 'outros'
 const NO_LEAGUE = 'sem-liga'
-
-function formatNumber(n: number): string {
-  return Math.round(n).toLocaleString('pt-BR')
-}
 
 function rowName(row: CompetitionActivityResponse['competitions'][number]): {
   text: string
@@ -53,14 +47,8 @@ function rowName(row: CompetitionActivityResponse['competitions'][number]): {
       title: 'Evento gravado sem a dimensão de campeonato',
     }
   }
-  if (!row.name) {
-    return {
-      text: `Campeonato ${row.competition_id.slice(0, 8)}`,
-      title: row.competition_id,
-    }
-  }
   return {
-    text: row.season ? `${row.name} ${row.season}` : row.name,
+    text: competitionLabel(row.competition_id, row.name, row.season),
     title: row.competition_id,
   }
 }
@@ -120,7 +108,6 @@ export function buildGroupsDailySeries(data: CompetitionActivityResponse) {
     segments: order
       .map((key) => ({
         type: key,
-        // Sob sampling o peso é fracionário: dois decimais bastam pro tooltip.
         value: Math.round((byDay.get(label)?.get(key) ?? 0) * 100) / 100,
         color: colorFor.get(key) ?? OTHER_COLOR,
       }))
@@ -130,7 +117,6 @@ export function buildGroupsDailySeries(data: CompetitionActivityResponse) {
   return { days, legend, outsideAxis: Math.round(outsideAxis * 100) / 100 }
 }
 
-/** Avisa quando a dimensão não cobre o período inteiro (ausência ≠ zero). */
 function DimensionNotice({ data }: { data: CompetitionActivityResponse }) {
   if (!data.predictionsDimensionSince) {
     return (
@@ -141,8 +127,7 @@ function DimensionNotice({ data }: { data: CompetitionActivityResponse }) {
       </p>
     )
   }
-  const first = new Date(`${data.predictionsDimensionSince.replace(' ', 'T')}Z`).getTime()
-  if (Number.isFinite(first) && first > Date.now() - data.days * DAY_MS) {
+  if (isNewerThanPeriod(data.predictionsDimensionSince, data.days)) {
     return (
       <p className={styles.samplingWarning}>
         O campeonato nos palpites começou a ser gravado em{' '}
@@ -186,14 +171,12 @@ function GroupsDailyChart({ data }: { data: CompetitionActivityResponse }) {
         ariaLabel="Grupos criados por dia, por campeonato"
         segmentLabel={(key) => nameOf(key).text}
       />
-      <div className={styles.legend}>
-        {legend.map((l) => (
-          <span key={l.key} className={styles.legendItem} title={nameOf(l.key).title}>
-            <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
-            {nameOf(l.key).text}
-          </span>
-        ))}
-      </div>
+      <ChartLegend
+        items={legend.map((l) => {
+          const { text, title } = nameOf(l.key)
+          return { key: l.key, color: l.color, label: text, title }
+        })}
+      />
       {data.groupsDailyTruncated && (
         <p className={styles.samplingWarning}>
           A consulta diária bateu no limite de linhas da API do Analytics Engine: os dias mais
@@ -202,7 +185,7 @@ function GroupsDailyChart({ data }: { data: CompetitionActivityResponse }) {
       )}
       {outsideAxis > 0 && (
         <p className={styles.hint}>
-          {formatNumber(outsideAxis)} grupos criados no dia parcial do início do período entram na
+          {formatCount(outsideAxis)} grupos criados no dia parcial do início do período entram na
           tabela, mas não no gráfico.
         </p>
       )}
@@ -255,9 +238,9 @@ export default function CompetitionActivitySection({
                       return (
                         <tr key={row.competition_id || 'sem-liga'}>
                           <td title={name.title}>{name.text}</td>
-                          <td className={styles.num}>{formatNumber(row.groups_created)}</td>
-                          <td className={styles.num}>{formatNumber(row.predictions)}</td>
-                          <td className={styles.num}>{formatNumber(row.prediction_saves)}</td>
+                          <td className={styles.num}>{formatCount(row.groups_created)}</td>
+                          <td className={styles.num}>{formatCount(row.predictions)}</td>
+                          <td className={styles.num}>{formatCount(row.prediction_saves)}</td>
                         </tr>
                       )
                     })}

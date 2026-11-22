@@ -12,10 +12,25 @@ import { daysBeforeSql, finishedByMatchesSql } from '../groups/competitionStatus
 export const FINISH_CONFIRMATION_DAYS = 7
 
 /**
+ * Descoberta da ESPN que a fila dividiu por data: a competição só avança quando
+ * nenhum item `discovery` dela está em `pending`, `running` ou `failed` (`?4` provedor, `?5` código e
+ * `?6` temporada). Sem isso, o primeiro item concluído a avançaria com o calendário
+ * pela metade.
+ */
+const RECONCILE_QUEUE_GUARD = `   AND NOT EXISTS (
+     SELECT 1 FROM provider_work w
+      WHERE w.provider = ?4 AND w.kind = 'discovery'
+        AND w.competition_code = ?5 AND w.season = ?6
+        AND w.status != 'done')`
+
+/** A fila de itens `discovery` de uma competição que o avanço do status espera esvaziar. */
+export type DiscoveryQueueGuard = { provider: string; competitionCode: string; season: string }
+
+/**
  * Instante da execução em `?1`, id da competição em `?2` e, em `?3`, quantos jogos
  * do calendário o sync descartou por time ainda indefinido.
  */
-const RECONCILE_SQL = `UPDATE competitions
+const RECONCILE_SQL = (guarded: boolean) => `UPDATE competitions
    SET status = CASE
      WHEN ?3 = 0
       AND ${finishedByMatchesSql('competitions', 'competitions.id', '?1')}
@@ -32,7 +47,7 @@ const RECONCILE_SQL = `UPDATE competitions
      ELSE status
    END
  WHERE id = ?2 AND status != 'finished'
- RETURNING status`
+${guarded ? RECONCILE_QUEUE_GUARD : ''} RETURNING status`
 
 /**
  * Avança `competitions.status` pelos jogos gravados: 'upcoming' vira 'ongoing'
@@ -57,10 +72,13 @@ export async function reconcileCompetitionStatus(
   competitionId: string,
   now: number,
   tbdDiscarded = 0,
+  queue?: DiscoveryQueueGuard,
 ): Promise<string | null> {
+  const binds: (string | number)[] = [new Date(now).toISOString(), competitionId, tbdDiscarded]
+  if (queue) binds.push(queue.provider, queue.competitionCode, queue.season)
   const row = await db
-    .prepare(RECONCILE_SQL)
-    .bind(new Date(now).toISOString(), competitionId, tbdDiscarded)
+    .prepare(RECONCILE_SQL(queue !== undefined))
+    .bind(...binds)
     .first<{ status: string }>()
   return row?.status ?? null
 }

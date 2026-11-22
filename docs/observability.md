@@ -40,20 +40,32 @@ agregar a partir das linhas (somar contagens, contar eventos), **multiplique cad
 seu `_sample_interval`** — ex.: `SUM(_sample_interval)` em vez de `COUNT(*)`,
 `SUM(double1 * _sample_interval)` em vez de `SUM(double1)`. Ignorar isso subestima os números.
 
-### R2 — cold path (retenção ILIMITADA)
+### R2 — cold path (retenção de 13 meses)
 Um **cron diário** consulta a SQL API pelos eventos do dia anterior (UTC) e grava **um**
 NDJSON em `events/YYYY/MM/DD.ndjson`. R2 é grátis (10 GB, egress zero, free tier não expira)
 e S3-compatible. Um arquivo/dia ⇒ ~365 escritas/ano, irrisório. O Analytics Engine é o
-**staging** (query rápida, ~3 meses); o cron "congela" tudo em R2 pra sempre. Reaproveita o
+**staging** (query rápida, ~3 meses); o cron "congela" tudo em R2. Reaproveita o
 cron que já existe — sem Queues (pago) nem Durable Object.
+
+**Retenção.** Uma regra de ciclo de vida do bucket `palpitae-events` apaga os objetos de
+`events/` 395 dias (~13 meses) depois da gravação, o prazo que a página `/privacidade`
+publica. Conferir com `npx wrangler r2 bucket lifecycle list palpitae-events --config ./wrangler.toml`
+(em `api/`). Mudar o prazo exige mudar a página junto.
 
 **Manifesto em customMetadata.** Cada NDJSON leva `customMetadata: { events, rows, complete }`.
 `events` é a contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de
 linhas; ver sampling acima) e serve pro dashboard montar a série histórica além da janela do AE
 **sem ler arquivo nenhum**: o `list()` do R2 já devolve o customMetadata de cada objeto. `rows` é
-o nº de linhas do arquivo. `complete: '1'` diz que o dia foi lido inteiro **e** consultado ao
-menos 24 h depois de terminar; `'0'` é arquivo provisório ou truncado. Arquivo sem `complete`
-é de antes do manifesto.
+o nº de linhas do arquivo. Num dia com linhas fora do arquivo, `events` soma só as linhas
+arquivadas. Na coleta normal, `complete: '1'` diz que o dia foi consultado ao menos 24 h depois
+de terminar e que nenhum evento de negócio ficou fora do arquivo nem sem ler. A partir de 80
+dias, o reparo também pode fechar o arquivo que já existe, conforme a regra de reparo abaixo. Linhas dos tipos de volume
+podem faltar num dia acima do teto; nesse caso `truncatedTypes` lista os tipos que tiveram
+linhas fora do arquivo, separados por vírgula. `'0'` é arquivo provisório ou com eventos de
+negócio fora do arquivo. Arquivo sem `complete` é de antes do manifesto. Sem corte,
+`truncatedTypes` não existe. Manifesto antigo sem o campo continua compatível com o dashboard,
+que lê `events` no `list()`, e com o `/metrics/archive/query`, que agrega o corpo do NDJSON
+(`blob1` e `_sample_interval`).
 
 **Backfill e reparo.** O export não cobre só "ontem": `exportRecentDays` varre de `today-1` até
 `today-lookbackDays` (90 por padrão, dentro da janela de ~3 meses do AE) e lê o manifesto de
@@ -61,10 +73,13 @@ cada dia (`HEAD` na chave):
 
 - dia **sem** arquivo: exporta;
 - arquivo com `complete: '1'`: não consulta mais;
-- qualquer outro (provisório, truncado ou de antes do manifesto): reconsulta o AE e troca o
-  arquivo só se a coleta nova não perde linhas (mais linhas, ou completa com ao menos as mesmas).
-  Se a coleta nova, já completa, tem menos linhas (por exemplo, dia fora da retenção ou
-  amostragem na leitura), o corpo arquivado fica. A partir de 80 dias atrás, perto do fim da
+- qualquer outro (provisório, truncado ou de antes do manifesto): reconsulta o AE e compara
+  primeiro as linhas de eventos de negócio (fora da lista de volume) do arquivo e da coleta nova.
+  Com menos delas, a coleta nova é recusada. Com mais, ela substitui o arquivo, mesmo que o
+  total de linhas caia: um arquivo antigo cheio de volume pode não ter chegado aos eventos de
+  negócio. Com o mesmo número, ela substitui só se não perde linhas (mais linhas, ou completa
+  com ao menos as mesmas). Se a coleta nova, já completa, é recusada (por exemplo, dia fora da
+  retenção ou amostragem na leitura), o corpo arquivado fica. A partir de 80 dias atrás, perto do fim da
   retenção, ele ganha o manifesto contado do próprio NDJSON, com `complete: '1'`; antes disso o
   dia continua com `complete: '0'` e é reconsultado na execução seguinte.
 
@@ -85,12 +100,41 @@ execução pra não estourar tempo/CPU do cron — dias restantes pegam na próx
 **Limite de linhas da SQL API.** A SQL API do Analytics Engine corta o resultado silenciosamente
 (~10k linhas). O export lê o dia em páginas de `LIMIT 10000` ordenadas por `timestamp`: página
 cheia descarta as linhas do último segundo e a próxima começa nesse segundo, então nenhum
-segundo fica dividido entre páginas. Um único segundo com mais de 10 mil linhas, ou mais de 3
-páginas no dia, grava o que foi lido com `complete: '0'` e um `console.warn`. O teto é de 3
+segundo fica dividido entre páginas. São de 1 a 3 páginas, uma chamada ao AE cada. O teto é de 3
 páginas (30 mil linhas) porque o dia inteiro fica em memória antes do `put`, e o Worker tem
-128 MB. Um dia truncado é reconsultado em toda execução, ocupando uma vaga do teto de
-exports/run, até sair da janela de 90 dias. Em novembro de 2026, o maior dia dos 90 anteriores
-tinha cerca de 250 linhas.
+128 MB. Em novembro de 2026, o maior dia dos 90 anteriores tinha cerca de 250 linhas.
+
+**Dia acima do teto: eventos de negócio primeiro.** Tráfego barato de baixo valor não pode
+tirar do arquivo no R2 os eventos de negócio e de segurança, como `account_created` e
+`security_storage_error`. A coleta tem duas fases.
+
+1. A leitura em ordem de tempo segue como antes. Se ela chega ao fim do dia, o arquivo é
+   idêntico ao de sempre.
+2. Se ela para antes, seja por esgotar as 3 páginas, seja por um único segundo com 10 mil
+   linhas ou mais (o que pode acontecer já na primeira página), o export lê só os eventos fora
+   da lista de volume dali em diante (`blob1 NOT IN`, até 2 páginas). Uma última consulta,
+   agrupada por `blob1`, diz quais tipos de volume ainda tinham linhas sem ler. A lista de
+   volume é `oauth_error`, `matches_cache`, `request_perf`, `provider_http_attempt` e
+   `poller_run`, e está em `VOLUME_EVENT_TYPES`, em `export.ts`.
+
+O arquivo nunca passa de 30 mil linhas e fica em ordem de tempo. A cada página de negócio, as
+linhas de volume mais recentes da primeira fase saem até o total caber no teto, então os
+eventos de negócio têm prioridade até as 30 mil linhas e os de volume ocupam o que sobra. As linhas guardadas em memória
+passam do teto em no máximo uma página. O manifesto lista em `truncatedTypes` os tipos de volume
+tirados do arquivo ou com linhas sem ler. Dia cortado só em tipos de volume fecha normalmente
+(`complete: '1'` depois das 24 h), porque reconsultar não traria as linhas que sobraram. Dia
+que perde eventos de negócio segue com `complete: '0'`, com `console.warn`, e é reconsultado
+em toda execução, ocupando uma vaga do teto de exports/run, até sair da janela de 90 dias. Isso
+acontece com mais de 2 páginas deles depois do corte, com um único segundo de 10 mil linhas de
+negócio ou com mais de 30 mil linhas de negócio no dia.
+
+**Chamadas ao AE por dia.** Dia lido até o fim usa de 1 a 3, uma por página (1 para qualquer
+dia abaixo de 10 mil linhas). Dia cortado usa de 3 a 6: de 1 a 3 páginas em ordem de tempo, 1
+ou 2 de negócio e a sonda de tipos. O caso comum de um dia acima do teto, com poucos eventos de
+negócio, usa 5. O teto de 10 exports/run vale nos dois casos. Como o dia cortado só em volume
+fecha e deixa de ser reconsultado, o custo recorrente dele cai de até 3 chamadas em toda execução,
+até o fim da janela, para no máximo 6 por coleta. Se o reparo aceitar a coleta definitiva no
+cron seguinte, o dia fecha depois de duas execuções.
 
 ## Esquema e convenção de eventos
 
@@ -127,6 +171,9 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   trazer na descoberta; a linha e os palpites ficam no banco),
   `scheduled_unknown_cron` (o `wrangler.toml` disparou um cron sem ramo no handler `scheduled`),
   `scheduled_config_missing` (configuração opcional ausente numa execução agendada),
+  `cloudflare_usage` (uso diário das cotas do plano Free no dia UTC anterior),
+  `cloudflare_quota_alert` (uma métrica passou de 50% ou de 80% da cota no dia),
+  `cloudflare_usage_error` (a consulta do uso à API GraphQL da Cloudflare falhou),
   `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
   e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
@@ -150,16 +197,22 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`; `partial` quando algum slug da ESPN ou artigo da Wikipédia falhou) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
 | `scheduled_unknown_cron` | `cron` (expressão recebida em `controller.cron`) | — | — | — |
-| `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |
+| `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`/`CF_ANALYTICS_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |
+| `cloudflare_usage` | `day` (dia UTC medido, `YYYY-MM-DD`) | — | — | `double1`=linhas lidas do D1, `double2`=linhas escritas do D1, `double3`=requisições dos Workers; soma da conta inteira no dia. Um evento por dia, gravado pelo cron das 00:05 UTC |
+| `cloudflare_quota_alert` | `metric` (`d1_rows_read`/`d1_rows_written`/`worker_requests`) | `threshold` (`50`/`80`, a maior faixa alcançada) | `day` (dia UTC medido) | `double1`=uso no dia, `double2`=cota diária do plano Free, `double3`=% da cota com uma casa decimal. No máximo um por métrica e dia |
+| `cloudflare_usage_error` | `day` (dia UTC que o cron tentou medir) | `error_message` (erro de rede ou timeout, ou status HTTP ou erro GraphQL com o corpo recortado em 200 caracteres; sem o token) | — | — |
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha ou cota zerada, 10 em sucesso amostrado); só football-data: `double3`=requests restantes na janela e `double4`=segundos até o reset, os dois `-1` sem cabeçalho válido |
+| `provider_work_run` | `status` (`ok`/`error`; `error` quando algum item falhou de vez no teto de tentativas, o pós-sync de algum item falhou ou a gravação do estado dos itens falhou e foi preciso devolvê-los à fila; na ESPN também `blocked`/`suspended`, execução que saiu sem reclamar nada porque o provedor estava pausado) | `provider` (`football-data`/`espn`) | — | `double1`=claimed (itens reclamados), `double2`=done, `double3`=requeued (devolvidos à fila sem tentativa nova do provedor), `double4`=failed, `double5`=duration_ms, `double6`=released (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de subrequests ou de vaga no provedor: os que não chegaram a começar e o que o saldo cortou no meio), `double7`=calls_used (subrequests que o dreno gastou, de 45; a recuperação da gravação do estado, quando acontece, soma aqui; `blocked`/`suspended` gravam `0` em todos menos `double7`, que é a leitura do estado). Uma linha por execução de cada drenador da fila durável de sync (ADR-027), nos minutos do trigger fundido com o poller que não são 0 nem 30; falha do D1 no dreno sai pelo `logError` com o provedor em blob3, a mensagem em blob4 e sem doubles. A football-data grava uma linha por execução; a ESPN só quando reclamou itens ou saiu bloqueada/suspensa. Linha anterior ao deploy do orçamento de subrequests não tem `double6` nem `double7`, e a anterior ao deploy da ESPN não tem o provedor em blob3 (o erro do D1 trazia a mensagem nesse lugar; não há leitor interno dessa posição) |
+| `provider_access_blocked` | `provider` (`espn`) | `status` (HTTP que causou o bloqueio: `403`, `401` ou `451`) | `estado`: `backoff` (nova tentativa espaçada) ou `suspended` (coleta suspensa até o operador retomar) | `error_message` em blob5; `double1`=403 seguidos, `double2`=minutos até a nova tentativa (`0` quando suspensa). Um evento por passo do controle de acesso da ESPN: cada 403 que espaça a coleta e a suspensão. O 429 não gera este evento (já está em `provider_http_attempt`) |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
 | `competition_status_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A descoberta não gravou o status da competição depois de um sync bem-sucedido (falha do D1). O status fica como estava e a execução sai como `error` em `fixture_discovery_run` |
 | `match_scoring_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A pontuação da competição falhou num tick do poller. As outras competições do tick são pontuadas, o tick sai como `error` em `poller_run` e a invocação termina em exceção |
 | `match_unscored` | `competition_id` (UUID) | — | — | `double1`=jogos encerrados, com placar e sem `scored_at`, que começaram há mais de 145 minutos (115 do resultado mais cedo e 30 de um tick); `double2`=minutos desde o início do mais antigo. Um evento por competição ao fim de cada tick do poller, inclusive em tick sem jogo na janela, com no máximo 10 por execução. Entram a pontuação que parou no orçamento de chamadas, a que falhou e o jogo decisivo que espera o vencedor dos pênaltis |
+| `result_overdue_alert` | `outcome` (`sent`/`suppressed`/`clear`/`skipped_budget`/`misconfig`/`send_failed`/`send_uncertain`/`count_failed`/`cooldown_reserve_failed`/`cooldown_release_failed`) | detalhe opcional (`admin_email`/`resend_api_key`/`http_N`/`send_error`) | — | Em `sent`/`suppressed`/`send_failed`/`send_uncertain`: `double1`=jogos atrasados, `double2`=minutos desde o kickoff do mais antigo. Em `skipped_budget`: `double1`=saldo restante, `double2`=chamadas necessárias (4). Em `clear`: zeros. Roda no fim do poller quando `RESULT_OVERDUE_ALERT` está ligado; e-mail ao `ADMIN_EMAIL` via Resend, com cooldown em `ops_alert_state` (padrão 6 h, `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS`). Limiar = `RESULT_OVERDUE_HOURS` (padrão 3). Sem o flag, sem e-mail |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
@@ -177,11 +230,11 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
 | `security_storage_error` | `source` (`request_limits`/`logout`/`logout_all`/`cleanup`) | `category` (`read`/`write`/`oauth`) em `request_limits`; `error_message` nos demais | `error_message` (só em `request_limits`) | — |
 | `request_perf` | `route` (`GET /matches`, ...) | `status` (HTTP, string) | — | `double1`=total_ms, `double2`=db_ms (0 se ausente), `double3`=rows (0 se ausente) |
-| `email_reminder_sent` | `user_hash` | `reminder_date` (dia em Brasília; antes do lembrete diário era `competition_name`) | sem valor (antes era `round`) | `double1`=jogos listados no e-mail, `double2`=grupos listados |
+| `email_reminder_sent` | `user_hash` | `reminder_date` (dia em Brasília; antes do lembrete diário era `competition_name`) | sem valor (antes era `round`) | `double1`=jogos pendentes do usuário, inclusive os de grupos que ficam só no link "e mais N grupos", `double2`=grupos listados no e-mail |
 | `email_reminder_failed` | `user_hash` | `reminder_date` | `reason` (`quota_exceeded`, `subrequest_budget`, `unsub_check_failed`, `http_<status>`, `unknown`) | `double1`=jogos que o e-mail listaria |
 | `cron_round_reminder` | — | — | — | `double1`=rodadas com jogo listado, `double2`=sent, `double3`=failed, `double4`=jogos listados nos e-mails enviados |
 | `cron_round_reminder_misconfig` | `reason` (`no_api_key`) | — | — | — |
-| `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app) | — | — |
+| `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app / `mailjet`=Event API unsub ou spam) | — | — |
 | `email_resubscribed` | `user_hash` | `source` (`settings`) | — | — |
 
 Nos eventos `poller_run` e `fixture_discovery_run`, `api_calls` conta requests
@@ -194,12 +247,16 @@ O do poller traz ainda o orçamento de chamadas do tick (ADR-024): `calls_used`
 (consultas e batches do D1 mais tentativas HTTP), `calls_budget`,
 `scoring_competitions` (competições que entraram na pontuação, sincronizadas no
 tick ou com jogo pendente no D1), `matches_scored` e `scoring_unfinished`
-(competições que ficaram para o tick seguinte por falta de chamadas).
+(competições que ficaram para o tick seguinte por falta de chamadas), `sync_budget` (saldo das
+sincronizações do tick, football-data e ESPN juntas), `fd_deferred_rounds` (rodadas da football-data
+que não couberam ou falharam e foram para a fila) e `espn_deferred_dates` (o mesmo para as datas da
+ESPN). Linha anterior ao ticket 09 da resiliência traz `espn_budget` (o saldo só da ESPN) no lugar de
+`sync_budget` e não tem `fd_deferred_rounds`.
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
 isolates distintos mantêm filas próprias e podem sobrepor requests. A descoberta (`15 6 * * *`) roda às 06:15 UTC,
-fora dos minutos 0 e 30 do poller (`0,30 * * * *`). As medições de sobreposição
+fora dos minutos 0 e 30 do poller (trigger fundido `0,5,10,20,25,30,35,40,50,55 * * * *`, que roda o poller nesses dois minutos e o drenador nos demais). As medições de sobreposição
 feitas quando a descoberta rodava às 06:00 UTC ficam como registro histórico; o
 pilot remoto deve medir 403, `total_ms` e `api_requests_planned` antes do gate 2027.
 Retries dos provedores e chamadas do fallback ficam fora desse contador, que
@@ -220,7 +277,9 @@ Observação sobre `football_api_error`: tem **três formas** de chamada. No pol
 (`POST /matches/sync` em `matches/router.ts`) é `[context, error_message]`; na descoberta de jogos
 (`matches/fixtureDiscovery.ts`) é `[context='fixture_discovery', comp_id, error_message]`.
 Distinga pelo blob2: `sync_endpoint` ⇒ forma de endpoint;
-`fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller.
+`fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller. No poller, blob2
+`poller_defer` é a falha do enfileiramento das pendências do tick, com o número de itens em blob3
+(antes do ticket 09 da resiliência, `espn_defer`, só com as datas da ESPN).
 
 Observação sobre `match_results_fallback`: a execução normal tem `blobs: [competition_id]`
 e doubles `[atualizados, pulados]`; a falha de uma competição vem de `logError`, com
@@ -232,7 +291,7 @@ execução sem liga e não entram no recorte por competição.
 ### Tentativas HTTP aos provedores (`provider_http_attempt`)
 
 Cada `fetch` ao football-data.org ou à ESPN gera no máximo um evento, inclusive o segundo
-`fetch` do retry. A ESPN retenta respostas 429 e 5xx; o football-data.org retenta 429 uma vez,
+`fetch` do retry. A ESPN retenta respostas 5xx (o 429 e o 403 pausam o provedor, ver "Acesso da ESPN" abaixo); o football-data.org retenta 429 uma vez,
 depois do reset que a resposta informou (ver "Cota da football-data" abaixo).
 A medição fica nos clientes (`providers/espn.ts` e
 `fetchMatchesFromApi` em `matches/sync.ts`) e não adiciona nenhuma chamada externa. O processo
@@ -272,18 +331,167 @@ Um 429, ou uma resposta com zero requests restantes, pausa as chamadas até o re
 válido a pausa é de 60 s; o 429 pausa no mínimo 6 s; nenhuma pausa passa de 1 h. Durante a
 pausa, uma chamada espera até 65 s; se o reset estiver mais longe, falha sem request
 (`FootballDataQuotaError`, registrada como `football_api_error`), e o próximo ciclo tenta de
-novo: 30 min no poller (com o fallback da ESPN no mesmo tick), 24 h na descoberta. O retry do 429
-passa pela mesma regra.
+novo: 30 min no poller (com o fallback da ESPN no mesmo tick), no mesmo dia na descoberta, pelo
+cron drenador. O retry do 429 passa pela mesma regra.
 
-A pausa vale só para o isolate que viu a resposta. Outro isolate do Worker, o radar no GitHub
-Actions e scripts locais não a enxergam, então ela não é um orçamento global: discovery e poller
-em isolates diferentes ainda podem coincidir no mesmo minuto. A coordenação entre eles é do
-backlog de resiliência dos provedores.
+Desde o ADR-027 a pausa não vale só para o isolate: o bloqueio também é gravado no D1
+(`provider_rate_state`) e vale para qualquer reserva de vaga do Worker, entre execuções. O
+orçamento compartilhado é de 8 requests por minuto (80% do free tier), com a fila durável de
+trabalho pendente em `provider_work` e o cron drenador retomando o que ficou pendente — ver
+[ADR-027](architecture/decisions.md#adr-027-orçamento-compartilhado-e-fila-durável-de-sync-da-football-data).
+O radar no GitHub Actions e o script local `test-results-api.ts` seguem fora do orçamento,
+como exceções declaradas lá.
 
 Ausência de linha não é zero: o evento só existe a partir do deploy, e uma competição sem
 tentativa no período não aparece. O painel mostra "indisponível" quando a API não envia o
 recorte, "sem registro ainda" quando nunca houve evento, e a data de início da coleta quando ela
 é mais nova que o período.
+
+#### Fila durável de sync (`provider_work_run`)
+
+Uma linha por execução de cada dreno da fila (`footballDataDrain` e `espnDrain`, chamados por
+`runProviderDrains`). Os dois rodam na mesma invocação, nos minutos 5, 10, 20, 25, 35, 40, 50 e 55 do
+trigger fundido com o poller (nos minutos 0 e 30 só o poller roda), e `blob3` diz de qual provedor é a
+linha. A football-data grava uma linha por execução do dreno (a segunda rodada do coordenador, que
+reaproveita a sobra de saldo, é outra execução e outra linha); a ESPN, só quando reclamou itens ou saiu
+bloqueada/suspensa. `blob2` é `ok` ou `error` (error quando algum item falhou de vez no teto de
+tentativas, o pós-sync de algum item falhou — esse também sai pelo `logError` `football_api_error` com
+`blob2` = `drain_post_sync` — ou a gravação do estado dos itens do ciclo falhou duas vezes e o dreno só
+conseguiu devolvê-los à fila). Na football-data todo item pontua a competição no pós-sync, inclusive a
+rodada que o poller adiou por saldo (`result`/`late`), e o `calls_used` inclui essa pontuação; falha
+dela sai pelo mesmo `drain_post_sync`, e o poller seguinte repontua. Na ESPN, `blocked` e `suspended` dizem que a execução nem reclamou itens
+porque o provedor estava pausado. Os doubles são, nessa ordem, `claimed` (itens reclamados), `done`,
+`requeued` (devolvidos à fila sem tentativa nova do provedor, depois de tentar) e `failed`, depois
+`duration_ms`, `released` (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de
+subrequests ou de vaga no provedor: os que não chegaram a começar e o que o saldo cortou no meio; o
+pós-sync que não terminou por saldo conta em `requeued`) e `calls_used` (subrequests gastos pelo dreno,
+entre D1 e `fetch`; a soma dos drenos do tick fica em 45 no máximo). Falha do D1 no dreno sai pelo
+`logError` com o provedor em blob3, a mensagem em blob4 e sem doubles; é também assim que sobe a
+indisponibilidade persistente do D1, em que nem a liberação mínima dos itens grava: eles ficam
+`running` até o lease de 5 min vencer e o dreno seguinte os retoma, sem tentativa gasta a mais. Uma
+nova tentativa da gravação do estado que dá certo só deixa uma linha de `console.error` (`[drain]
+Gravação do estado dos itens falhou, repetindo`), sem evento. `released` acima de zero com `calls_used`
+perto da fatia é o dreno encerrado por saldo: o que sobrou volta no tick seguinte, e o painel de
+trabalho pendente o mostra até lá. O coordenador também escreve no log uma linha `[perf]` por
+invocação, com o total gasto, o orçamento e os drenos que pararam por saldo. O que o painel mostra
+como trabalho pendente por competição vem desta fila; idade das pendências é `now - created_at` dos
+itens `pending`.
+
+Ausência de linha não é zero: o evento só existe a partir do deploy do drenador (o da ESPN, a partir
+da migration 0047).
+
+#### Acesso da ESPN (403, 429, suspensão)
+
+A API pública da ESPN não é oficial: não há contrato, cota publicada nem termos de uso que cubram a
+coleta automática. O ticket 03 da resiliência a coordena como a football-data (ADR-027, adendo do
+ticket 03), com o que a ESPN faz de diferente:
+
+- **Orçamento:** `ESPN_CALLS_PER_MINUTE = 40` por janela de um minuto na linha `espn` de
+  `provider_rate_state`, abaixo do ritmo de ~46/min que o pacing do cliente já impõe (1,3 s entre
+  inícios). Vale para o poller, o sync administrativo, o fallback de resultados e o dreno (a descoberta
+  não reserva vaga por request; ver "Consumidores da ESPN").
+  Sem vaga, a data vira item pendente e volta no próximo dreno.
+- **Subrequests do dreno:** a ESPN não tem orçamento de invocação próprio. O `espnDrain` é uma entrada na
+  lista do coordenador (`runProviderDrains`) e roda na fatia que ele entrega dos 45 subrequests do ramo
+  drenador. Cada tentativa paga a vaga, o `fetch` e o registro da resposta dessa fatia (ADR-027, adendos
+  "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. O
+  coordenador conta o trabalho pronto de cada dreno numa consulta (1 chamada dos 45), o dreno sem trabalho
+  não roda e o saldo dele fica com quem tem fila. Com os dois drenos ocupados, a fatia da ESPN comporta 2
+  itens por tick, a football-data 1, e o tick gasta 34 chamadas (com a limpeza); com a ESPN sozinha, 4
+  itens e 40; com a football-data sozinha, 3 itens e 40 (o item de rodada da football-data reserva 12,
+  com a pontuação; ADR-027, adendo do ticket 09). A estimativa por item da ESPN é 9 (data de liga) ou 13
+  (sync manual e descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
+  reclamação recusa e o dreno lê o estado para dizer o motivo (2 chamadas, nenhuma escrita).
+- **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo das
+  sincronizações é fixado antes de qualquer uma começar (45 menos o que já foi gasto, menos 5 de reserva da
+  pontuação). As rodadas da football-data reservam o custo completo primeiro (8 cada, 11 para a temporada de
+  mata-mata; ADR-027, adendo do ticket 09), e cada competição da ESPN (2 a 4 datas) é admitida pelo custo
+  completo com o que sobra (3 chamadas por data e 6 da gravação: 12 para 2 datas, 16 para 3). A tarefa que não
+  cabe nem começa: a rodada ou as datas vão para a fila (`provider_work`, `kind` `result` ou `late`,
+  `not_before` = o instante, `last_error` = "saldo de chamadas do tick esgotado…"), sem tentativa gasta e sem
+  `football_api_error`, e ficam elegíveis para o próximo dreno. O enfileiramento (1 `db.batch()` para os dois
+  provedores) está reservado do saldo antes de qualquer tarefa. O fallback da ESPN para as competições da
+  football-data fica com o que as sincronizações deixam além da reserva da pontuação, e cada competição dele
+  reserva o custo completo antes de começar (11: a consulta, 3 datas de 3 chamadas e a gravação); a que não
+  cabe espera o tick seguinte sem consultar nada, sem erro nem fila. O log `[perf]` do poller traz `sync_budget` (o
+  saldo fixado), `fd_deferred_rounds` (rodadas enfileiradas no tick) e `espn_deferred_dates` (datas
+  enfileiradas). Ticks da football-data medidos pelo `scheduled` real, com a limpeza: 1 e 2 rodadas, 15 e 22
+  chamadas, como antes; 6 rodadas, 38, com 4 sincronizadas, 2 na fila e o fallback fora do tick (antes, 47 com
+  as 6 no tick), e o dreno do minuto 5 sincroniza e pontua as 2 em 24 chamadas, com o ranking na tela 5 min
+  depois do tick; 6 rodadas com 429 de reset de 60 s e 8 requests por minuto, 45, com 3 sincronizadas e 3 na
+  fila (antes, 52 tentadas e o tick rejeitado com `D1_ERROR`); 11 competições com 1 rodada cada e 4 respostas
+  429 de reset de 1 s, 46, com 3 sincronizadas e 8 na fila (antes, 58 tentadas e o tick rejeitado com
+  `D1_ERROR`). Tick com 1, 2, 3 e 4 competições da ESPN com
+  1 jogo na janela (2 datas, com a limpeza do `scheduled`): 20, 36, 44 e 45 chamadas (antes, 20, 36, 44 e
+  52, com a 51 e a 52 recusadas); com jogos de hoje e de ontem nas 4 (3 datas), 43 (antes, 55 e o tick
+  rejeitado). Competições adiadas pelo saldo geram pendências, e o prazo de execução depende da fila e do
+  saldo dos próximos drenos; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
+  está consumindo o do poller, e um `fd_deferred_rounds` acima de zero em todo tick de jogo, de que houve adiamento de
+  rodadas; o motivo de cada uma fica em `last_error` na fila (saldo do tick, 429 ou outra falha).
+- **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
+  sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
+  entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou
+  com cabeçalho inválido). Só um `Retry-After` absurdo, acima de 24 h, suspende a coleta
+  (`suspended_reason = 'http_429_retry_after'`) e alerta (`provider_access_blocked`, status `429`,
+  estado `suspended`), como o 401 e o 451: o operador analisa e retoma.
+- **403:** limita e espaça. O 1º 403 bloqueia o provedor por 15 min, o 2º por 1 h e o 3º por 6 h; o 4º
+  seguido **suspende** a coleta. Cada passo emite `provider_access_blocked`. 401 e 451 suspendem na hora.
+  Dois 403 simultâneos contam um passo só. **Ordem das respostas entrelaçadas:** a última resposta, na
+  ordem em que o D1 as grava, vence. Um sucesso depois de um 403 zera a sequência (`UPDATE … SET
+  forbidden_streak = 0 WHERE forbidden_streak != 0`, atômico e sem depender do que a reserva viu, porque
+  dois isolates reservam antes de qualquer resposta); um 403 depois de um sucesso conta 1. O sucesso zera a
+  sequência, mas não levanta o bloqueio que o 403 já impôs: ele espaça a coleta e vale até o fim.
+- **Gravação que falha:** se o D1 não aceita a gravação de uma proibição (401, 451, 403, 429, ou o 429 com
+  `Retry-After` absurdo), o isolate instala um bloqueio local em memória e nenhuma reserva passa, inclusive
+  as chamadas já enfileiradas no mutex do cliente. A gravação é refeita a cada reserva, até dar certo (com o
+  instante da resposta, sem contar duas vezes um 403 que o bloqueio já absorveu); gravada, o D1 volta a ser a
+  verdade e a reserva seguinte lê dele a suspensão ou o bloqueio. Um bloqueio por prazo (429, 403) também cai
+  quando o prazo vence, mas a regravação continua. Uma suspensão não vence sozinha. Limite: o bloqueio local é
+  do isolate (cada isolate só conhece o que ele mesmo viu), e se o operador retomar o acesso antes de a
+  gravação ter dado certo em algum isolate, a regravação dele suspende de novo na próxima reserva; confira o
+  estado depois de retomar.
+- **Suspensa:** nenhuma chamada sai (nem do dreno), os itens ficam pendentes sem gastar tentativa e os
+  dados já confirmados não mudam. Não volta sozinha: continuar tentando um acesso que a resposta proibiu
+  seria desrespeitar a decisão do provedor.
+- **Falhas parciais:** o sync de várias datas grava as que chegaram e adia a que falhou e as seguintes,
+  um item `provider_work` por data (`round` = `YYYYMMDD`). Timeout e 5xx gastam tentativa (teto de 6, o
+  produtor revive no tick seguinte). Resposta 200 sem a lista `events` é incompleta: falha o item e não
+  confirma nada. Lista vazia é válida, mas **também não confirma resultado**: a partida só termina quando
+  um evento dela diz isso, e a ausência nunca encerra, cancela nem marca ausente um jogo.
+
+Para retomar uma coleta suspensa, depois de o operador conferir os termos de uso e a autorização (a
+decisão é dele, não do código):
+
+```sql
+-- npx wrangler d1 execute palpitae --remote --command "<SQL>"
+UPDATE provider_rate_state
+   SET forbidden_streak = 0, blocked_until = 0, suspended_at = NULL, suspended_reason = NULL
+ WHERE provider = 'espn';
+UPDATE provider_work SET not_before = 0 WHERE provider = 'espn' AND status = 'pending';
+```
+
+Para ver o estado: `SELECT blocked_until, forbidden_streak, suspended_at, suspended_reason FROM
+provider_rate_state WHERE provider = 'espn'` e, na fila, `SELECT kind, round, status, attempts,
+last_error FROM provider_work WHERE provider = 'espn'`.
+
+**Consumidores da ESPN.** Coordenados (reservam vaga e respeitam bloqueio e suspensão): poller (datas
+dos jogos pendentes), fallback de resultados da football-data pela ESPN, `POST /matches/sync` de
+competição ESPN e o dreno. **Parcialmente integrada:** a descoberta diária (nove datas por competição,
+`15 6 * * *`) segue a 1 chamada por request, sem reserva por request, sem fila e sem orçamento de invocação,
+mas lê o estado de acesso antes (1 consulta por invocação, só se há competição da ESPN): com a coleta
+suspensa ou bloqueada ela pula a ESPN (sem fetch, sem erro e sem fila; o `[perf]` traz `espn_skipped`), e uma
+resposta 401, 403, 429 ou 451 é registrada no gate (com `provider_access_blocked`) e vale para o resto da
+execução e para as outras; o sucesso não escreve no D1. Custo extra medido: 1 chamada por invocação (19 para
+20 com 1 competição; a ESPN suspensa gasta 3 com a limpeza e nenhum `fetch`). **Limitação conhecida da
+descoberta (follow-up, ticket próprio):** continua sujeita ao limite de 50 subrequests por invocação. Com 4
+competições da ESPN × 9 datas ela já passava do limite na `main`/#771 (42 e 54 chamadas, medidos pelo
+review), a chamada 51 é recusada e jogos novos que o D1 não conhece não chegam; a correção sugerida (orçamento
+de invocação, admissão pelo custo, fila `discovery`, status pelo dreno) e as duas armadilhas conhecidas (o
+`finished` precisa dos descartes por time indefinido do calendário inteiro, e a data `failed` precisa de
+recuperação fora do horizonte de ontem a hoje + 7) estão no ADR-027. **Fora do orçamento, por
+decisão registrada:** o radar (`radar-sync.yml`, GitHub Actions, ~40 slugs por dia, sem acesso ao D1
+durante a coleta; sai de IPs do GitHub, não do Worker) e qualquer script local. O radar segue só com o
+pacing por processo e o 403 por slug conta como falha parcial dele (`radar_sync_run` `partial`).
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import/replicate) cai em **blob5** porque o
 `round` (blob3) é mantido na posição mesmo vazio, pra alinhar as quatro variantes na mesma coluna. O `replicate` ("Aplicar também em") grava `double1` com o número de palpites escritos nos outros grupos.
@@ -337,13 +545,16 @@ proxy público remove (ver `docs/security.md`), para que outra origem não infle
 "nenhum registro ainda".
 
 **Entrada.** O front envia `entry_method` em `POST /groups/join`, e a API aceita só `convite_link`,
-`convite_antigo` ou `codigo`. `convite_link` exige que o documento tenha vindo de `/convite/<código>`,
-a rota que conta aberturas, e consome a marca dessa abertura. O caminho vem da entrada de navegação do
-navegador, porque o `index.html` reescreve a URL antes do bundle para quem tem sessão conhecida. Quem
-chegou por link antigo com `?convite=` grava `convite_antigo`. Valor ausente ou fora da lista grava o método vazio e não recusa a entrada. A flag de
-cadastro recente é calculada no D1, em SQL, comparando `group_members.joined_at` com
-`users.created_at`, depois de a linha do membro existir. A flag e a contagem do painel usam a mesma
-expressão (`RECENT_SIGNUP_SQL`).
+`convite_antigo` ou `codigo` do cliente. O valor `request` (aprovação de pedido pelo link
+`/grupo/<public_id>`) só é gravado pelo servidor na aprovação; se o cliente mandar `request` no join,
+a API normaliza para método vazio. `convite_link` exige que o documento tenha vindo de
+`/convite/<código>`, a rota que conta aberturas, e consome a marca dessa abertura. O caminho vem da
+entrada de navegação do navegador, porque o `index.html` reescreve a URL antes do bundle para quem
+tem sessão conhecida. Quem chegou por link antigo com `?convite=` grava `convite_antigo`. Valor
+ausente ou fora da lista do cliente grava o método vazio e não recusa a entrada. A flag de cadastro
+recente é calculada no D1, em SQL, comparando `group_members.joined_at` com `users.created_at`,
+depois de a linha do membro existir. A flag e a contagem do painel usam a mesma expressão
+(`RECENT_SIGNUP_SQL`).
 
 **Painel.** `GET /metrics/invite-funnel?days=` alimenta a seção **Funil de convite**, separada do
 `/overview` para que uma falha nela não derrube a página. Aberturas e entradas vêm do Analytics
@@ -412,6 +623,68 @@ Por que a soma pode ficar abaixo do D1:
 e-mail, IP, User-Agent, `user_id` nem `user_hash`, então não há como ligar a origem a uma pessoa ou
 acompanhar alguém entre sessões. O painel só devolve categorias e slugs da lista.
 
+### Uso das cotas do plano Free (`cloudflare_usage`)
+
+A API roda no plano Workers Free (ADR-022). Quando uma cota diária acaba, o D1 ou o Worker
+param até 00:00 UTC. O cron das 00:05 UTC (`5 0 * * *`, o mesmo do cold path) consulta a
+[API GraphQL de analytics](https://developers.cloudflare.com/analytics/graphql-api/) da
+Cloudflare e mede o dia UTC anterior. O código está em `api/src/observability/quotaUsage.ts`.
+
+| Métrica | Conjunto GraphQL | Campo | Cota diária do Free |
+|---|---|---|---|
+| `d1_rows_read` | `d1AnalyticsAdaptiveGroups` | `sum.rowsRead` | 5.000.000 |
+| `d1_rows_written` | `d1AnalyticsAdaptiveGroups` | `sum.rowsWritten` | 100.000 |
+| `worker_requests` | `workersInvocationsAdaptive` | `sum.requests` | 100.000 |
+
+As cotas estão em `FREE_DAILY_QUOTAS`, conferidas em 14/11/2026 nos
+[preços do D1](https://developers.cloudflare.com/d1/platform/pricing/) e nos
+[limites dos Workers](https://developers.cloudflare.com/workers/platform/limits/). As cotas são
+da conta, então a consulta soma todos os bancos D1 e todos os scripts da conta, sem filtro de
+banco ou de script. A Cloudflare conta as requisições às Functions do Pages, como o proxy do
+site, na mesma cota de requisições. A consulta lê só `workersInvocationsAdaptive`. Na primeira
+medição, compare `worker_requests` com o total de Workers & Pages no painel da Cloudflare; se o
+painel mostrar mais, o número do Palpitae fica abaixo do uso real da cota.
+
+Cada medição grava um `cloudflare_usage`. Uma métrica com uso a partir de 50% da cota grava
+também um `cloudflare_quota_alert`, só com a maior faixa alcançada: 60% grava o de 50% e 85%
+grava só o de 80%. Um alerta por métrica e dia basta para a pergunta "passou de qual faixa", e
+o de 80% já diz que o uso passou de 50%. O cron não guarda estado entre dias, então o alerta se
+repete enquanto o uso ficar acima da faixa. É isso que mostra os "3 dias seguidos acima de 50%"
+do gatilho de migração do ADR-022.
+
+Sem `CF_ACCOUNT_ID` ou `CF_ANALYTICS_TOKEN`, o passo só escreve
+`[cota] Configuração ausente` no log e não consulta nada. O nome que falta já entra em
+`scheduled_config_missing` em toda execução agendada. Resposta não 200, erro GraphQL, conta
+ausente na resposta ou timeout (15 s) gravam `cloudflare_usage_error` e não gravam medição. O
+passo nunca lança, e o export do mesmo cron segue.
+
+O painel lê a última medição em `GET /metrics/quota`, com o uso, a cota, o percentual e a faixa
+de cada métrica. A medição fica no próprio evento do Analytics Engine porque o painel já lê o AE
+pela SQL API, uma linha por dia não sofre sampling, e gravar no D1 gastaria justamente a cota
+de escrita que a medição vigia.
+
+#### Token de analytics (passos do operador)
+
+O token é separado do `AE_SQL_TOKEN` para que cada um possa ser revogado sem parar o outro.
+
+1. No painel da Cloudflare, em My Profile > API Tokens > Create Token > Custom token, crie um
+   token com uma única permissão: Account > Account Analytics > Read. Em Account Resources,
+   escolha só a conta do Palpitae. Nenhuma permissão de edição.
+2. Grave o token como secret do Worker da API, pelo prompt interativo:
+
+   ```bash
+   cd api && npx wrangler secret put CF_ANALYTICS_TOKEN --config ./wrangler.toml
+   ```
+
+3. O id da conta é o `CF_ACCOUNT_ID`, que o cold path já usa. Se ele não estiver cadastrado,
+   copie o Account ID da página inicial da conta no painel e grave com
+   `cd api && npx wrangler secret put CF_ACCOUNT_ID --config ./wrangler.toml`. A consulta não
+   precisa do id do banco nem do nome do script, porque soma a conta inteira.
+4. Confira os nomes com `cd api && npx wrangler secret list --config ./wrangler.toml`.
+5. Resultado esperado: depois do cron das 00:05 UTC seguinte, a seção "Cotas do plano Free" de
+   `/admin/metricas` mostra o dia anterior. Se continuar sem medição, procure
+   `cloudflare_usage_error` nos eventos ou `[cota]` nos Workers Logs.
+
 ### Regra de instrumentação (obrigatória)
 
 **Ao criar ou modificar um endpoint que executa uma mutação de negócio** (cria/edita/remove
@@ -459,7 +732,8 @@ traduzidos pra linguagem de negócio (`EVENT_LABELS` em
 `web/src/pages/AdminMetricsPage/labels.ts` — o nome cru fica no tooltip, já que
 é a chave do esquema posicional acima). Há ainda um vigia de sampling: se
 `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
-viraram estimativa.
+viraram estimativa. A seção "Cotas do plano Free" mostra a última medição do uso das cotas
+diárias (`GET /metrics/quota`, ver "Uso das cotas do plano Free").
 
 ### Alerta proporcional de falhas de login
 
@@ -575,15 +849,20 @@ para o front anterior.
 
 A mesma linha traz a **saúde de resultados** da temporada, também só contagens
 de jogos: `overdue_no_score` (jogos `scheduled`/`live`, não adiados, com
-`home_score` ou `away_score` nulo e `start_time` há 3 horas ou mais) sinaliza
-buraco de feed; `finished_unscored` (jogos `finished` com `scored_at` nulo)
-sinaliza backlog de pontuação, e inclui `finished` sem placar, que o scoring não
-alcança. `start_time` é comparado via `datetime()`, então `Z`, milissegundos e
-offset não mudam o resultado. Temporada sem jogo ou sem pendência vem com
-zero. O front antigo ignora os campos novos; o novo mostra "indisponível" (ou
-"—") se a API ainda não os enviar, em vez de tratar a falta como zero.
+`home_score` ou `away_score` nulo e `start_time` há pelo menos
+`RESULT_OVERDUE_HOURS` horas, padrão 3) sinaliza buraco de feed;
+`finished_unscored` (jogos `finished` com `scored_at` nulo) sinaliza backlog de
+pontuação, e inclui `finished` sem placar, que o scoring não alcança.
+`start_time` é comparado via `datetime()`, então `Z`, milissegundos e offset não
+mudam o resultado. Temporada sem jogo ou sem pendência vem com zero. A resposta
+também leva `overdueResultHours` (limiar usado), `overdueTotal` e
+`finishedUnscoredTotal` (somas). O front antigo ignora os campos novos; o novo
+mostra "indisponível" (ou "—") se a API ainda não os enviar, em vez de tratar a
+falta como zero. O participante usa uma implementação equivalente
+(`web/src/lib/resultOverdue.ts`) com limiar fixo de 3 horas; o painel e o e-mail
+usam `RESULT_OVERDUE_HOURS` via `api/src/matches/resultOverdue.ts`.
 
-Do Analytics Engine, `GET /metrics/ops?days=` alimenta a seção **Provedores de partidas ·
+Do Analytics Engine e do D1, `GET /metrics/ops?days=` alimenta a seção **Provedores de partidas ·
 falhas e carga**, separada do `/metrics/overview` para que uma falha nela não derrube a página
 e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
 
@@ -604,7 +883,14 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
   (`unscoredMatches`), lidas de `match_unscored`. `matches` e `oldest_minutes` são o pico do
   período, `cycles` conta os ciclos que registraram a pendência e `last_seen` é o registro mais
   recente. O painel mostra a lista em "Jogos encerrados sem pontuação". Sem o campo (API
-  anterior), a página omite a subseção.
+  anterior), a página omite a subseção;
+- itens abertos ou falhos da fila durável `provider_work` (`pendingWork`), lidos do D1:
+  provedor, status (`pending`/`running`/`failed`), contagem, idade do item mais antigo
+  (`oldest_age_minutes` = agora − `created_at`) e máximo de tentativas. Isso é trabalho ainda
+  não concluído, distinto das tentativas HTTP reais acima. Sem o campo (API anterior), a
+  página omite a subseção. Falha do D1 nesta consulta devolve `pendingWorkError: true`
+  (sem `pendingWork`) e não derruba o restante do `/ops`; o painel mostra "fila
+  indisponível" e o aviso do topo permanece.
 
 `discards` e `missingMatches` só levam identificadores do provedor (slug da fase, código da
 competição, id do jogo, horário ISO); qualquer outro texto chega vazio. Sem os dois campos (API
@@ -613,10 +899,34 @@ anterior), a página omite a subseção em vez de mostrar zero.
 A página resolve o id da competição para nome e temporada com o snapshot de
 `/metrics/business`. Competição desconhecida aparece como "Campeonato" mais os 8 primeiros
 caracteres do id; evento sem competição aparece como "sem liga". Mensagens livres do provedor
-nunca saem no payload: valores de competição que não são UUID viram "sem liga". Falhas HTTP
-acendem um alerta de aviso no topo da página. `football_api_error` aparece nos rótulos como
-"Erro de sync de provedor", porque o poller, a descoberta e o sync manual cobrem os dois
-provedores.
+nunca saem no payload: valores de competição que não são UUID viram "sem liga". Falhas HTTP,
+resultados atrasados (`overdueTotal` > 0) e itens na fila `provider_work` acendem aviso no
+topo da página. `football_api_error` aparece nos rótulos como "Erro de sync de provedor",
+porque o poller, a descoberta e o sync manual cobrem os dois provedores.
+
+#### Alerta automático de resultado atrasado
+
+Canal gratuito: e-mail ao `ADMIN_EMAIL` via Resend (`RESEND_API_KEY`), o mesmo fornecedor dos
+lembretes. Ligado em produção desde 19/11/2026 por `RESULT_OVERDUE_ALERT = "1"` em `[vars]`
+do `wrangler.toml`; sem a variável, não há e-mail. Opcional:
+`RESULT_OVERDUE_HOURS` (padrão 3) e `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS` (padrão 6). O poller
+avalia o alerta no fim de cada tick (minutos 0 e 30), só se o saldo de subrequests da
+invocação comportar até 4 chamadas no pior caso (contagem, reserva do cooldown, `fetch` e
+liberação da reserva). O caminho de sucesso e a falha ambígua gastam 3. A reserva é um UPSERT
+condicional em `ops_alert_state` (migration 0050) antes do envio: só o tick com
+`meta.changes > 0` chama o Resend. A reserva é a identidade da tentativa; a chave de
+idempotência é `result-overdue-<last_sent_at>` e o corpo é montado uma vez por reserva.
+
+A resposta do envio cai em três classes. Em 2xx o outcome é `sent` e a reserva permanece. Em
+falha definitiva (4xx exceto 409 e 429, por exemplo 400, 401, 403, 422) a reserva é liberada
+para o próximo tick tentar com chave nova. Em falha ambígua (timeout, erro de rede, 5xx,
+qualquer 409, 429) a reserva permanece até o fim do cooldown, sem reenvio, e o evento registra
+`send_uncertain` com o status HTTP. Uma falha ambígua pode perder o alerta até o cooldown
+acabar; o painel de métricas continua mostrando os atrasados. O assunto flexiona singular e
+plural ("1 resultado atrasado" / "N resultados atrasados"). O evento `result_overdue_alert`
+registra enviado, incerto, silenciado, limpo, pulado por saldo ou falha. Sem `ADMIN_EMAIL` ou
+sem `RESEND_API_KEY`, o outcome é `misconfig` e não há envio. Discord, Telegram e notificações
+nativas da Cloudflare ficaram de fora: exigiriam webhook ou conta nova.
 
 Do Analytics Engine, `GET /metrics/competition-activity?days=` alimenta a seção **Atividade por
 campeonato**, também separada do `/overview` pelo mesmo motivo. Agrega no período (7/30/90 dias):
@@ -685,6 +995,27 @@ integridade dos últimos 14 dias (contagem + tamanho por dia; dia sem arquivo
 marcado como **faltando**). Backlog de ideias:
 [`docs/dashboard-native.md`](dashboard-native.md).
 
+A análise do arquivo por mês usa `GET /metrics/archive/query?from=YYYY-MM-DD&to=YYYY-MM-DD`
+(UTC, inclusivo), que agrega o corpo dos NDJSON por tipo (`blob1`) e por dia, com peso
+`_sample_interval`. O intervalo vai até 92 dias. Data inexistente (`2026-02-31`), `from` depois
+de `to` ou intervalo maior recebem 400, conferidos antes de montar a lista de dias. Um dia cheio
+tem cerca de 18 MiB (30 mil linhas de ~615 bytes) e o Worker tem 128 MiB, então a rota lê um
+arquivo por vez, em streaming, linha a linha, e solta cada corpo antes de pedir o próximo
+(`api/src/observability/archiveQuery.ts`). Cada consulta tem orçamento de 64 MiB do R2. O
+tamanho declarado de cada arquivo é conferido antes de consumir o corpo, e os bytes recebidos são
+somados a cada pedaço do stream: o corpo é cancelado ao chegar o pedaço que passa do orçamento.
+Nesse caso a leitura para ali e a resposta sai com `truncated: true`; `daysRead` lista os dias que
+entraram no resultado e os agregados do dia interrompido ficam de fora. Linha que não é objeto
+JSON, com `blob1` que não é texto, com `_sample_interval` inválido ou com mais de 64 KiB em UTF-8
+é pulada e somada em `malformedLines`, sem
+derrubar a consulta, qualquer que seja o fatiamento do stream. `blob1` ausente ou null vira
+`unknown`. `_sample_interval` ausente ou null vale 1; outro valor precisa ser número ou texto
+numérico, finito e não negativo. `bytesRead` soma os bytes recebidos
+do R2, inclusive os do dia interrompido. Erro do R2 no meio da leitura derruba a consulta com 500,
+como antes do streaming, e o corpo em leitura é cancelado. Os campos antigos
+(`from`, `to`, `filesRead`, `totalEvents`, `byType`, `byDay`) seguem iguais, e a página avisa
+quando o resultado é parcial ou quando houve linhas malformadas.
+
 Alternativa avaliada e **não adotada**: Grafana Cloud (Infinity → SQL API).
 Guia mantido em [`docs/dashboard-grafana.md`](dashboard-grafana.md) caso um dia
 precisemos de alertas (o único diferencial real). Contras: não enxerga R2 e
@@ -732,3 +1063,64 @@ reversível por dicionário.
 - **Queues pro buffer de eventos**: exigem plano Workers pago. Cron diário + Analytics Engine
   como staging resolve sem custo.
 - **D1 como store de logs**: competiria com o domínio pelos write limits do D1.
+
+
+## Orçamento da descoberta diária
+
+O `[perf]` de `cron discoverFixtures` registra `calls_used`, `calls_budget` e `deferred_items`. O saldo do ramo é 45, com 1 chamada reservada para enfileirar; a limpeza do `scheduled` soma 1 fora do ramo. `fixture_discovery_run = error` com `competition_status_error` indica que o batch de pendências falhou. Confira a próxima descoberta e a fila por competição; uma fila vazia nesse caso não confirma calendário completo.
+
+A ESPN também reserva vaga e registra cada resposta de sucesso, ao custo de 3 chamadas por tentativa. O dreno de uma data de descoberta estima 16 chamadas, incluindo pontuação e as 3 chamadas da evidência e reconciliação. A tabela `discovery_dates` guarda uma linha por competição, janela diária e data consultada; `discarded_tbd IS NULL` indica evidência pendente. As linhas são mantidas para diagnóstico e para impedir encerramento com uma data antiga perdida. Crescem nove linhas por competição adiada por dia, sem payload de jogos.
+
+A migration `0049_discovery_dates.sql` deve estar aplicada antes deste Worker. A admissão ordena públicas antes de pilotos, depois quantidade de grupos decrescente e slug crescente, sem preferência por provedor. A contagem de grupos usa o índice existente na consulta das competições. O custo completo ainda decide se a competição cabe; quando não cabe, ela vai para a fila e a avaliação continua.
+
+O teste `fixtureDiscoveryBudget.test.ts` reproduz a distribuição informada da produção de 19/11/2026 com calendários sintéticos. São 10 football-data e 4 ESPN, com 53 grupos. As públicas são Brasileirão Série A com 36 grupos, Premier League com 5, Copa do Brasil com 4 e Champions League com 3. As pilotos ESPN têm 3 grupos na Libertadores, 2 na Sul-Americana e zero na Série B; as sete pilotos football-data não têm grupos.
+
+| Carga no dreno | Chamadas da descoberta, com limpeza | Admitidas às 06:15 UTC | Itens adiados | Ticks até esvaziar | Públicas completas UTC | Último jogo novo e fila vazia UTC | Máximo de chamadas por dreno |
+| --- | ---: | --- | ---: | ---: | --- | --- | ---: |
+| Só discovery | 24 | Brasileirão Série A e Premier League | 44 | 21 | 07:05 | 08:50 | 35 |
+| Com result e late | 24 | Brasileirão Série A e Premier League | 44 | 22 | 07:10 | 08:55 | 35 |
+
+Os 44 itens são 8 calendários football-data e 36 datas ESPN, sem tentativas gastas no adiamento. A variante injeta um `result` de ontem e um `late` de anteontem da Libertadores antes dos três primeiros ticks, reabrindo as duas chaves para simular seis execuções prioritárias. O dreno processa essa carga prioritária no cron real. As duas variantes terminam com 46 jogos, pontuação e status iguais ao controle sem limite, sem tentativa da chamada 51. A medida cobre entrada finita; tráfego prioritário contínuo pode adiar a descoberta por mais tempo. Horários de 19/11/2026, com início às 06:15 UTC, equivalentes a 03:15 BRT.
+
+### Recuperar uma data failed fora do horizonte
+
+Depois de corrigir a causa de `last_error` e conferir o acesso ao provedor, liste a chave original. A pausa ou suspensão do provedor continua valendo; retome acesso somente pelo procedimento já documentado.
+
+```sql
+SELECT provider, kind, competition_code, season, round, attempts, last_error
+FROM provider_work WHERE kind = 'discovery' AND status = 'failed';
+```
+
+Execute a atualização para a chave conferida, com parâmetros. `agora_ms` é o instante atual em milissegundos Unix; preserve `round`, inclusive se a data já estiver fora dos nove dias da descoberta.
+
+```sql
+UPDATE provider_work
+SET status = 'pending', attempts = 0, not_before = :agora_ms,
+    lease_until = 0, lease_owner = NULL, updated_at = :agora_ms
+WHERE provider = :provider AND kind = 'discovery'
+  AND competition_code = :competition_code AND season = :season
+  AND round = :round AND status = 'failed';
+```
+
+Confirme `status = 'done'`, os jogos da data e `scored_at` depois do dreno. Para ESPN, confira também que a data deixou de ter evidência NULL em `discovery_dates`. O teste de recuperação marca uma data com seis tentativas, avança dez dias, executa esse procedimento e recupera o oitavo jogo que faltava, com o mesmo estado do controle.
+
+
+### Chamadas medidas pelo cron real
+
+Contagem inclui D1, fetch e a limpeza. As colunas com rejeição incluem chamadas tentadas depois de a plataforma recusar a 51. A semente tem um jogo existente e três jogos novos por competição ESPN, e dois novos por competição football-data.
+
+| Cenário | Base `311aa032` | Com orçamento | Pendências novas |
+| --- | ---: | ---: | --- |
+| 1 ESPN, nove datas | 23 | 41 | Nenhuma |
+| 2 ESPN, nove datas cada | 43 | 42 | 9 datas |
+| 4 ESPN, nove datas cada | 56, rejeitada | 42 | 27 datas |
+| 4 football-data + 2 ESPN | 56, rejeitada | 24 | 2 calendários + 18 datas |
+| 9 football-data | 58, rejeitada | 23 | 7 calendários |
+| 429 na quarta tentativa ESPN | 20 | 26 | 18 datas |
+| Falha do batch final, 2 ESPN | 43, sem adiamento | 42, erro registrado | Replanejadas na repetição |
+| 4 football-data + final ESPN antiga | 52, rejeitada | 24 por descoberta | 2 calendários + 9 datas |
+| 4 football-data + ESPN com time indefinido | 53, rejeitada | 24 | 2 calendários + 9 datas |
+
+Os 11 testes de `fixtureDiscoveryBudget.test.ts` passam com o orçamento. Executados contra os arquivos de produção da base `311aa032`, os dez testes de regressão falham e o de equivalência do caso comum passa. Além dos cenários da tabela, a recuperação manual de `failed` fora do horizonte recupera o oitavo jogo; a final antiga chega a `finished` após três descobertas sob contenção e o dreno completo, enquanto o time indefinido mantém `ongoing`. Nenhum tick medido com o orçamento tenta a chamada 51. Nos cenários de 2 e 4 ESPN a fila termina em 3 e 8 ticks do dreno, respectivamente; os ticks medidos gastam no máximo 40 chamadas. Na semente de 4 ESPN, o último jogo chega às 07:10, 55 minutos após a descoberta das 06:15.
+
+No caso comum, jogos e pontuação continuam disponíveis na própria descoberta. Sob contenção, o jogo novo e seus pontos aparecem quando a data termina no dreno. A prioridade continua favorecendo resultados e resgates; a fila de descoberta pode esperar mais se houver entrada contínua de itens prioritários. Não há prazo máximo novo para a fila.

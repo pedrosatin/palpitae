@@ -8,7 +8,6 @@ export type SignupOriginCategory = (typeof SIGNUP_ORIGINS)[number]
 
 export interface SignupOrigin {
   category: SignupOriginCategory
-  /** Slug de um guia publicado. Vazio fora de `guia` e no índice dos guias. */
   guideSlug: string
 }
 
@@ -45,7 +44,6 @@ export function parseSignupOrigin(raw: unknown): SignupOrigin {
 
 export interface SignupOriginTotals {
   origins: Record<SignupOriginCategory, number>
-  /** Cadastros por guia. `slug` vazio é o índice dos guias. */
   guides: { slug: string; signups: number }[]
   totalEvents: number
 }

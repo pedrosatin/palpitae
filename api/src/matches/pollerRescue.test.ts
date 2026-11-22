@@ -3,7 +3,10 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { readdirSync, readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => ({ matches: 0 })) }))
+vi.mock('./sync', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sync')>()),
+  syncFixtures: vi.fn(async () => ({ matches: 0 })),
+}))
 vi.mock('./scoring', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./scoring')>()),
   scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
@@ -17,7 +20,6 @@ import { pollActiveMatches } from './poller'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
-// Runs the poller query against the real migrations to check which matches it picks.
 function database() {
   const sqlite = new DatabaseSync(':memory:')
   const migrations = new URL('../../migrations/', import.meta.url)
@@ -40,11 +42,15 @@ function database() {
       }
       return stmt
     },
+    // O adiamento de falha grava o item pendente da fila durável; sem efeito
+    // neste fake, que só observa os instantes em que o poller sincroniza.
+    async batch(): Promise<unknown[]> {
+      return []
+    },
   } as unknown as D1Database
   return { sqlite, db }
 }
 
-/** Horário no formato que os provedores gravam (migration 0043), sem milissegundos. */
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
 const minutesAgo = (minutes: number) => iso(Date.now() - minutes * 60 * 1000)
 
@@ -84,7 +90,6 @@ describe('pollActiveMatches rescue window', () => {
       .mock.calls.map(([options]) => options.matchday)
       .sort()
     expect(rounds).toEqual([10, 11, 13])
-    // O D1 chega embrulhado pelo contador de chamadas; o terceiro argumento é o teto de chamadas.
     expect(scoreUnprocessedMatches).toHaveBeenCalledWith(
       'c1',
       expect.anything(),
@@ -96,7 +101,6 @@ describe('pollActiveMatches rescue window', () => {
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 
-/** Uma competição football-data e os jogos dados, todos na rodada informada. */
 function seed(
   matches: { id: string; round: string; start: number; postponed?: number; comp?: string }[],
 ) {
@@ -124,7 +128,6 @@ function seed(
   return { db, insert, sqlite }
 }
 
-/** Roda o poller a cada 30 min de `from` até `to` e devolve os instantes em que ele sincronizou. */
 async function tickUntil(db: D1Database, from: number, to: number): Promise<number[]> {
   const synced: number[] = []
   for (let now = from; now <= to; now += 30 * MINUTE) {
@@ -147,9 +150,7 @@ describe('pollActiveMatches varredura de atrasados', () => {
 
     const rescue = synced.filter((t) => t <= KICKOFF + 24 * HOUR)
     const late = synced.filter((t) => t > KICKOFF + 24 * HOUR)
-    // Janela ativa e resgate: todo tick de 115 min a 24 h.
     expect(rescue).toHaveLength(45)
-    // Depois de 24 h: um tick a cada 3 h, até 7 dias após o início.
     expect(late.length).toBeGreaterThan(0)
     expect(late.every((t) => t % LATE_SWEEP_INTERVAL_MS === 0)).toBe(true)
     expect(late).toHaveLength((6 * 24) / 3)
@@ -161,18 +162,16 @@ describe('pollActiveMatches varredura de atrasados', () => {
 
     const synced = await tickUntil(db, KICKOFF + 2 * HOUR, KICKOFF + 9 * 24 * HOUR)
 
-    // 120, 150 e 180 min: janela ativa.
     expect(synced.slice(0, 3)).toEqual([2, 2.5, 3].map((h) => KICKOFF + h * HOUR))
     const after = synced.slice(3)
     expect(after.every((t) => t % LATE_SWEEP_INTERVAL_MS === 0)).toBe(true)
-    // Primeiro bloco de 3 h depois dos 200 min (00:00 UTC) até 7 dias.
     expect(after[0]).toBe(KICKOFF + 6 * HOUR)
     expect(after).toHaveLength((7 * 24) / 3 - 1)
     expect(Math.max(...after)).toBeLessThanOrEqual(KICKOFF + 7 * 24 * HOUR)
   })
 
   it('consulta um atrasado por varredura, alterna entre eles e cede a vez ao tick com jogo na janela', async () => {
-    const sweep = KICKOFF + 2 * 24 * HOUR + 6 * HOUR // 00:00 UTC, três blocos no mesmo dia
+    const sweep = KICKOFF + 2 * 24 * HOUR + 6 * HOUR
     const { db, insert } = seed([
       { id: 'a', round: '10', start: KICKOFF },
       { id: 'b', round: '11', start: KICKOFF + HOUR },

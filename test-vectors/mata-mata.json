@@ -1,0 +1,383 @@
+{
+  "cases": [
+    {
+      "name": "ida-nunca-classifica-nem-pede-penalti",
+      "input": {
+        "role": "leg1",
+        "decidesOnPenalties": false,
+        "home": 2,
+        "away": 0,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 2,
+          "away": 0
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "ida-com-empate-ainda-nao-pede-penalti",
+      "input": {
+        "role": "leg1",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": "home"
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 1,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "ida-com-palpite-da-ida-ignora-esse-palpite",
+      "input": {
+        "role": "leg1",
+        "decidesOnPenalties": false,
+        "home": 2,
+        "away": 1,
+        "leg1": {
+          "home": 3,
+          "away": 0
+        },
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 2,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "volta-sem-palpite-da-ida",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": null,
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "volta-agregado-favoravel-ao-mandante-da-volta",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 0,
+        "away": 1,
+        "leg1": {
+          "home": 0,
+          "away": 2
+        },
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": "home",
+        "predictedTieScore": {
+          "home": 2,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "volta-agregado-favoravel-ao-visitante-da-volta",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 0,
+        "leg1": {
+          "home": 2,
+          "away": 0
+        },
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": "away",
+        "predictedTieScore": {
+          "home": 1,
+          "away": 2
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "volta-times-invertidos-agregado-empatado-pede-penalti",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 2,
+        "leg1": {
+          "home": 1,
+          "away": 2
+        },
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 3,
+          "away": 3
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "volta-agregado-empatado-com-vencedor-dos-penaltis",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 2,
+        "away": 0,
+        "leg1": {
+          "home": 2,
+          "away": 0
+        },
+        "penaltyWinner": "home"
+      },
+      "expected": {
+        "predictedClassified": "home",
+        "predictedTieScore": {
+          "home": 2,
+          "away": 2
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "volta-agregado-empatado-pick-away",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 1,
+        "leg1": {
+          "home": 1,
+          "away": 1
+        },
+        "penaltyWinner": "away"
+      },
+      "expected": {
+        "predictedClassified": "away",
+        "predictedTieScore": {
+          "home": 2,
+          "away": 2
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "volta-agregado-nao-empatado-ignora-pick",
+      "input": {
+        "role": "leg2",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 0,
+        "leg1": {
+          "home": 1,
+          "away": 2
+        },
+        "penaltyWinner": "away"
+      },
+      "expected": {
+        "predictedClassified": "home",
+        "predictedTieScore": {
+          "home": 3,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "jogo-unico-com-penaltis-mandante-vence",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": true,
+        "home": 2,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": "home",
+        "predictedTieScore": {
+          "home": 2,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "jogo-unico-com-penaltis-visitante-vence",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 2,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": "away",
+        "predictedTieScore": {
+          "home": 1,
+          "away": 2
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "jogo-unico-empate-sem-vencedor-dos-penaltis",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 1,
+          "away": 1
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "jogo-unico-empate-com-vencedor-dos-penaltis",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": true,
+        "home": 0,
+        "away": 0,
+        "leg1": null,
+        "penaltyWinner": "home"
+      },
+      "expected": {
+        "predictedClassified": "home",
+        "predictedTieScore": {
+          "home": 0,
+          "away": 0
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "jogo-unico-empate-com-vencedor-away",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": "away"
+      },
+      "expected": {
+        "predictedClassified": "away",
+        "predictedTieScore": {
+          "home": 1,
+          "away": 1
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "jogo-unico-sem-penaltis-ainda-classifica-pelo-placar",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": false,
+        "home": 3,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": "home",
+        "predictedTieScore": {
+          "home": 3,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "jogo-unico-sem-penaltis-empate-sem-classificado",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": false,
+        "home": 2,
+        "away": 2,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 2,
+          "away": 2
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "fase-fora-do-mata-mata",
+      "input": {
+        "role": null,
+        "decidesOnPenalties": false,
+        "home": 2,
+        "away": 0,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 2,
+          "away": 0
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "fase-fora-do-mata-mata-empate-nao-pede-penalti",
+      "input": {
+        "role": null,
+        "decidesOnPenalties": false,
+        "home": 1,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 1,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    }
+  ]
+}

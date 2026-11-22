@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import * as ga from '../../analytics/ga'
 import PredictionsModal, { groupedByGroupName } from './PredictionsModal'
 import { UserPrediction } from './types'
@@ -83,13 +84,13 @@ describe('PredictionsModal', () => {
 
   it('renders loading state initially', () => {
     mockFetch()
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
     expect(screen.getByText('Carregando palpites...')).toBeInTheDocument()
   })
 
   it('renders error state on fetch failure', async () => {
     mockFetch('error')
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
     await waitFor(() => {
       expect(screen.getByText('Erro ao carregar palpites')).toBeInTheDocument()
     })
@@ -97,7 +98,7 @@ describe('PredictionsModal', () => {
 
   it('renders empty state when no predictions are returned', async () => {
     mockFetch('empty')
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
     await waitFor(() => {
       expect(screen.getByText('Nenhum jogo encontrado.')).toBeInTheDocument()
     })
@@ -105,33 +106,27 @@ describe('PredictionsModal', () => {
 
   it('renders predictions and handles analytics on round navigation', async () => {
     mockFetch()
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
 
-    // Wait for predictions to load
     await waitFor(() => {
       expect(screen.getByText('TMA')).toBeInTheDocument()
     })
 
-    // Check missing prediction
-    expect(screen.queryByText('TMC')).not.toBeInTheDocument() // round 2 not visible
+    expect(screen.queryByText('TMC')).not.toBeInTheDocument()
 
     const user = userEvent.setup()
 
-    // Next round
     const nextBtn = screen.getByRole('button', { name: 'Próxima rodada' })
     await user.click(nextBtn)
 
     expect(mockTrackEvent).toHaveBeenCalledWith('click_leaderboard_proxima_rodada', { round: 'r2' })
 
-    // Round 2 should be visible now
     await waitFor(() => {
       expect(screen.getByText('TMC')).toBeInTheDocument()
     })
 
-    // Check edge case for scheduled match without prediction
     expect(screen.getByText(/02\/01, 12:00/)).toBeInTheDocument()
 
-    // Prev round
     const prevBtn = screen.getByRole('button', { name: 'Rodada anterior' })
     await user.click(prevBtn)
 
@@ -139,7 +134,6 @@ describe('PredictionsModal', () => {
       round: 'r1',
     })
 
-    // Select round directly
     const select = screen.getByRole('combobox')
     await user.selectOptions(select, 'r2')
 

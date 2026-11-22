@@ -1,16 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import Tooltip from '../Tooltip/Tooltip'
+import { useTooltip } from '../Tooltip/useTooltip'
 import styles from './InfoHint.module.css'
-
-export const TOOLTIP_TIMEOUT_MS = 4000
 
 interface InfoHintProps {
   label: string
   text: string
-  /** Which side the label text appears relative to the icon. Default: 'right'. */
   labelSide?: 'left' | 'right'
-  /** When set, the label text renders as a <label> element associated with this input id. */
   htmlFor?: string
-  /** Called once when the tooltip opens — use for analytics. */
   onOpen?: () => void
 }
 
@@ -38,30 +34,7 @@ export default function InfoHint({
   htmlFor,
   onOpen,
 }: InfoHintProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const t = setTimeout(() => setOpen(false), TOOLTIP_TIMEOUT_MS)
-    return () => clearTimeout(t)
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open])
-
-  function toggle() {
-    if (!open) onOpen?.()
-    setOpen((v) => !v)
-  }
+  const { open, toggle, containerRef, tooltipId, triggerProps } = useTooltip(onOpen)
 
   const LabelEl = htmlFor ? 'label' : 'button'
   const labelProps = htmlFor
@@ -82,15 +55,15 @@ export default function InfoHint({
         className={`${styles.iconBtn} ${open ? styles.iconBtnOpen : ''}`}
         onClick={toggle}
         aria-label={label}
-        aria-expanded={open}
+        {...triggerProps}
       >
         <InfoSvg />
       </button>
       {labelSide === 'right' && labelNode}
       {open && (
-        <span role="tooltip" className={styles.tooltip}>
+        <Tooltip id={tooltipId} className={styles.tooltip}>
           {text}
-        </span>
+        </Tooltip>
       )}
     </span>
   )

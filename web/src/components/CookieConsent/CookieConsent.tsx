@@ -80,7 +80,8 @@ export default function CookieConsent() {
           }}
         >
           <p className={styles.text}>
-            Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.
+            Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide. Detalhes
+            na <a href="/privacidade">política de privacidade</a>.
           </p>
           <div className={styles.actions}>
             <button

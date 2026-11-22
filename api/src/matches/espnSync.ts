@@ -1,19 +1,23 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { D1_BATCH_LIMIT, runInBatches } from '../d1Batch'
 import {
   type EspnCompetitor,
   type EspnCompetitorTeam,
   type EspnEventCompetition,
   type EspnScoreboardEvent,
   ESPN_POSTPONED_STATUSES,
+  type EspnGate,
   fetchEspnScoreboard,
   isEspnFinal,
+  parseNonNegativeInt,
+  requireScoreboardEvents,
 } from '../providers/espn'
 import type { ProviderHttpObserver } from '../observability/providerHttp'
+import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import {
-  batchStatements,
   countTbdDiscards,
   isoSeconds,
-  MATCH_UPSERT_SQL,
+  loadTeamIds,
   type MatchUpsertRow,
   NO_RESULT,
   reportDiscards,
@@ -22,14 +26,13 @@ import {
   type SyncDiscard,
   type SyncResult,
   writeMatchUpserts,
-} from './sync'
+} from './matchUpsert'
 
 const PROVIDER = 'espn'
 
 export type EspnPrimaryCompetitionMeta = {
   name: string
   slugPrefix: string
-  /** Default cup. Ligas de pontos corridos usam league. */
   type?: 'cup' | 'league'
 }
 
@@ -62,19 +65,6 @@ export function isEspnPrimaryCompetition(code: string): boolean {
   return Object.hasOwn(ESPN_PRIMARY_COMPETITIONS, code)
 }
 
-/**
- * Tradução de `event.season.slug` da ESPN para o código canônico de fase das
- * copas (mata-mata e grupos). Usado pelos rótulos PT-BR em `rounds.ts` e pelo
- * gate de pênaltis em `competitions.penalty_phases`.
- *
- * Lookup literal: só slugs comprovados nos spikes entram aqui. Caminhos
- * paralelos (Taça Guanabara / Taça Rio, Troféu Inconfidência / playoffs,
- * Farroupilha / título, rebaixamento) ficam com códigos distintos para o
- * admin configurar `penalty_phases` por fase. Slugs fora do mapa ainda podem
- * ser fase de liga via `resolveEspnStage` (padrão `YYYY-…`); qualquer outro
- * é descartado (fail-closed) e registrado com o slug em `sync_event_discarded`.
- * Sem regex ampla e sem leitura de notas/texto.
- */
 const ESPN_STAGE_MAP: Record<string, string> = {
   'first-stage': 'FIRST_STAGE',
   'second-stage': 'SECOND_STAGE',
@@ -130,8 +120,6 @@ const LEAGUE_PHASE = 'REGULAR_SEASON'
  */
 function resolveEspnStage(slug: string | undefined, competitionCode?: string): string | undefined {
   if (!slug) return undefined
-  // Gaúcho: first-round comprovada como fase de grupos/pontos (spike 2026).
-  // Chave = competição + slug; não inferir por presença incompleta de group.
   if (competitionCode === 'bra.camp.gaucho' && slug === 'first-round') {
     return 'GROUP_STAGE'
   }
@@ -167,10 +155,6 @@ function resolveEspnRound(ev: EspnScoreboardEvent, stage: string): string {
   return LEAGUE_PHASE
 }
 
-/**
- * Adiado ou cancelado em state 'post' não começou, e o palpite segue aberto
- * (ADR-013). Em state 'in', o adiamento veio depois do início e o jogo trava.
- */
 const ESPN_NOT_STARTED_STATUSES = new Set([
   'STATUS_POSTPONED',
   'STATUS_CANCELED',
@@ -184,6 +168,16 @@ export type EspnSyncOptions = {
   db: D1Database
   now?: string
   onHttpAttempt?: ProviderHttpObserver
+  /** Orçamento compartilhado e controle de acesso (ADR-027); sem ele, fora do orçamento. */
+  gate?: EspnGate
+  /**
+   * Porteiro de subrequests da invocação (o dreno da fila, ADR-027): o sync só
+   * começa a gravar o calendário se o saldo cobre a gravação inteira
+   * (`espnWriteCalls`); sem saldo lança `CallBudgetExhaustedError` antes de
+   * gravar qualquer coisa. As consultas ao D1 são contadas pelo `db`, e os
+   * `fetch`, pelo `gate`.
+   */
+  callGate?: CallGate
   ae?: AnalyticsEngineDataset
 }
 
@@ -223,11 +217,6 @@ function parseGroupName(rawName: string | undefined): string | null {
   return stripped || null
 }
 
-function parseNonNegativeInt(raw: string | undefined): number | null {
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null
-  return Number(raw)
-}
-
 function isEspnPlaceholder(value: unknown): boolean {
   return typeof value === 'string' && /^TBD(?:\s+(?:Home|Away))?$/i.test(value.trim())
 }
@@ -256,14 +245,12 @@ function toValidCompetitor(comp: EspnCompetitor | undefined): ValidEspnCompetito
   }
 }
 
-/** Evento que o sync não importa, com o motivo. */
 type Discarded = { ok: false; discard: SyncDiscard }
 
 function discarded(reason: SyncDiscard['reason'], detail: string): Discarded {
   return { ok: false, discard: { reason, detail } }
 }
 
-/** Mandante e visitante válidos, ou o motivo do descarte. */
 function extractCompetitors(
   comp: EspnEventCompetition,
 ): { ok: true; home: ValidEspnCompetitor; away: ValidEspnCompetitor } | Discarded {
@@ -280,7 +267,6 @@ function extractCompetitors(
   return { ok: true, home, away }
 }
 
-/** Evento importável, ou o motivo pelo qual o sync o descarta. */
 function extractValidEvent(
   ev: EspnScoreboardEvent,
   season: number,
@@ -288,8 +274,6 @@ function extractValidEvent(
 ): { ok: true; event: ValidEspnEvent } | Discarded {
   const id = typeof ev.id === 'string' ? ev.id.trim() : ''
   if (!id) return discarded('invalid_event', 'id')
-  // O scoreboard pode responder com outra edição ao consultar datas futuras.
-  // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
   if (ev.season?.year !== season) {
     return discarded('season_mismatch', String(ev.season?.year ?? ''))
   }
@@ -326,29 +310,75 @@ function extractValidEvent(
   }
 }
 
+type FetchedEvents = {
+  events: EspnScoreboardEvent[]
+  pending?: { dates: string[]; error: unknown }
+}
+
+/**
+ * Consulta o scoreboard da rodada corrente (sem datas) ou de cada data, em
+ * sequência. Sem datas, a falha sobe: não há o que adiar por data. Com datas,
+ * a primeira falha — recusa do orçamento, bloqueio, timeout, 5xx ou resposta
+ * incompleta — interrompe a consulta e a data que falhou e as seguintes viram
+ * pendência (`pending`), em vez de perder as datas que já chegaram: o chamador
+ * grava o que veio e adia o resto. Interromper poupa tentativas contra um
+ * provedor que não responde.
+ */
 async function fetchEventsForSync(
   competitionCode: string,
-  dates?: string[],
-  onAttempt?: ProviderHttpObserver,
-): Promise<EspnScoreboardEvent[]> {
+  dates: string[] | undefined,
+  onAttempt: ProviderHttpObserver | undefined,
+  gate: EspnGate | undefined,
+): Promise<FetchedEvents> {
   const uniqueDates = dates ? Array.from(new Set(dates.filter(Boolean))) : []
   if (uniqueDates.length === 0) {
-    const board = await fetchEspnScoreboard(competitionCode, undefined, onAttempt)
-    return board.events ?? []
+    const board = await fetchEspnScoreboard(competitionCode, undefined, onAttempt, gate)
+    return { events: requireScoreboardEvents(board, competitionCode) }
   }
 
-  // Sequencial: o cliente ESPN já serializa HTTP com pacing; evitar enfileirar
-  // N promises de uma vez deixa o custo e o progresso observáveis por data.
   const byId = new Map<string, EspnScoreboardEvent>()
-  for (const yyyymmdd of uniqueDates) {
-    const board = await fetchEspnScoreboard(competitionCode, yyyymmdd, onAttempt)
-    for (const ev of board.events ?? []) {
-      if (typeof ev.id === 'string' && ev.id) {
-        byId.set(ev.id, ev)
+  for (const [index, yyyymmdd] of uniqueDates.entries()) {
+    try {
+      const board = await fetchEspnScoreboard(competitionCode, yyyymmdd, onAttempt, gate)
+      for (const ev of requireScoreboardEvents(board, competitionCode)) {
+        if (typeof ev.id === 'string' && ev.id) {
+          byId.set(ev.id, ev)
+        }
+      }
+    } catch (error) {
+      return {
+        events: Array.from(byId.values()),
+        pending: { dates: uniqueDates.slice(index), error },
       }
     }
   }
-  return Array.from(byId.values())
+  return { events: Array.from(byId.values()) }
+}
+
+/**
+ * Chamadas ao D1 da gravação de um calendário da ESPN: a competição (gravar e
+ * ler o id), os times (os batches e a leitura dos ids), os jogos (a leitura das
+ * trocas de time e os batches). Uma data de liga (cerca de 10 jogos entre 20
+ * times) fica em 6; até 100 jogos e 100 times continuam em 6.
+ */
+export function espnWriteCalls(matches: number, teams: number): number {
+  const batches = (rows: number) => Math.ceil(rows / D1_BATCH_LIMIT)
+  return 4 + batches(teams) + batches(matches)
+}
+
+function countEspnTeams(events: ValidEspnEvent[]): number {
+  const ids = new Set<string>()
+  for (const ev of events) {
+    ids.add(ev.home.team.id)
+    ids.add(ev.away.team.id)
+  }
+  return ids.size
+}
+
+function assertWriteBudget(gate: CallGate | undefined, events: ValidEspnEvent[]): void {
+  if (!gate) return
+  const needed = espnWriteCalls(events.length, countEspnTeams(events))
+  if (gate.callsLeft() < needed) throw new CallBudgetExhaustedError()
 }
 
 async function upsertEspnCompetition(
@@ -433,25 +463,9 @@ async function upsertEspnTeams(
     ),
   )
 
-  if (statements.length > 0) {
-    await batchStatements(db, statements)
-  }
+  await runInBatches(db, statements)
 
-  const teamIds = new Map<string, string>()
-  const extIds = Array.from(teamMap.keys())
-  if (extIds.length > 0) {
-    const { results } = await db
-      .prepare(
-        `SELECT external_id, id FROM teams WHERE external_id IN (SELECT value FROM json_each(?)) AND provider = ?`,
-      )
-      .bind(JSON.stringify(extIds), PROVIDER)
-      .all<{ external_id: string; id: string }>()
-
-    for (const row of results) {
-      teamIds.set(String(row.external_id), row.id)
-    }
-  }
-
+  const teamIds = await loadTeamIds(db, PROVIDER, Array.from(teamMap.keys()))
   return { teamCount: teamMap.size, teamIds }
 }
 
@@ -548,45 +562,11 @@ async function upsertEspnMatches(
   now: string,
   ae: AnalyticsEngineDataset | undefined,
 ): Promise<number> {
-  const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
-  const rows: MatchUpsertRow[] = []
-  const statements = []
+  const rows = events.flatMap((ev) => mapEspnEventToRow(ev, teamIds, now) ?? [])
 
-  for (const ev of events) {
-    const row = mapEspnEventToRow(ev, teamIds, now)
-    if (!row) continue
+  await writeMatchUpserts(db, rows, { provider: PROVIDER, competitionId, now, ae })
 
-    rows.push(row)
-    statements.push(
-      matchInsertStmt.bind(
-        crypto.randomUUID(),
-        competitionId,
-        row.externalId,
-        PROVIDER,
-        row.homeTeamId,
-        row.awayTeamId,
-        row.startTime,
-        row.status,
-        row.homeScore,
-        row.awayScore,
-        row.phase,
-        row.round,
-        row.groupName,
-        row.duration,
-        row.penaltyWinner,
-        row.homePenaltyGoals,
-        row.awayPenaltyGoals,
-        row.postponed,
-        row.lockedAt,
-        row.leg,
-        now,
-      ),
-    )
-  }
-
-  await writeMatchUpserts(db, statements, rows, { ae, provider: PROVIDER, competitionId })
-
-  return statements.length
+  return rows.length
 }
 
 export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResult> {
@@ -595,7 +575,12 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     throw new Error(`Competição ESPN desconhecida ${opts.competitionCode}`)
   }
 
-  const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates, opts.onHttpAttempt)
+  const { events: rawEvents, pending } = await fetchEventsForSync(
+    opts.competitionCode,
+    opts.dates,
+    opts.onHttpAttempt,
+    opts.gate,
+  )
   const validEvents: ValidEspnEvent[] = []
   const discards: SyncDiscard[] = []
   for (const raw of rawEvents) {
@@ -619,9 +604,11 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
       discarded: await reportDiscards(opts.db, discards, discardScope),
       discardedTbd: countTbdDiscards(discards),
       missing: 0,
+      ...(pending ? { pending } : {}),
     }
   }
 
+  assertWriteBudget(opts.callGate, validEvents)
   const competition = await upsertEspnCompetition(opts.db, opts.competitionCode, meta, opts.season)
   const { teamCount, teamIds } = await upsertEspnTeams(opts.db, validEvents)
   const now = opts.now ?? isoSeconds(new Date())
@@ -646,5 +633,6 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     discarded,
     discardedTbd: countTbdDiscards(discards),
     missing: 0,
+    ...(pending ? { pending } : {}),
   }
 }

@@ -4,9 +4,6 @@
 
 .table {
   width: 100%;
-  /* Com table-layout fixed, o cabeçalho define as larguras. As colunas numéricas
-     não crescem, e a do nome fica com o espaço restante e corta o nome com
-     reticências em vez de alargar a tabela. */
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
@@ -37,7 +34,6 @@
   text-align: center;
 }
 
-/* "Rodada 34" em caixa alta precisa de mais largura que as outras colunas numéricas. */
 .thRound {
   width: 6.5rem;
   text-align: center;
@@ -78,11 +74,9 @@
   font-weight: var(--font-weight-bold);
   color: var(--color-text-muted);
   width: 2.5rem;
-  /* Número e seta somam pouco mais que o avatar, e a linha quase não cresce. */
   line-height: var(--line-height-tight);
 }
 
-/* Flex para a seta centralizar mesmo quando passa da largura do conteúdo da célula. */
 .positionChange {
   display: flex;
   justify-content: center;
@@ -106,7 +100,6 @@
   min-width: 0;
 }
 
-/* Os selos passam para a linha de baixo quando não cabem ao lado do nome. */
 .nameBody {
   display: flex;
   flex-wrap: wrap;
@@ -119,6 +112,7 @@
   display: inline-flex;
   flex-wrap: wrap;
   min-width: 0;
+  max-width: 100%;
   gap: var(--space-1);
 }
 
@@ -128,7 +122,9 @@
 }
 
 .displayName {
+  display: block;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -136,24 +132,14 @@
   font-weight: var(--font-weight-medium);
 }
 
-.ownerBadge,
-.youBadge,
 .kingBadge,
-.streakBadge {
+.streakBadge,
+.milestoneBadge,
+.unlikelyBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   padding: 1px var(--space-2);
-}
-
-.ownerBadge {
-  background-color: color-mix(in srgb, var(--color-primary) 15%, transparent);
-  color: var(--color-primary);
-}
-
-.youBadge {
-  background-color: var(--color-surface-elevated);
-  color: var(--color-text-muted);
 }
 
 .kingBadge {
@@ -164,6 +150,16 @@
 .streakBadge {
   background-color: var(--color-surface-elevated);
   color: var(--color-text-secondary);
+}
+
+.milestoneBadge {
+  background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+}
+
+.unlikelyBadge {
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
 }
 
 .tdPts,
@@ -179,8 +175,6 @@
   color: var(--color-text-secondary);
 }
 
-/* A coluna da rodada encurta já no corte do celular. Com "Rodada 34" entre 481 e
-   600 px, o nome ficaria sem espaço ao lado das badges. */
 @media (max-width: 600px) {
   .thRound {
     width: 3rem;
@@ -196,8 +190,6 @@
   }
 }
 
-/* Até 480 px, a tabela usa rótulos curtos, colunas numéricas estreitas e badges
-   menores abaixo do nome, para caber sem rolagem horizontal. */
 @media (max-width: 480px) {
   .table th,
   .table td {
@@ -236,13 +228,27 @@
     max-width: 100%;
   }
 
-  .ownerBadge,
-  .youBadge,
+  .badges .memberBadge,
   .kingBadge,
-  .streakBadge {
+  .streakBadge,
+  .milestoneBadge,
+  .unlikelyBadge {
     font-size: 0.625rem;
     line-height: 1.4;
     padding: 0 var(--space-1);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 360px) {
+  .thPts,
+  .thExact,
+  .thRound {
+    width: 2.5rem;
+  }
+
+  .badges {
+    row-gap: 2px;
   }
 }
 
@@ -263,8 +269,6 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
-
-/* ── Predictions modal ─────────────────────────────── */
 
 .modalLoading,
 .modalEmpty {

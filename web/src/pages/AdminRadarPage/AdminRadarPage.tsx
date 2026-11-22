@@ -3,9 +3,10 @@ import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { apiFetch } from '../../lib/api'
+import { DAY_MS, formatNumber, parseSqlUtc } from '../AdminMetricsPage/format'
 import AdminPageShell, { AdminLoadError } from '../AdminPageShell'
+import AdminPills from '../AdminPills'
 import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
-import shared from '../admin-shared.module.css'
 import styles from './AdminRadarPage.module.css'
 import { Sparkline } from './Sparkline'
 
@@ -52,11 +53,6 @@ const STATUS_LABEL: Record<RadarItem['status'], string> = {
   finished: 'Encerrada',
 }
 
-/**
- * Recorte de status. "A começar" é uma pergunta de produto diferente de "está
- * rolando": dá o tempo de preparação para entrar numa competição antes da bola
- * rolar, que é quando o grupo se forma.
- */
 const STATUS_FILTERS = [
   { key: 'ongoing', label: 'Em andamento' },
   { key: 'upcoming', label: 'A começar' },
@@ -65,14 +61,10 @@ const STATUS_FILTERS = [
 
 type StatusFilter = (typeof STATUS_FILTERS)[number]['key']
 
-/** Snapshot mais velho que isso = cron do radar provavelmente parado. */
+const STATUS_OPTIONS = STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label }))
+
 const STALE_AFTER_HOURS = 30
 
-function formatNumber(n: number): string {
-  return n.toLocaleString('pt-BR')
-}
-
-/** "YYYY-MM-DD" → "dd/mm/aaaa"; null vira travessão. */
 function formatDay(day: string | null): string {
   if (!day) return '—'
   const [y, m, d] = day.split('-')
@@ -84,25 +76,23 @@ function formatTrend(trend: number | null): string {
   return `${trend > 0 ? '+' : ''}${trend}%`
 }
 
-/**
- * "estreia em X dias" — a janela de preparação para entrar na competição antes
- * da bola rolar. Null quando a data não é futura ou não é conhecida.
- */
+function trendClass(trend: number | null): string {
+  if (trend !== null && trend > 0) return styles.trendUp
+  if (trend !== null && trend < 0) return styles.trendDown
+  return styles.muted
+}
+
 function countdown(startsOn: string | null): string | null {
   if (!startsOn) return null
   const target = new Date(`${startsOn}T00:00:00Z`).getTime()
   if (Number.isNaN(target)) return null
-  const days = Math.ceil((target - Date.now()) / 86_400_000)
+  const days = Math.ceil((target - Date.now()) / DAY_MS)
   if (days <= 0) return null
   if (days === 1) return 'estreia amanhã'
   if (days < 60) return `estreia em ${days} dias`
   return `estreia em ${Math.round(days / 30)} meses`
 }
 
-/**
- * Veredito por competição — a leitura que a tela existe pra dar. Deliberadamente
- * grosseiro: é gatilho de investigação, não decisão automática.
- */
 function verdict(item: RadarItem, medianInterest: number): { label: string; level: string } | null {
   if (item.supported) return null
   if (item.status === 'finished') return null
@@ -118,9 +108,6 @@ function verdict(item: RadarItem, medianInterest: number): { label: string; leve
 
 type SortKey = 'interest' | 'matches' | 'name' | 'start'
 
-// Mediana do interesse entre as competições com sinal — régua do veredito.
-// Mediana e não média: umas poucas competições gigantes (Copa do Mundo)
-// puxariam a média e esconderiam todo o resto.
 function medianInterestOf(items: RadarItem[]): number {
   const values = items
     .map((i) => i.pageviewsAvg)
@@ -128,8 +115,6 @@ function medianInterestOf(items: RadarItem[]): number {
     .sort((a, b) => a - b)
   if (values.length === 0) return 0
   const mid = Math.floor(values.length / 2)
-  // Amostra par: média dos dois centrais. Pegar só o de cima inflaria a régua
-  // justamente quando há poucas competições medidas.
   return values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid]
 }
 
@@ -147,7 +132,6 @@ function matchesFilter(item: RadarItem, filter: RadarFilter, term: string): bool
 function compareBy(sort: SortKey, a: RadarItem, b: RadarItem): number {
   if (sort === 'name') return a.name.localeCompare(b.name, 'pt-BR')
   if (sort === 'matches') return b.matchesInPeriod - a.matchesInPeriod
-  // Estreia mais próxima primeiro; sem data conhecida vai pro fim.
   if (sort === 'start') return (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')
   return (b.pageviewsAvg ?? -1) - (a.pageviewsAvg ?? -1)
 }
@@ -161,16 +145,16 @@ function visibleItems(items: RadarItem[], filter: RadarFilter, sort: SortKey): R
 
 function isSyncStale(lastSync: string | null | undefined): boolean {
   if (!lastSync) return false
-  const at = new Date(`${lastSync.replace(' ', 'T')}Z`)
-  if (Number.isNaN(at.getTime())) return false
-  return Date.now() - at.getTime() > STALE_AFTER_HOURS * 3_600_000
+  const at = parseSqlUtc(lastSync)
+  if (Number.isNaN(at)) return false
+  return Date.now() - at > STALE_AFTER_HOURS * 3_600_000
 }
 
-/** GET /metrics/radar do período. Não lança: rede, status ou corpo inválido viram `failed`. */
-async function loadRadar(days: number): Promise<AdminLoad<RadarResponse>> {
+async function loadRadar(days: number, signal: AbortSignal): Promise<AdminLoad<RadarResponse>> {
   try {
     const res = await apiFetch(
       buildApiUrl('/metrics/radar', new URLSearchParams({ days: String(days) })),
+      { signal },
     )
     if (res.status === 403) return { kind: 'forbidden' }
     if (!res.ok) return { kind: 'failed' }
@@ -184,7 +168,7 @@ export default function AdminRadarPage() {
   useDocumentTitle('Radar de competições')
 
   const [days, setDays] = useState<number>(30)
-  const { data, error, loading, retry } = useAdminLoad(days, loadRadar)
+  const { data, error, loading, retry } = useAdminLoad('radar', days, loadRadar)
   const [sort, setSort] = useState<SortKey>('interest')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ongoing')
   const [onlyUnsupported, setOnlyUnsupported] = useState(false)
@@ -197,10 +181,6 @@ export default function AdminRadarPage() {
     [items, statusFilter, onlyUnsupported, search, sort],
   )
 
-  // Sem artigo mapeado = sem sinal de interesse. É a fila de curadoria de
-  // `api/src/radar/articles.ts`, por isso fica visível em vez de escondida.
-  // Inclui as que vão começar: competição não mapeada prestes a estrear é ainda
-  // mais urgente de medir do que uma já em curso.
   const unmapped = useMemo(
     () => items.filter((i) => !i.wikiArticle && i.status !== 'finished'),
     [items],
@@ -320,23 +300,17 @@ function RadarFilters({
         onChange={(e) => setSearch(e.target.value)}
         aria-label="Buscar competição"
       />
-      <div className={styles.statusFilters} role="group" aria-label="Filtrar por status">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={f.key === statusFilter ? shared.periodActive : shared.period}
-            aria-pressed={f.key === statusFilter}
-            onClick={() => {
-              trackEvent('click_admin_radar_filtrar_status', { status: f.key })
-              setStatusFilter(f.key)
-              setSort(f.key === 'upcoming' ? 'start' : 'interest')
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <AdminPills
+        options={STATUS_OPTIONS}
+        value={statusFilter}
+        onChange={(key) => {
+          trackEvent('click_admin_radar_filtrar_status', { status: key })
+          setStatusFilter(key)
+          setSort(key === 'upcoming' ? 'start' : 'interest')
+        }}
+        className={styles.statusFilters}
+        ariaLabel="Filtrar por status"
+      />
       <label className={styles.toggle}>
         <input
           type="checkbox"
@@ -349,6 +323,26 @@ function RadarFilters({
         Só não suportadas
       </label>
     </div>
+  )
+}
+
+function VerdictCell({ item, medianInterest }: { item: RadarItem; medianInterest: number }) {
+  if (item.supported) {
+    return (
+      <td>
+        <span className={styles.supported}>✓ no Palpitae</span>
+      </td>
+    )
+  }
+  const call = verdict(item, medianInterest)
+  return (
+    <td>
+      {call ? (
+        <span className={call.level}>{call.label}</span>
+      ) : (
+        <span className={styles.muted}>—</span>
+      )}
+    </td>
   )
 }
 
@@ -395,7 +389,7 @@ function RadarTable({
         </thead>
         <tbody>
           {visible.map((item) => {
-            const call = verdict(item, medianInterest)
+            const startsIn = item.status === 'upcoming' ? countdown(item.startsOn) : null
             return (
               <tr key={item.id}>
                 <td>
@@ -409,9 +403,7 @@ function RadarTable({
                   <span className={styles[`status_${item.status}`]}>
                     {STATUS_LABEL[item.status]}
                   </span>
-                  {item.status === 'upcoming' && countdown(item.startsOn) && (
-                    <span className={styles.countdown}>{countdown(item.startsOn)}</span>
-                  )}
+                  {startsIn && <span className={styles.countdown}>{startsIn}</span>}
                 </td>
                 <td className={styles.num}>
                   {formatNumber(item.matchesInPeriod)}
@@ -429,29 +421,13 @@ function RadarTable({
                     </span>
                   )}
                 </td>
-                <td
-                  className={
-                    item.pageviewsTrend !== null && item.pageviewsTrend > 0
-                      ? styles.trendUp
-                      : item.pageviewsTrend !== null && item.pageviewsTrend < 0
-                        ? styles.trendDown
-                        : styles.muted
-                  }
-                >
+                <td className={trendClass(item.pageviewsTrend)}>
                   {formatTrend(item.pageviewsTrend)}
                 </td>
                 <td className={styles.num}>
                   {item.supported ? formatNumber(item.internalGroups) : '—'}
                 </td>
-                <td>
-                  {item.supported ? (
-                    <span className={styles.supported}>✓ no Palpitae</span>
-                  ) : call ? (
-                    <span className={call.level}>{call.label}</span>
-                  ) : (
-                    <span className={styles.muted}>—</span>
-                  )}
-                </td>
+                <VerdictCell item={item} medianInterest={medianInterest} />
               </tr>
             )
           })}

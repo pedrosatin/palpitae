@@ -1,10 +1,3 @@
-/**
- * LoginPage styles.
- *
- * Full-viewport centered layout with a branded card.
- * All colors and spacing reference tokens from src/styles/variables.css.
- */
-
 .root {
   display: flex;
   align-items: center;
@@ -27,7 +20,6 @@
   width: auto;
 }
 
-/* Layered over ErrorState's base card look — only the deltas live here. */
 .sessionNotice {
   width: 100%;
   padding: var(--space-3) var(--space-4);
@@ -63,4 +55,16 @@
 .previewLink:hover {
   color: var(--color-primary);
   text-decoration: none;
+}
+
+.privacyLink {
+  margin-top: calc(-1 * var(--space-4));
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.privacyLink:hover {
+  color: var(--color-primary);
 }

@@ -1,6 +1,3 @@
-// O rótulo de exibição (`round_label`) vem pronto da API (`GET /matches`) — a fonte
-// única é o back (`api/src/matches/rounds.ts`). Aqui fica só a lógica client-side
-// que deriva do `round` cru e não tem por que ir ao servidor.
 
 export function isGroupStageRound(round: string): boolean {
   return /^\d+$/.test(round)
@@ -12,8 +9,6 @@ export function predictionsPath(groupId: string, round: string | null): string {
   return round ? `${base}?rodada=${encodeURIComponent(round)}` : base
 }
 
-// null = no future round; undefined = pre-deploy cache without the field.
-// Both cases fall back to the last round (preserves old behaviour).
 export function applyDefaultRound(
   defaultRound: string | null | undefined,
   rounds: string[],
@@ -98,4 +93,28 @@ export function leftoverMatchesMarker(postponed: number, rescheduled: number): s
   if (postponed > 0) parts.push(`${postponed} adiado${s(postponed)}`)
   if (rescheduled > 0) parts.push(`${rescheduled} remarcado${s(rescheduled)}`)
   return parts.join(', ')
+}
+
+/**
+ * Rodada com jogo adiado ou remarcado mais próxima antes da exibida.
+ * Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em rodadas que
+ * ficaram para trás (ADR-019). Mostra só a mais próxima porque campeonatos longos
+ * acumulam adiados distantes e avisar do mais antigo levaria o usuário a pular
+ * muitas rodadas para trás antes de chegar à mais próxima. Se a rodada exibida já
+ * tem adiado ou remarcado, devolve `undefined` para não encadear atalhos.
+ */
+export function previousLeftoverRound(
+  roundKeys: readonly string[],
+  safeIndex: number,
+  postponedByRound: ReadonlyMap<string, number>,
+  rescheduledByRound: ReadonlyMap<string, number>,
+): string | undefined {
+  const hasLeftover = (round: string) =>
+    postponedByRound.has(round) || rescheduledByRound.has(round)
+  const selectedRound = roundKeys[safeIndex]
+  if (selectedRound !== undefined && hasLeftover(selectedRound)) return undefined
+  for (let i = Math.min(safeIndex, roundKeys.length) - 1; i >= 0; i--) {
+    if (hasLeftover(roundKeys[i])) return roundKeys[i]
+  }
+  return undefined
 }

@@ -36,14 +36,6 @@ export function leftoverCutoff(nowIso: string): string {
   return new Date(Date.parse(nowIso) - LEFTOVER_ROUND_AGE_DAYS * DAY_MS).toISOString()
 }
 
-/**
- * Ordem das candidatas. A primeira é a rodada padrão.
- *
- * Empate no último jogo aparece no fim de temporada, quando duas rodadas antigas
- * têm um remarcado no mesmo horário. Vence a que começou depois. A dica da aba
- * Palpitar procura rodadas antes da aberta, então aponta a outra. `round` fecha o
- * desempate, porque é a chave do `GROUP BY`.
- */
 const ROUND_ORDER = 'leftover ASC, last_start ASC, first_start DESC, round ASC'
 
 /**

@@ -1,0 +1,259 @@
+import type { Match } from '../components/MatchCard'
+
+export type CompetitionType = 'league' | 'cup'
+
+/** Chave do bucket único de liga em computeStandings ('' nunca colide com nome de grupo). */
+export const LEAGUE = ''
+
+/**
+ * Bucket de ranking geral para fases de pontos com grupos ESPN incompletos
+ * (ex.: Taça Guanabara). Valor sentinela que não colide com group_name real.
+ */
+export const GENERAL_RANKING = '__general_ranking__'
+
+const LEAGUE_TABLE_PHASES = new Set(['REGULAR_SEASON', 'LEAGUE_PHASE'])
+
+const GENERAL_RANKING_PHASES = new Set(['TACA_GUANABARA'])
+
+const GENERAL_RANKING_GROUP_STAGE_CODES = new Set(['bra.camp.gaucho'])
+
+const STANDINGS_ELIGIBLE_CUP_CODES = new Set([
+  'bra.camp.gaucho',
+  'bra.camp.carioca',
+  'bra.camp.paulista',
+])
+
+/**
+ * Decide se o GroupDetail mostra a aba Tabela.
+ * Ligas sempre; cups só com código canônico na allowlist regional.
+ */
+export function isStandingsTabEligible(
+  competitionType: CompetitionType | null | undefined,
+  competitionCode?: string | null,
+): boolean {
+  if (competitionType === 'league') return true
+  if (
+    competitionType === 'cup' &&
+    competitionCode != null &&
+    STANDINGS_ELIGIBLE_CUP_CODES.has(competitionCode)
+  ) {
+    return true
+  }
+  return false
+}
+
+export function isLeagueTable(group: string): boolean {
+  return group === LEAGUE
+}
+
+export function isGeneralRanking(group: string): boolean {
+  return group === GENERAL_RANKING
+}
+
+export type StandingsBucketMatch = Pick<Match, 'phase' | 'group_name'>
+
+/**
+ * Decide o bucket da classificação a partir de phase/group_name canônicos da API
+ * e, quando necessário, do código canônico da competição (ex.: Gaúcho).
+ */
+export function standingsBucket(
+  m: StandingsBucketMatch,
+  competitionCode?: string | null,
+): string | null {
+  if (GENERAL_RANKING_PHASES.has(m.phase)) return GENERAL_RANKING
+  if (
+    m.phase === 'GROUP_STAGE' &&
+    competitionCode != null &&
+    GENERAL_RANKING_GROUP_STAGE_CODES.has(competitionCode)
+  ) {
+    return GENERAL_RANKING
+  }
+  if (m.group_name != null) return m.group_name
+  if (LEAGUE_TABLE_PHASES.has(m.phase)) return LEAGUE
+  return null
+}
+
+/** Quantos jogos recentes a coluna "Últimas" mostra. */
+export const FORM_SIZE = 4
+
+const OPPOSITE_RESULT: Record<'v' | 'e' | 'd', 'v' | 'e' | 'd'> = {
+  v: 'd',
+  e: 'e',
+  d: 'v',
+}
+
+const RESULT_LABELS: Record<'v' | 'e' | 'd', string> = {
+  v: 'Vitória',
+  e: 'Empate',
+  d: 'Derrota',
+}
+
+/** Resultado de um jogo na forma recente do time, mais antigo → mais recente. */
+export interface FormEntry {
+  result: 'v' | 'e' | 'd'
+  label: string
+}
+
+export interface TeamStanding {
+  team_id: string
+  team_name: string
+  team_short_name: string
+  team_logo: string
+  form: FormEntry[]
+  p: number
+  j: number
+  v: number
+  e: number
+  d: number
+  gf: number
+  ga: number
+  sg: number
+}
+
+function emptyStanding(
+  team_id: string,
+  team_name: string,
+  team_short_name: string,
+  team_logo: string,
+): TeamStanding {
+  return {
+    team_id,
+    team_name,
+    team_short_name,
+    team_logo,
+    form: [],
+    p: 0,
+    j: 0,
+    v: 0,
+    e: 0,
+    d: 0,
+    gf: 0,
+    ga: 0,
+    sg: 0,
+  }
+}
+
+function applyMatchResult(home: TeamStanding, away: TeamStanding, m: Match) {
+  if (m.status !== 'finished' || m.home_score === null || m.away_score === null) {
+    return
+  }
+
+  home.j += 1
+  away.j += 1
+  home.gf += m.home_score
+  home.ga += m.away_score
+  away.gf += m.away_score
+  away.ga += m.home_score
+  home.sg = home.gf - home.ga
+  away.sg = away.gf - away.ga
+
+  const homeResult: FormEntry['result'] =
+    m.home_score > m.away_score ? 'v' : m.home_score < m.away_score ? 'd' : 'e'
+  const awayResult = OPPOSITE_RESULT[homeResult]
+
+  switch (homeResult) {
+    case 'v':
+      home.v += 1
+      home.p += 3
+      away.d += 1
+      break
+    case 'd':
+      away.v += 1
+      away.p += 3
+      home.d += 1
+      break
+    case 'e':
+      home.e += 1
+      away.e += 1
+      home.p += 1
+      away.p += 1
+      break
+  }
+
+  const score = `${m.home_score}x${m.away_score}`
+  home.form.push({
+    result: homeResult,
+    label: `${RESULT_LABELS[homeResult]} ${score} contra ${m.away_team_short_name}`,
+  })
+  away.form.push({
+    result: awayResult,
+    label: `${RESULT_LABELS[awayResult]} ${score} contra ${m.home_team_short_name}`,
+  })
+}
+
+function sortStandings(
+  byGroup: Map<string, Map<string, TeamStanding>>,
+): Map<string, TeamStanding[]> {
+  const result = new Map<string, TeamStanding[]>()
+  for (const [group, teams] of byGroup) {
+    for (const team of teams.values()) {
+      team.form = team.form.slice(-FORM_SIZE)
+    }
+    const isLeague = isLeagueTable(group)
+    const sorted = [...teams.values()].sort(
+      (a, b) =>
+        b.p - a.p ||
+        (isLeague ? b.v - a.v : 0) ||
+        b.sg - a.sg ||
+        b.gf - a.gf ||
+        a.team_name.localeCompare(b.team_name),
+    )
+    result.set(group, sorted)
+  }
+  return result
+}
+
+export function computeStandings(
+  matches: Match[],
+  competitionCode?: string | null,
+): Map<string, TeamStanding[]> {
+  const byGroup = new Map<string, Map<string, TeamStanding>>()
+
+  function teamFor(
+    group: string,
+    id: string,
+    name: string,
+    shortName: string,
+    logo: string,
+  ): TeamStanding {
+    let teams = byGroup.get(group)
+    if (!teams) {
+      teams = new Map()
+      byGroup.set(group, teams)
+    }
+    let team = teams.get(id)
+    if (!team) {
+      team = emptyStanding(id, name, shortName, logo)
+      teams.set(id, team)
+    }
+    return team
+  }
+
+  const chronological = [...matches].sort((a, b) =>
+    a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0,
+  )
+
+  for (const m of chronological) {
+    const groupKey = standingsBucket(m, competitionCode)
+    if (groupKey === null) continue
+
+    const home = teamFor(
+      groupKey,
+      m.home_team_id,
+      m.home_team_name,
+      m.home_team_short_name,
+      m.home_team_logo,
+    )
+    const away = teamFor(
+      groupKey,
+      m.away_team_id,
+      m.away_team_name,
+      m.away_team_short_name,
+      m.away_team_logo,
+    )
+
+    applyMatchResult(home, away, m)
+  }
+
+  return sortStandings(byGroup)
+}

@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
+import { renderWithQuery as render } from '../../test-utils'
 
 const originalKey = config.tbbcSiteKey
 
@@ -27,7 +28,6 @@ function serveSave({ saved = ['m1'], failed = false } = {}) {
   })
 }
 
-/** Escolhe 1×0 no único jogo. O card começa vazio e só salva com os dois placares. */
 async function pickScore() {
   await userEvent.click(await screen.findByRole('button', { name: 'Aumentar placar Brasil' }))
   await userEvent.click(screen.getByRole('button', { name: 'Diminuir placar Argentina' }))
@@ -78,7 +78,6 @@ describe('feedback after confirmed prediction persistence', () => {
       await screen.findByRole('button', { name: 'Tudo salvo!' })
       expect(await screen.findByText('Foi fácil salvar seus palpites?')).toBeVisible()
     } else {
-      // O jogo enviado não voltou entre os salvos: nada de "Tudo salvo!".
       await screen.findByText('1 palpite não foi salvo. Tente novamente.')
       expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
       expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// Resposta fora do formato e aba que quebra no render mostram a tela de erro no
-// lugar da aba. Cabeçalho e abas continuam na página, sem tela em branco.
+const GROUP_ID = '00000000-0000-4000-8000-0000000000e1'
+
 const future = new Date(Date.now() + 3 * 86_400_000).toISOString()
 const match = {
   id: 'err-m1',
@@ -24,7 +24,7 @@ const match = {
   away_team_logo: null,
 }
 const group = {
-  id: 'err-g',
+  id: GROUP_ID,
   name: 'Bolão do Erro',
   competition_id: 'err-c',
   competition_name: 'Brasileirão',
@@ -58,7 +58,7 @@ async function mockApi(page: Page, overrides: Record<string, unknown>) {
       json = { self_user_id: 'err-u', members: [], predictions: [], open_pickers: {} }
     else if (path.endsWith('/predictions')) json = { predictions: [] }
     else if (path.endsWith('/round-standings')) json = { round: null, standings: [] }
-    else if (path.endsWith('/groups/err-g')) json = { group }
+    else if (path.endsWith(`/groups/${GROUP_ID}`)) json = { group }
     else if (path.endsWith('/groups')) json = { groups: [] }
     await route.fulfill({ headers, json })
   })
@@ -70,7 +70,7 @@ test('membros fora do formato: erro na aba Ranking e as abas seguem navegáveis'
   page,
 }) => {
   await mockApi(page, { '/members': {} })
-  await page.goto('/grupos/err-g?tab=leaderboard')
+  await page.goto(`/grupos/${GROUP_ID}?tab=leaderboard`)
 
   await expect(page.getByRole('alert')).toHaveText(
     'Resposta inesperada do servidor. Tente novamente.',
@@ -85,7 +85,6 @@ test('membros fora do formato: erro na aba Ranking e as abas seguem navegáveis'
 test('aba que quebra no render mostra a tela de erro com nova tentativa', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  // Membro sem nome num jogo aberto quebra as iniciais da aba Grupo.
   await mockApi(page, {
     '/predictions/group': {
       self_user_id: 'err-u',
@@ -94,7 +93,7 @@ test('aba que quebra no render mostra a tela de erro com nova tentativa', async 
       open_pickers: { 'err-m1': ['err-x'] },
     },
   })
-  await page.goto('/grupos/err-g?tab=group-picks')
+  await page.goto(`/grupos/${GROUP_ID}?tab=group-picks`)
 
   await expect(page.getByRole('alert')).toContainText('Não foi possível mostrar esta aba.')
   await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible()

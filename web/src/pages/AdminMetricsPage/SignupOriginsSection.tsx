@@ -1,11 +1,7 @@
-import { CollectionNotice, formatCount } from './InviteFunnelSection'
+import { CollectionNotice } from './CollectionNotice'
+import { formatCount } from './format'
 import styles from './AdminMetricsPage.module.css'
 
-/**
- * Cadastros por origem no período. Consome GET /metrics/signup-origins: eventos do
- * Analytics Engine com o total do D1 ao lado. A diferença aparece em linha própria,
- * sem ser encaixada numa categoria, porque é ela que mostra se a medição fecha.
- */
 
 type OriginKey = 'convite' | 'guia' | 'busca' | 'direto' | 'desconhecida'
 

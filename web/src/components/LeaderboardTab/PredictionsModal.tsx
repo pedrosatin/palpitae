@@ -1,4 +1,6 @@
 import { trackEvent } from '../../analytics/ga'
+import { useRoundNav } from '../../hooks/useRoundNav'
+import { groupConsecutiveBy } from '../../lib/groupConsecutiveBy'
 import Modal from '../Modal'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import styles from './LeaderboardTab.module.css'
@@ -13,26 +15,7 @@ interface PredictionsModalProps {
 }
 
 export function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
-  const result: [string | null, UserPrediction[]][] = []
-
-  if (ms.length === 0) return result
-
-  let currentGroup = ms[0].group_name ?? null
-  let currentArray = [ms[0]]
-  result.push([currentGroup, currentArray])
-
-  for (let i = 1; i < ms.length; i++) {
-    const m = ms[i]
-    const key = m.group_name ?? null
-    if (key === currentGroup) {
-      currentArray.push(m)
-    } else {
-      currentGroup = key
-      currentArray = [m]
-      result.push([currentGroup, currentArray])
-    }
-  }
-  return result
+  return groupConsecutiveBy(ms, (m) => m.group_name ?? null)
 }
 
 export default function PredictionsModal({ member, groupId, onClose }: PredictionsModalProps) {
@@ -50,9 +33,18 @@ export default function PredictionsModal({ member, groupId, onClose }: Predictio
   const selectedModalRound = modalRoundKeys[safeModalIndex]
 
   const labelFor = (r: string) => modalByRound.get(r)?.[0]?.round_label ?? r
+  const { prev, next } = useRoundNav(modalRoundKeys, safeModalIndex, setModalRoundIndex, {
+    prev: 'click_leaderboard_rodada_anterior',
+    next: 'click_leaderboard_proxima_rodada',
+  })
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={`Palpites de ${member.display_name}`}>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Palpites de ${member.display_name}`}
+      analyticsId="palpites_membro"
+    >
       {modalLoading && <p className={styles.modalLoading}>Carregando palpites...</p>}
       {modalError && <p className={styles.modalError}>{modalError}</p>}
       {!modalLoading && !modalError && modalPredictions.length === 0 && (
@@ -68,18 +60,8 @@ export default function PredictionsModal({ member, groupId, onClose }: Predictio
             selectedRound={selectedModalRound}
             labelFor={labelFor}
             knockoutRounds={knockoutRounds}
-            onPrev={() => {
-              trackEvent('click_leaderboard_rodada_anterior', {
-                round: modalRoundKeys[Math.max(0, safeModalIndex - 1)],
-              })
-              setModalRoundIndex((i) => Math.max(0, i - 1))
-            }}
-            onNext={() => {
-              trackEvent('click_leaderboard_proxima_rodada', {
-                round: modalRoundKeys[Math.min(modalRoundKeys.length - 1, safeModalIndex + 1)],
-              })
-              setModalRoundIndex((i) => Math.min(modalRoundKeys.length - 1, i + 1))
-            }}
+            onPrev={prev}
+            onNext={next}
             onSelect={(round) => {
               trackEvent('change_leaderboard_rodada', { round })
               setModalRoundIndex(modalRoundKeys.indexOf(round))

@@ -1,9 +1,7 @@
 import { Component, type ReactNode } from 'react'
 
 interface ErrorBoundaryProps {
-  /** Quando muda (outra rota, outra aba), a tela de erro sai e os filhos montam de novo. */
   resetKey?: unknown
-  /** Tela no lugar dos filhos que quebraram. `reset` monta os filhos de novo. */
   fallback: (reset: () => void) => ReactNode
   children?: ReactNode
 }
@@ -24,8 +22,6 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps, prevState: ErrorBoundaryState) {
-    // Só sai do erro numa navegação feita depois dele. No render que acabou de
-    // quebrar, `prevState.failed` ainda é falso.
     if (prevState.failed && this.state.failed && prevProps.resetKey !== this.props.resetKey)
       this.reset()
   }

@@ -24,20 +24,17 @@ const SCHEDULED: EspnCompetitionStatusType = {
   state: 'pre',
   completed: false,
 }
-/** Mesmo `type` de Santa Clara × Gil Vicente, encerrado no scoreboard do mesmo dia. */
 const FULL_TIME: EspnCompetitionStatusType = {
   name: 'STATUS_FULL_TIME',
   state: 'post',
   completed: true,
 }
-/** Cancelado montado pelo formato do adiado; o nome decide mesmo com completed true. */
 const canceled = (completed: boolean): EspnCompetitionStatusType => ({
   name: 'STATUS_CANCELED',
   state: 'post',
   completed,
 })
 
-/** O evento real com outro status e, na remarcação, outra data. Placar segue 0-0. */
 function espnEvent(status: EspnCompetitionStatusType, iso = KICKOFF): EspnScoreboardEvent {
   const ev = structuredClone(ADIADO)
   const date = iso.replace(':00Z', 'Z')
@@ -67,7 +64,6 @@ function fdMatch(status: string, utcDate = KICKOFF) {
 
 type Providers = { fd: ReturnType<typeof fdMatch>; espn: EspnScoreboardEvent[] }
 
-/** football-data responde `providers.fd`; a ESPN, os eventos do dia UTC pedido. */
 function stubProviders(providers: Providers) {
   const espnDates: string[] = []
   vi.stubGlobal(
@@ -96,9 +92,12 @@ const handles: DatabaseSync[] = []
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 function setup() {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(inWindow(KICKOFF))
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
   return { sqlite, db }
@@ -141,22 +140,23 @@ function readMatch(sqlite: DatabaseSync): MatchState {
     .get() as MatchState
 }
 
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const inWindow = (iso: string) => Date.parse(iso) + 120 * 60_000
 
-const OPEN_AND_UNSCORED = {
+const LOCKED_AND_UNSCORED = {
   status: 'scheduled',
   postponed: 1,
   home_score: null,
   away_score: null,
   scored_at: null,
-  locked_at: null,
   points_awarded: 0,
 }
 
-function expectOpen(row: MatchState, now: number) {
-  expect(row).toMatchObject(OPEN_AND_UNSCORED)
-  expect(isMatchLocked(row, new Date(now).toISOString())).toBe(false)
+function expectLocked(row: MatchState, now: number) {
+  expect(row).toMatchObject({
+    ...LOCKED_AND_UNSCORED,
+    locked_at: new Date(now).toISOString().replace('.000Z', 'Z'),
+  })
+  expect(isMatchLocked(row, new Date(now).toISOString())).toBe(true)
 }
 
 const NOT_PLAYED = [
@@ -167,7 +167,7 @@ const NOT_PLAYED = [
 
 describe('jogo adiado na ESPN: fallback de resultados da football-data', () => {
   it.each(NOT_PLAYED)(
-    '%s com state post e 0-0 continua aberto e sem pontos',
+    '%s com state post e 0-0 preserva a trava após o kickoff e fica sem pontos',
     async (_label, fdStatus, event) => {
       const { sqlite, db } = setup()
       const providers: Providers = { fd: fdMatch('TIMED'), espn: [event] }
@@ -179,7 +179,7 @@ describe('jogo adiado na ESPN: fallback de resultados da football-data', () => {
       await pollActiveMatches(db, 'test', undefined, inWindow(KICKOFF))
 
       expect(espnDates).toContain('20261108')
-      expectOpen(readMatch(sqlite), inWindow(KICKOFF))
+      expectLocked(readMatch(sqlite), inWindow(KICKOFF))
     },
   )
 
@@ -224,7 +224,7 @@ describe('jogo adiado na ESPN: sync primário ESPN', () => {
   })
 
   it.each(NOT_PLAYED)(
-    '%s com state post e 0-0 continua aberto, sem travar e sem pontos',
+    '%s com state post e 0-0 preserva a trava após o kickoff e fica sem pontos',
     async (_label, _fdStatus, event) => {
       const { sqlite, db } = setup()
       const providers: Providers = { fd: fdMatch('TIMED'), espn: [espnEvent(SCHEDULED)] }
@@ -236,7 +236,7 @@ describe('jogo adiado na ESPN: sync primário ESPN', () => {
       await pollActiveMatches(db, 'unused-key', undefined, inWindow(KICKOFF))
 
       expect(espnDates.filter((day) => day === '20261108')).toHaveLength(2)
-      expectOpen(readMatch(sqlite), inWindow(KICKOFF))
+      expectLocked(readMatch(sqlite), inWindow(KICKOFF))
     },
   )
 
@@ -255,7 +255,7 @@ describe('jogo adiado na ESPN: sync primário ESPN', () => {
       start_time: NEW_KICKOFF,
       status: 'scheduled',
       postponed: 0,
-      locked_at: null,
+      locked_at: new Date(inWindow(KICKOFF)).toISOString().replace('.000Z', 'Z'),
     })
 
     providers.espn = [espnEvent(FULL_TIME, NEW_KICKOFF)]

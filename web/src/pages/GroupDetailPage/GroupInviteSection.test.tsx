@@ -118,7 +118,6 @@ describe('GroupInviteSection', () => {
 
     const toggle = screen.getByRole('button', { name: /convidar membros/i })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    // Padrão disclosure da APG. O botão fica dentro do título da seção.
     expect(screen.getByRole('heading', { level: 2 })).toContainElement(toggle)
 
     const bodyId = toggle.getAttribute('aria-controls')
@@ -126,12 +125,9 @@ describe('GroupInviteSection', () => {
     const body = container.querySelector(`[id="${bodyId}"]`)
     expect(body).not.toBeNull()
 
-    // O CSS esconde o conteúdo no celular enquanto a seção não tem data-expanded.
     const section = container.querySelector('section')!
     expect(section).not.toHaveAttribute('data-expanded')
 
-    // Código, link, compartilhar e troca de código ficam dentro do conteúdo
-    // controlado pelo botão. No desktop ele fica sempre aberto.
     expect(body).toHaveTextContent('TEST1234')
     expect(body).toHaveTextContent(`${window.location.origin}/convite/TEST1234`)
     expect(body).toContainElement(screen.getByTestId('share-buttons'))

@@ -16,14 +16,9 @@ const router = new Hono<AppContext>()
  */
 router.get('/', requireAuth, async (c) => {
   const db = c.env.DB
-  const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
+  const canSeePilot = hasPilotAccess(c.get('userIdentity'), c.env)
 
   try {
-    // `competitions.status` só vira 'finished' na descoberta diária, 7 dias depois
-    // do último jogo, então o `status` devolvido aqui é derivado dos jogos reais. O fim vem
-    // da regra compartilhada com os grupos (`competitionStatusSql`): copa só acaba
-    // com jogo de fase de título encerrado e nenhum pendente. Fora disso, com jogo
-    // encerrado a competição está em andamento. Sem jogos, vale a coluna.
     const result = await db
       .prepare(
         `SELECT
@@ -65,10 +60,10 @@ router.get('/', requireAuth, async (c) => {
  * POST /competitions/:id/promote
  *
  * Promove manualmente uma competição para visibilidade pública.
- * Restrito ao administrador configurado em ADMIN_EMAIL.
+ * Restrito ao administrador configurado em ADMIN_EMAIL (e ADMIN_GOOGLE_SUB, se definido).
  */
 router.post('/:id/promote', requireAuth, async (c) => {
-  if (!isAdminUser(c.get('userEmail'), c.env)) {
+  if (!isAdminUser(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Apenas o administrador pode promover competições' }, 403)
   }
 

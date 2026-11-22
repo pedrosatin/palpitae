@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { captureGuideOrigin } from '../src/analytics/guideOrigin'
 import { LANDING_GUIDE_LINKS } from '../src/pages/LandingPage/guideLinks'
 import { normalizeGaId } from './analytics'
-import { guides, renderGuide, renderIndex, renderLlmsTxt } from './guides'
+import {
+  guides,
+  renderGuide,
+  renderIndex,
+  renderLlmsTxt,
+  renderPrivacy,
+  sitemapUrls,
+} from './guides'
+import { PENDING_MARKER, privacyPolicy } from './privacy'
 import { extractLocs, HOST, KEY, KEY_LOCATION } from '../scripts/indexnow.mjs'
 
 const GA_ID = 'G-TEST123'
@@ -17,7 +25,6 @@ function jsonLdBlocks(html: string): Record<string, unknown>[] {
   )
 }
 
-/** Same escaping the renderer applies to visible text. */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -26,7 +33,6 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Loads a rendered page into the jsdom document and runs its inline scripts. */
 function loadPage(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   document.head.innerHTML = doc.head.innerHTML
@@ -37,6 +43,11 @@ function loadPage(html: string) {
   }
 }
 
+function pngSize(path: string): { width: number; height: number } {
+  const buf = readFileSync(path)
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+
 describe('guide catalog', () => {
   it('has unique slugs, an ISO date and a description of search-snippet length', () => {
     expect(new Set(guides.map((g) => g.slug)).size).toBe(guides.length)
@@ -45,6 +56,47 @@ describe('guide catalog', () => {
       expect(g.description.length).toBeGreaterThanOrEqual(120)
       expect(g.description.length).toBeLessThanOrEqual(175)
     }
+  })
+
+  it('aponta cada figura para PNG e WebP existentes, com width/height na proporção do arquivo', () => {
+    const publicDir = join(process.cwd(), 'public')
+    const figures = guides.flatMap((g) => g.sections.map((s) => s.figure).filter(Boolean))
+    expect(figures.length).toBeGreaterThan(0)
+    for (const figure of figures) {
+      const pngRel = figure!.src.replace(/^\//, '')
+      const webpRel = (figure!.webp ?? figure!.src.replace(/\.png$/i, '.webp')).replace(/^\//, '')
+      const pngPath = join(publicDir, pngRel)
+      const webpPath = join(publicDir, webpRel)
+      expect(existsSync(pngPath), pngPath).toBe(true)
+      expect(existsSync(webpPath), webpPath).toBe(true)
+      expect(figure!.src.endsWith('.png')).toBe(true)
+      expect(webpRel.endsWith('.webp')).toBe(true)
+      const { width, height } = pngSize(pngPath)
+      const fileRatio = width / height
+      const declaredRatio = figure!.width / figure!.height
+      expect(Math.abs(fileRatio - declaredRatio)).toBeLessThan(0.02)
+    }
+  })
+
+  it('escapa aspas e tags no alt da figura', () => {
+    const html = renderGuide({
+      ...guides[0],
+      sections: [
+        {
+          heading: 'Figura de teste',
+          body: ['Parágrafo.'],
+          figure: {
+            src: '/screenshots/guias/criar-grupo-pontuacao.png',
+            webp: '/screenshots/guias/criar-grupo-pontuacao.webp',
+            alt: 'a"<b>',
+            width: 100,
+            height: 100,
+          },
+        },
+      ],
+    })
+    expect(html).toContain('alt="a&quot;&lt;b&gt;"')
+    expect(html).not.toContain('alt="a"<b>"')
   })
 
   it('emits a valid FAQPage JSON-LD mirroring the visible FAQ', () => {
@@ -138,7 +190,6 @@ describe('guia do Brasileirão 2027', () => {
     )
     expect(captureGuideOrigin(hrefs[0]!.split('?')[1])).toBe('guia_bolao-do-brasileirao')
 
-    // No HTML, o `&` sai escapado nos três links.
     const html = renderGuide(guide)
     expect(html.match(/href="\/entrar\?[^"]*"/g)).toEqual([
       `href="/entrar?from=guia_bolao-do-brasileirao_header&amp;${competicao}"`,
@@ -163,6 +214,7 @@ describe('guia do Brasileirão 2027', () => {
 
   it('condiciona a temporada 2027 à publicação da tabela', () => {
     expect(pageText).toContain('A Série A 2027 entra nessa lista depois da publicação da tabela.')
+    expect(pageText).toContain('A lista traz a Série A 2026 até o fim da temporada, em dezembro.')
     expect(pageText).not.toMatch(/2027[^.]*(já está|disponível)/)
   })
 
@@ -178,6 +230,29 @@ describe('guia do Brasileirão 2027', () => {
     ]) {
       expect(pageText).toContain(excerpt)
     }
+  })
+
+  it('mostra o fluxo real com capturas, pontuação e aviso de que não envolve dinheiro', () => {
+    for (const excerpt of [
+      'Chamar a galera no WhatsApp',
+      'Clássico',
+      'Só placar exato',
+      'Só vencedor',
+      'Personalizado',
+      'Oculto até o jogo começar',
+      'Sempre visível',
+      'palpitae.bet',
+      'sem depósito, Pix, odds ou prêmio em dinheiro',
+    ]) {
+      expect(pageText).toContain(excerpt)
+    }
+    const figures = [...doc.querySelectorAll('figure.shot')]
+    expect(figures.length).toBeGreaterThanOrEqual(3)
+    expect(doc.querySelector('img[src="/screenshots/guias/criar-grupo-pontuacao.png"]')).toBeTruthy()
+    expect(doc.querySelector('source[srcset="/screenshots/guias/whatsapp-convite.webp"]')).toBeTruthy()
+    expect(
+      pageText.includes('O bolão do Brasileirão no Palpitae envolve dinheiro ou é casa de apostas?'),
+    ).toBe(true)
   })
 
   it('não altera o botão dos guias sem texto próprio', () => {
@@ -252,15 +327,6 @@ describe('guide social meta', () => {
   })
 })
 
-/**
- * A Copa do Mundo 2026 terminou. Texto público que cita essa edição precisa
- * estar no passado, e nenhum texto pode apresentar a Copa como campeonato
- * disponível no app.
- *
- * A regex `terminou|encerrad` é intencional: toda frase que cita a Copa 2026
- * precisa conter um desses verbos no passado. Ao reescrever esses textos,
- * mantenha um deles na mesma frase ou atualize a regex junto.
- */
 describe('Copa do Mundo 2026 no passado', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
   const catalogText = guides
@@ -298,8 +364,6 @@ describe('Copa do Mundo 2026 no passado', () => {
 describe('IndexNow', () => {
   it('publishes the key file with the key as its only content', () => {
     expect(KEY).toMatch(/^[0-9a-f]{32}$/)
-    // Caminho numa variável: o Vite reescreve `new URL(`...${x}`, import.meta.url)`
-    // literal como import de asset, e a leitura apontaria para outro lugar.
     const keyFile = `../public/${KEY}.txt`
     expect(readFileSync(new URL(keyFile, import.meta.url), 'utf8').trim()).toBe(KEY)
     expect(KEY_LOCATION).toBe(`https://${HOST}/${KEY}.txt`)
@@ -375,6 +439,23 @@ describe('guide analytics (Consent Mode v2)', () => {
     expect(warn).not.toHaveBeenCalled()
     expect(normalizeGaId("G-X';alert(1)//", warn)).toBe('')
     expect(warn).toHaveBeenCalledOnce()
+  })
+
+  it('sublinha o link da política de privacidade no aviso de cookies', () => {
+    loadPage(renderGuide(guides[0], GA_ID))
+    const css = [...document.querySelectorAll('style')]
+      .map((s) => s.textContent)
+      .join('\n')
+    expect(css).toContain('.consent p a{text-decoration:underline')
+    expect(css).toContain('.consent p a:focus-visible{outline:2px solid #49f21b')
+  })
+
+  it('sublinha o link da política de privacidade no CSS do aviso do app', () => {
+    const css = readFileSync(
+      join(process.cwd(), 'src/components/CookieConsent/CookieConsent.module.css'),
+      'utf8',
+    )
+    expect(css).toMatch(/\.text a\s*\{[^}]*text-decoration:\s*underline/)
   })
 
   it('registers the denied consent default before js/config, then shows the banner', () => {
@@ -469,5 +550,90 @@ describe('guide analytics (Consent Mode v2)', () => {
       get.mockRestore()
       set.mockRestore()
     }
+  })
+})
+
+describe('página de privacidade', () => {
+  const html = renderPrivacy()
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  it('sai com canonical, título, descrição e indexável', () => {
+    expect(doc.querySelector('link[rel="canonical"]')!.getAttribute('href')).toBe(
+      'https://palpitae.com.br/privacidade',
+    )
+    expect(doc.querySelector('h1')!.textContent).toBe('Política de privacidade')
+    expect(doc.title).toBe('Política de privacidade — Palpitae')
+    expect(doc.querySelector('meta[name="robots"]')!.getAttribute('content')).toBe('index, follow')
+    const description = doc.querySelector('meta[name="description"]')!.getAttribute('content')!
+    expect(description.length).toBeGreaterThanOrEqual(120)
+    expect(description.length).toBeLessThanOrEqual(175)
+  })
+
+  it('traz as seções previstas', () => {
+    const headings = [...doc.querySelectorAll('h2')].map((h) => h.textContent)
+    expect(headings).toEqual(
+      expect.arrayContaining([
+        'Responsável e contato',
+        'Dados da conta',
+        'Dados de uso e medição',
+        'Lembretes por e-mail e descadastro',
+        'Compartilhamento com terceiros',
+        'Retenção',
+        'Cookies e escolhas de medição',
+        'Seus direitos e como exercê-los',
+      ]),
+    )
+  })
+
+  it('entra no sitemap com a data do texto', () => {
+    expect(sitemapUrls()).toContainEqual(
+      expect.objectContaining({
+        loc: 'https://palpitae.com.br/privacidade',
+        lastmod: privacyPolicy.updated,
+      }),
+    )
+  })
+
+  it('usa o mesmo <style> dos guias, já liberado por hash na CSP', () => {
+    const style = (page: string) => page.match(/<style>([\s\S]*?)<\/style>/)![1]
+    expect(style(html)).toBe(style(renderGuide(guides[0])))
+  })
+
+  it('aparece no rodapé dos guias, do índice e da própria página', () => {
+    for (const page of [renderGuide(guides[0]), renderIndex(), html]) {
+      const footer = new DOMParser()
+        .parseFromString(page, 'text/html')
+        .querySelector('footer.site')!
+      const link = [...footer.querySelectorAll('a')].find(
+        (a) => a.textContent === 'Política de privacidade',
+      )
+      expect(link?.getAttribute('href')).toBe('/privacidade')
+    }
+  })
+
+  it('aparece no aviso de cookies dos guias sem mudar os botões', () => {
+    const page = new DOMParser().parseFromString(renderGuide(guides[0], GA_ID), 'text/html')
+    const banner = page.getElementById('cookie-consent')!
+    expect(banner.querySelector('a')!.getAttribute('href')).toBe('/privacidade')
+    expect([...banner.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+      'Recusar',
+      'Aceitar',
+    ])
+  })
+
+  it('aparece no llms.txt', () => {
+    expect(renderLlmsTxt()).toContain(
+      '- [Política de privacidade](https://palpitae.com.br/privacidade):',
+    )
+  })
+
+  it('não publica marcador "A CONFIRMAR"', () => {
+    expect(doc.body.textContent).not.toMatch(PENDING_MARKER)
+    const head = [
+      doc.title,
+      ...[...doc.querySelectorAll('meta[content]')].map((m) => m.getAttribute('content')),
+      ...[...doc.querySelectorAll('script[type="application/ld+json"]')].map((s) => s.textContent),
+    ].join('\n')
+    expect(head).not.toMatch(PENDING_MARKER)
   })
 })

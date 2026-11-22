@@ -10,8 +10,6 @@ import { isMatchLocked } from './locking'
 import { LATE_SWEEP_INTERVAL_MS } from './matchPollingWindow'
 import { pollActiveMatches } from './poller'
 
-// Varredura de atrasados com o sync ESPN de verdade: o resultado chega ao D1 e é pontuado.
-
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 
@@ -51,7 +49,6 @@ function event(id: string, date: string, state: State): EspnScoreboardEvent {
   return ev
 }
 
-/** Scoreboard por data `YYYYMMDD`; devolve o mock de `fetch` para contar as consultas. */
 function feed(boards: () => Record<string, EspnScoreboardEvent[]>) {
   const fetch = vi.fn(async (input: string | URL | Request) => {
     const date = new URL(String(input)).searchParams.get('dates') ?? ''
@@ -105,7 +102,6 @@ describe('pollActiveMatches varredura de atrasados (ESPN)', () => {
     }
 
     expect(row(sqlite)).toMatchObject({ status: 'finished', home_score: 1, scored: 1 })
-    // Depois das 24 h, só nos blocos de 3 h: 00:00 e 03:00 UTC de 16/10.
     expect(fetchesAfter24h.every((t) => t % LATE_SWEEP_INTERVAL_MS === 0)).toBe(true)
     expect(fetchesAfter24h.map((t) => new Date(t).toISOString())).toEqual([
       '2026-10-16T00:00:00.000Z',
@@ -117,17 +113,14 @@ describe('pollActiveMatches varredura de atrasados (ESPN)', () => {
     const { sqlite, db } = database()
     await seed(db, event('p1', '2026-10-15T10:00:00Z', 'postponed'))
     expect(row(sqlite)).toMatchObject({ postponed: 1, status: 'scheduled' })
-    // A ESPN remarca para 15:00 do mesmo dia; a descoberta das 06:15 já passou.
     const fetch = feed(() => ({ '20261015': [event('p1', '2026-10-15T15:00:00Z', 'final')] }))
 
-    // 17:30 não é bloco de varredura: o adiado vencido segue fora da consulta contínua.
     await pollActiveMatches(db, '', undefined, Date.parse('2026-10-15T17:30:00Z'))
     expect(fetch).not.toHaveBeenCalled()
     expect(isMatchLocked(row(sqlite), '2026-10-15T17:30:00Z')).toBe(false)
 
     await pollActiveMatches(db, '', undefined, Date.parse('2026-10-15T18:00:00Z'))
 
-    // Consulta o dia corrente (e o anterior, pelo fuso da ESPN), não o horário antigo.
     expect(
       fetch.mock.calls.map(([url]) => new URL(String(url)).searchParams.get('dates')).sort(),
     ).toEqual(['20261014', '20261015'])

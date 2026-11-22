@@ -34,8 +34,6 @@
   cursor: default;
 }
 
-/* Escopado sob .roundNav para vencer a base .select do componente Select
-   (2 classes > 1) sem depender da ordem de injeção dos CSS Modules. */
 .roundNav .roundSelect {
   flex: 1;
   height: 2rem;

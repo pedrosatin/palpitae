@@ -19,15 +19,12 @@ describe('bucketKey', () => {
     const key = await bucketKey('secret', '192.168.1.1')
     expect(key).toMatch(/^[a-f0-9]{64}$/)
 
-    // Same inputs produce same key
     const key2 = await bucketKey('secret', '192.168.1.1')
     expect(key).toBe(key2)
 
-    // Different secret produces different key
     const key3 = await bucketKey('other-secret', '192.168.1.1')
     expect(key).not.toBe(key3)
 
-    // Different identity produces different key
     const key4 = await bucketKey('secret', '192.168.1.2')
     expect(key).not.toBe(key4)
   })
@@ -38,7 +35,6 @@ describe('bucketKey', () => {
 
     const key = await bucketKey(secret, identity)
 
-    // Verify using Node crypto directly
     const hmac = crypto.createHmac('sha256', secret)
     hmac.update(identity)
     const expected = hmac.digest('hex')
@@ -71,9 +67,7 @@ describe('ipBucketIdentity', () => {
   })
 
   it('handles edge cases in IPv6 expansion', () => {
-    // :: at the end
     expect(ipBucketIdentity('2001:db8::')).toBe('2001:db8:0:0::/64')
-    // :: at the start with enough parts
     expect(ipBucketIdentity('::2001:db8')).toBe('0:0:0:0::/64')
   })
 })
@@ -221,7 +215,6 @@ describe('requestLimits', () => {
     const { Hono } = await import('hono')
     const app = new Hono()
 
-    // Mock db throwing an error in consumeLimit
     const mockDb = {
       prepare: () => ({
         bind: () => ({
@@ -230,7 +223,6 @@ describe('requestLimits', () => {
       })
     }
 
-    // Mock logError via c.env.AE (which will just be ignored here, but we should pass something)
     const mockEnv = {
       DB: mockDb,
       AE: {
@@ -244,12 +236,10 @@ describe('requestLimits', () => {
     app.get('/', (c) => c.text('ok'))
     app.post('/', (c) => c.text('ok'))
 
-    // Test read operation with DB error (should pass)
     const req1 = new Request('http://localhost/', { method: 'GET' })
     const res1 = await app.fetch(req1, mockEnv)
     expect(res1.status).toBe(200)
 
-    // Test write operation with DB error (should be blocked)
     const req2 = new Request('http://localhost/', { method: 'POST' })
     const res2 = await app.fetch(req2, mockEnv)
     expect(res2.status).toBe(503)

@@ -9,13 +9,9 @@ import shared from '../../components/modal-shared.module.css'
 
 interface GroupInviteSectionProps {
   inviteCode: string
-  /** Nome do grupo, usado na mensagem que acompanha o link. */
   groupName?: string
-  /** Total de membros. Com só o dono, o convite já começa aberto no celular. */
   memberCount: number
-  /** Troca o código de convite. Sem ele, o botão não aparece. */
   onRotate?: () => void
-  /** Troca em andamento. */
   rotating?: boolean
 }
 
@@ -28,7 +24,6 @@ function GroupInviteSection({
 }: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const ownerIsAlone = memberCount === 1
-  // Só vale no celular, onde o CSS recolhe o convite sem `data-expanded`.
   const [expanded, setExpanded] = useState(ownerIsAlone)
   const bodyId = useId()
 
@@ -57,11 +52,6 @@ function GroupInviteSection({
     setExpanded((value) => !value)
   }
 
-  // O texto do título e o botão ficam no mesmo h2, e o CSS mostra um dos dois.
-  // Acima de 600 px aparece o título e o conteúdo fica aberto. No celular
-  // aparece o botão, e o conteúdo só abre com `data-expanded`. O h2 continua na
-  // navegação por títulos nos dois casos. Sem matchMedia, o primeiro render já
-  // sai no estado certo.
   return (
     <section className={styles.inviteSection} data-expanded={expanded || undefined}>
       <h2 className={styles.inviteTitle}>

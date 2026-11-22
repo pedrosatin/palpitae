@@ -2,12 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import indexHtml from '../index.html?raw'
 import { catalogFaqAnswer } from './pages/LandingPage/competitionCatalog'
 
-/**
- * Executa no jsdom os scripts inline do `index.html`, os mesmos que o navegador
- * roda antes do bundle: o do `<head>` decide se a landing pré-renderizada fica
- * e, com sessão conhecida, reescreve `/convite/CODE` para `/?convite=CODE`; o do
- * fim do `<body>` esvazia o `#root` quando a landing não deve aparecer.
- */
 const inlineScripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])
 const [headScript, bodyScript] = inlineScripts
 
@@ -21,7 +15,6 @@ function runHead() {
   new Function(headScript)()
 }
 
-/** Monta o #root como o build entrega (landing embutida) e roda o script do body. */
 function runBody() {
   document.body.innerHTML = '<div id="root" data-prerender="landing"><main>landing</main></div>'
   new Function(bodyScript)()

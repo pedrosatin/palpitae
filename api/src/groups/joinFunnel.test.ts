@@ -112,6 +112,7 @@ describe('POST /groups/join: group_joined do funil de convite', () => {
     ['ausente', undefined],
     ['fora da lista', 'email'],
     ['de outro tipo', 123],
+    ['request forjado', 'request'],
   ])('deixa o método vazio quando vem %s, sem recusar a entrada', async (_label, value) => {
     const { join, joinedBlobs } = await fixture()
 

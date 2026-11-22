@@ -169,7 +169,10 @@ A real-world tournament (Brasileirão, Copa 2026, etc.).
 | `provider`    | TEXT        | e.g., `'api-football'`                |
 | `season`      | TEXT        | e.g., `'2026'`                        |
 | `status`      | TEXT        | `upcoming` \| `ongoing` \| `finished` |
+| `matches_version` | INTEGER   | Contador monotônico do cache de jogos, padrão 0. Migration 0044, ADR-025 |
 | `created_at`  | TEXT        | ISO 8601 UTC                          |
+
+A migration 0044 incrementa a versão por gatilhos nas mudanças visíveis de jogos, times e regras de pênaltis. Alterações de contexto também devolvem à fila de pontuação o jogo e, em fase eliminatória, seus pares.
 
 ---
 
@@ -210,24 +213,25 @@ A game between two teams within a competition.
 | `phase`          | TEXT    | `group` \| `round_of_16` \| `quarter_final` etc. |
 | `round`          | TEXT    | e.g., `'5'`, `'LAST_16'`; never null (migration 0043 trigger) |
 | `postponed`      | INTEGER | `1` while the provider reports the match as postponed, suspended or cancelled (migration 0013) |
-| `locked_at`      | TEXT    | `NULL` until the sync first sees the match started (migration 0016); never cleared. It is the sync time, not the actual kickoff |
+| `locked_at`      | TEXT    | `NULL` until the sync sees the match started or the stored row already locked by time. Never cleared. Holds the sync time (ADR-023) |
 | `created_at`     | TEXT    | ISO 8601 UTC                                     |
 
 Unique constraint: `(external_id, provider)`
 
 Triggers `matches_format_insert` and `matches_format_update` (migration 0043, no table rebuild, ADR-013) reject a `start_time` outside `YYYY-MM-DDTHH:MM:SSZ`, `status = 'finished'` without both `home_score` and `away_score`, and a null `round`. On update each rule only applies to the column being changed, so an older row outside the format still accepts writes that do not touch it.
 
-> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`; in SQL `now` is truncated to whole seconds, so the SQL and TS checks lock at the same millisecond). `matches.locked_at` is written only when the sync sees the match started (football-data `IN_PLAY`, `PAUSED`, `EXTRA_TIME`, `PENALTY_SHOOTOUT`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`; ESPN state `in` or `post` outside postponed/cancelled, or `STATUS_SUSPENDED`; or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
+> O palpite trava quando `matches.locked_at` está preenchido, o status é `live` ou `finished`, ou o horário passou com `postponed = 0`. O SQL compara horários em segundos, como o formato de `start_time`. No upsert, os dois provedores preenchem `locked_at` se a linha anterior já estava travada por horário, se o status local indica início ou se o provedor informa início. Adiamento, cancelamento e horário mais tarde preservam essa trava. Um adiamento que o sync vê antes do kickoff mantém a edição aberta, e um adiamento anunciado depois desse sync deixa o jogo travado. A trava continua fora de `predictions`, conforme os ADR-004 e ADR-023.
 
 #### Ciclo da partida
 
-Os dois provedores gravam a mesma combinação de colunas para o mesmo estado do jogo (`api/src/matches/sync.ts` e `espnSync.ts`; regressão em `matchLifecycle.test.ts`), com uma exceção conhecida: num jogo suspenso depois do início, o `CANCELLED` da football-data não grava `locked_at`, e o `STATUS_SUSPENDED` da ESPN grava. O status da football-data não diz se o jogo chegou a começar, então pela football-data esse jogo fica aberto para palpite até a retomada. O sync nunca grava `live`: o valor fica no CHECK e os leitores o aceitam, mas o jogo em andamento é `scheduled` com `locked_at` ou com o horário vencido.
+Os dois provedores usam `MATCH_UPSERT_SQL`, definido em `api/src/matches/sync.ts` e importado por `espnSync.ts`. Um `CANCELLED` depois do kickoff preserva a trava por horário da linha anterior, mesmo sem confirmação de início. O sync grava jogos em andamento como `scheduled` com `locked_at`; os leitores também aceitam o status legado `live`.
 
 | Estado | `status` | `postponed` | `locked_at` | Placar | `scored_at` |
 | --- | --- | --- | --- | --- | --- |
 | Agendado | `scheduled` | 0 | nulo | nulo | nulo |
 | Em andamento, ou encerrado sem placar no provedor | `scheduled` | 0 | preenchido quando o sync viu o início; senão o horário trava | nulo | nulo |
-| Adiado ou cancelado antes do início | `scheduled` | 1 | nulo | nulo | nulo |
+| Adiado ou cancelado visto antes do horário | `scheduled` | 1 | nulo | nulo | nulo |
+| Adiado ou cancelado visto depois do horário | `scheduled` | 1 | preenchido | nulo | nulo |
 | Suspenso ou abandonado depois do início | `scheduled` | 1 | preenchido | nulo | nulo |
 | Encerrado | `finished` | 0 | preenchido (depois do fallback da ESPN, no sync seguinte) | completo | nulo até a pontuação |
 
@@ -237,10 +241,10 @@ Transições:
 - Adiado, cancelado ou suspenso → agendado: o provedor tira o status com a data nova, `postponed` volta a 0 e `start_time` passa a valer. Enquanto `postponed = 1`, `start_time` guarda o último horário conhecido (ADR-013).
 - Encerrado → encerrado com outro placar, pênaltis, times ou fase: correção; `scored_at` volta a nulo e a pontuação refaz os pontos.
 - Encerrado → qualquer estado não final: recusado pelo upsert. Uma resposta atrasada, inclusive um final sem placar, não desfaz o resultado.
-- `locked_at` nunca volta a nulo.
+- `locked_at` nunca volta a nulo. O primeiro sync após o horário vencido grava a trava da linha anterior, mesmo se o provedor repetir o mesmo estado. Os próximos syncs sem mudança continuam sem gravar.
 - O fallback da ESPN (ADR-016) leva um jogo da football-data ao encerrado com `postponed = 0`, mesmo que a football-data ainda o mostre adiado ou suspenso.
 
-Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos, com retomada marcada para 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). O poller volta a consultá-lo na varredura de atrasados no máximo a cada 3 horas, até 7 dias depois do último horário conhecido, para ver a remarcação que a descoberta diária ainda não trouxe. Ele continua impedindo o encerramento da competição.
+Cancelado segue como adiado, sem placar nem pontuação. Se a linha anterior já estava travada por horário, o cancelamento preserva a trava. O jogo sai das consultas de resultado pendente que excluem adiados, como o resgate do poller após a janela ativa, os jogos ao vivo do painel, `overdue_no_score` e as pendências da rodada. O poller ainda o consulta na varredura de atrasados a cada 3 horas, até 7 dias depois do último horário conhecido. Essa consulta pode detectar a remarcação antes da descoberta diária. O jogo continua impedindo o encerramento da competição.
 
 ---
 
@@ -255,6 +259,8 @@ A private competition created by a user for a specific competition.
 | `competition_id` | TEXT FK     | References `competitions.id`     |
 | `owner_user_id`  | TEXT FK     | References `users.id`            |
 | `invite_code`    | TEXT UNIQUE | Public join link token           |
+| `public_id`      | TEXT UNIQUE | Link de pedido de entrada (32 hex; migration 0051) |
+| `join_requests_enabled` | INTEGER | 1 = aceita pedidos pelo link (default) |
 | `payment_status` | TEXT        | `pending` \| `paid` \| `expired` |
 | `max_members`    | INTEGER     | Default 50, max 50               |
 | `created_at`     | TEXT        | ISO 8601 UTC                     |
@@ -262,6 +268,7 @@ A private competition created by a user for a specific competition.
 
 - `payment_status`: reservado, sem efeito. Nenhum código lê ou grava a coluna; todo grupo fica com o default `pending`, que não bloqueia nenhum fluxo.
 - `max_members`: só `POST /groups/join` lê o valor, no `INSERT` da entrada, e recusa quem passaria do limite. Nenhuma rota altera a coluna, então todo grupo usa o default 50.
+- `owner_user_id`: sem cascata para `users`. A exclusão de conta pelo operador (`DELETE /admin/users/:id`, ADR-026) passa o grupo ao membro ativo de `joined_at` mais antigo, sem contar banidos nem a própria conta, com desempate pelo menor `user_id`. Grupo sem outro membro ativo é apagado. Vale também para grupo com `deleted_at`.
 - `deleted_at`: `DELETE /groups/:id` grava a data. O grupo some das rotas e para de receber pontuação e ranking; pontos e ranking ficam como estavam no momento da exclusão.
 - Tetos por usuário: 20 grupos ativos criados e 50 participações ativas (`api/src/groups/groupCaps.ts`). `POST /groups` e `POST /groups/join` contam as linhas de `group_members` do usuário em grupos sem `deleted_at`, dentro do `INSERT`, e recusam com 409 quem passaria do teto.
 
@@ -277,7 +284,7 @@ Registro do lembrete diário por e-mail (migration 0036, ADR-020). No máximo um
 | `reminder_date` | TEXT    | Dia em Brasília, YYYY-MM-DD     |
 | `created_at`    | TEXT    | Instante da reserva, UTC        |
 
-Primary key: `(user_id, reminder_date)`. O cron apaga as linhas com mais de 7 dias. O dia mais recente de cada usuário ordena a fila de envio quando o teto não cobre todos.
+Primary key: `(user_id, reminder_date)`. A linha reserva o envio. O aceite do provedor mantém a linha. A execução apaga a linha de quem ficou sem aceite, inclusive quando o lote aborta por exceção. O cron apaga as linhas com mais de 7 dias. O dia mais recente de cada usuário ordena a fila de envio quando o teto não cobre todos.
 
 ---
 
@@ -290,10 +297,12 @@ Users in a group.
 | `id`        | TEXT PK | UUID                   |
 | `group_id`  | TEXT FK | References `groups.id` |
 | `user_id`   | TEXT FK | References `users.id`  |
-| `role`      | TEXT    | `owner` \| `member`    |
+| `role`      | TEXT    | `owner` \| `member`, derivado de `groups.owner_user_id` (migration 0045) |
 | `joined_at` | TEXT    | ISO 8601 UTC           |
 
 Unique constraint: `(group_id, user_id)`
+
+`role` vale `owner` só para a linha de `groups.owner_user_id`. Os gatilhos da migration 0045 mantêm isso: `groups_owner_role_sync` acompanha a troca do dono, e `group_members_role_insert` e `group_members_role_update` regravam o valor derivado no lugar de um papel incoerente, sem recusar a escrita (ADR-026). A autorização das ações de dono continua lendo `groups.owner_user_id`.
 
 ---
 
@@ -320,6 +329,8 @@ Unique constraint: `(user_id, group_id, match_id)` — one prediction per user p
 ### `leaderboard`
 
 Materialized ranking per group. Updated when matches finish or scores change.
+
+Apagar um jogo direto no banco leva os palpites dele em cascata, mas deixa os pontos no ranking de quem não tem outro palpite no grupo. A remoção pelo operador (`DELETE /admin/matches/:id`, ADR-026) refaz o ranking de todos os grupos não excluídos da competição na mesma transação.
 
 | Column         | Type       | Notes                                      |
 | -------------- | ---------- | ------------------------------------------ |
@@ -519,6 +530,57 @@ CREATE TABLE IF NOT EXISTS leaderboard (
 
 CREATE INDEX IF NOT EXISTS idx_leaderboard_group ON leaderboard(group_id);
 
+-- Exact milestones (5, 15, 30 placares exatos por membro e grupo)
+-- `round` nulo = backfill na primeira leitura do grupo (sem destaque).
+-- Texto = rodada de referência em que o marco foi observado pela primeira vez.
+CREATE TABLE IF NOT EXISTS exact_milestones (
+  group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  threshold INTEGER NOT NULL CHECK (threshold IN (5, 15, 30)),
+  round TEXT,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (group_id, user_id, threshold)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exact_milestones_group ON exact_milestones(group_id);
+CREATE INDEX IF NOT EXISTS idx_exact_milestones_user ON exact_milestones(user_id);
+
+CREATE TABLE IF NOT EXISTS exact_milestones_initialized (
+  group_id TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+  initialized_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Agregado de raridade por jogo (compartilhado entre grupos; ADR-029).
+-- Recalcula quando matches.scored_at diverge de scored_at_snapshot.
+CREATE TABLE IF NOT EXISTS match_score_rarity (
+  match_id TEXT PRIMARY KEY REFERENCES matches(id) ON DELETE CASCADE,
+  tipster_count INTEGER NOT NULL CHECK (tipster_count >= 0),
+  exact_count INTEGER NOT NULL CHECK (exact_count >= 0),
+  scored_at_snapshot TEXT NOT NULL,
+  computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Unlikely exact scores (raridade na competição: X=10%, M=10 total e M=10 fora do grupo)
+-- Congela tipster_count, exact_tipster_count e outside_tipster_count na primeira observação (ADR-029).
+CREATE TABLE IF NOT EXISTS unlikely_exacts (
+  group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  round TEXT NOT NULL,
+  tipster_count INTEGER NOT NULL CHECK (tipster_count >= 10),
+  exact_tipster_count INTEGER NOT NULL CHECK (exact_tipster_count >= 1),
+  outside_tipster_count INTEGER NOT NULL CHECK (outside_tipster_count >= 10),
+  home_score INTEGER NOT NULL,
+  away_score INTEGER NOT NULL,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (group_id, user_id, match_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_unlikely_exacts_group_round
+  ON unlikely_exacts(group_id, round);
+CREATE INDEX IF NOT EXISTS idx_unlikely_exacts_user
+  ON unlikely_exacts(user_id);
+
 -- Payments
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
@@ -536,3 +598,5 @@ CREATE INDEX IF NOT EXISTS idx_payments_group ON payments(group_id);
 ### Conclusão da importação de palpites
 
 `group_members.predictions_import_completed` registra se o membro já importou ao menos um palpite para aquele grupo. O marcador é gravado no mesmo batch dos palpites e aparece como `import_completed` somente na listagem autenticada dos próprios palpites. A interface recolhe o seletor e permite reabri-lo com "Importar de novo". Importações anteriores à migração 0024 não podem ser identificadas pelos palpites existentes e não recebem preenchimento retroativo.
+
+A marca sai junto com a linha de `group_members`. Quem sai do grupo e volta mantém os palpites, mas a marca volta a 0 e o seletor de importação aparece aberto de novo. Comportamento aceito (ADR-026).
