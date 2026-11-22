@@ -1,11 +1,11 @@
 import { QueryClient } from '@tanstack/react-query'
 
-/** Defaults compartilhados entre o cliente da app e o dos testes. */
+/** Defaults de query compartilhados entre o cliente da app e o dos testes. */
 export const appQueryDefaults = {
-  // A tela não busca de novo com o componente montado.
+  // Foco na janela e volta da rede não disparam nova busca, como no fetchCachedJson.
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,
-  // Erro de rede aparece na tela mesmo com o navegador offline.
+  // Offline, a query roda e falha em vez de pausar, e o erro de rede aparece na tela.
   networkMode: 'always' as const,
 }
 
@@ -18,9 +18,7 @@ export function createAppQueryClient(): QueryClient {
         // A primeira falha vai para a tela, sem nova tentativa automática.
         retry: false,
       },
-      mutations: {
-        networkMode: 'always',
-      },
+      mutations: { networkMode: appQueryDefaults.networkMode },
     },
   })
 }

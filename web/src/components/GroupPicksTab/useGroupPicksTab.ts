@@ -80,6 +80,7 @@ export function unrevealedStarts(
     .map((m) => `${m.id}@${m.start_time}`)
 }
 
+/** Palpites dos membros por jogo. A API já filtra pela regra de revelação. */
 export function groupPredictionsByMatch(
   predictions: MemberPrediction[],
 ): Map<string, MemberPrediction[]> {
@@ -160,7 +161,9 @@ export function useGroupPicksTab(
   const [picksLoading, setPicksLoading] = useState(true)
   const [picksError, setPicksError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
-  // Aplica a rodada padrão uma vez por grupo+competição; refetch não reseta a escolha.
+  // Aplica a rodada padrão uma vez por grupo e competição enquanto a aba está montada.
+  // Um refetch não troca a rodada escolhida. Com o cache velho em atualização, espera
+  // o dado novo para a rodada padrão vir da resposta atual.
   const appliedDefaultRoundKey = useRef<string | null>(null)
 
   useEffect(() => {
@@ -186,7 +189,7 @@ export function useGroupPicksTab(
   }, [groupId])
 
   useEffect(() => {
-    if (!matchesQuery.data) return
+    if (!matchesQuery.data || matchesQuery.isFetching) return
     const key = `${groupId}:${competitionId}`
     if (appliedDefaultRoundKey.current === key) return
     appliedDefaultRoundKey.current = key
@@ -195,7 +198,7 @@ export function useGroupPicksTab(
       matchesQuery.data.default_round,
       setRoundIndex,
     )
-  }, [groupId, competitionId, matchesQuery.data])
+  }, [groupId, competitionId, matchesQuery.data, matchesQuery.isFetching])
 
   const matches = matchesQuery.data?.matches ?? []
   const matchesError = matchesQueryErrorMessage(matchesQuery.error, matchesQuery.isError)
@@ -216,6 +219,7 @@ export function useGroupPicksTab(
     next: 'click_group_picks_proxima_rodada',
   })
 
+  // O relógio também vira no início de cada jogo da rodada exibida.
   const now = useNow(
     TICK_MS,
     roundMatches.map((m) => m.start_time),

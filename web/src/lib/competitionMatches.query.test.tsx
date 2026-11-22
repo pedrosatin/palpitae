@@ -209,7 +209,7 @@ describe('query de partidas da competição', () => {
   })
 
   it('refetch das partidas não volta a rodada escolhida nos palpites do grupo', async () => {
-    const matches = [
+    let matches = [
       makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
     ]
@@ -240,10 +240,12 @@ describe('query de partidas da competição', () => {
     })
     expect(result.current.selectedRound).toBe('2')
 
+    // O refetch traz outro status para o m2, então o dado muda de referência.
+    matches = [matches[0], { ...matches[1], status: 'live' }]
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ['matches', 'c1'] })
     })
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(result.current.matches[1].status).toBe('live'))
 
     expect(result.current.selectedRound).toBe('2')
   })

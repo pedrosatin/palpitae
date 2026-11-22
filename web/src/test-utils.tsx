@@ -8,12 +8,12 @@ import {
 import type { ReactElement, ReactNode } from 'react'
 import { appQueryDefaults } from './lib/queryClient'
 
-/** QueryClient novo por teste: mesmos defaults da app, sem retry. */
+/** QueryClient novo por teste, com os defaults da app e sem retry. */
 export function createTestQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: { ...appQueryDefaults, retry: false },
-      mutations: { retry: false, networkMode: 'always' },
+      mutations: { retry: false, networkMode: appQueryDefaults.networkMode },
     },
   })
 }
