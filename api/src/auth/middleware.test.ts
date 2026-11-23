@@ -1,9 +1,25 @@
 import type { Context } from 'hono'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppContext } from '../types'
 import { signJwt } from './jwt'
 import { requireAuth, resolveSession } from './middleware'
+import * as session from './session'
 import { activeSessionRow } from '../testing/session'
+
+const sessionRef = vi.hoisted(() => ({
+  realVerifySession: undefined as unknown as typeof session.verifySession,
+}))
+
+vi.mock('./session', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('./session')>()
+  sessionRef.realVerifySession = mod.verifySession
+  return { ...mod, verifySession: vi.fn(mod.verifySession) }
+})
+
+afterEach(() => {
+  vi.mocked(session.verifySession).mockReset()
+  vi.mocked(session.verifySession).mockImplementation(sessionRef.realVerifySession)
+})
 
 const JWT_SECRET = 'test-secret-middleware'
 
@@ -20,7 +36,10 @@ function buildMockContext(cookieHeader: string | null, dbMock?: any): Context<Ap
         headers: cookieHeader ? { Cookie: cookieHeader } : {},
       }),
     },
-    env: { JWT_SECRET, DB: dbMock || { prepare: () => ({ bind: () => ({ first: async () => null }) }) } },
+    env: {
+      JWT_SECRET,
+      DB: dbMock || { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
+    },
     get: vi.fn(),
     set: vi.fn(),
     json: vi
@@ -31,19 +50,13 @@ function buildMockContext(cookieHeader: string | null, dbMock?: any): Context<Ap
 
 describe('requireAuth middleware', () => {
   it('returns 401 when session resolution fails with unknown error', async () => {
-    const token = await signJwt({ sub: 'user-1', email: 'a@b.com' }, JWT_SECRET, 3600)
-    const mockDb = {
-      prepare: () => ({
-        bind: () => ({
-          first: async () => ({ revoked: 1, valid_after: null })
-        })
-      })
-    }
-    const c = buildMockContext(`session=${token}`, mockDb)
+    vi.mocked(session.verifySession).mockRejectedValueOnce(new Error('unexpected failure'))
+    const c = buildMockContext('session=any-token')
     const next = vi.fn()
 
     await requireAuth(c, next)
 
+    expect(session.verifySession).toHaveBeenCalledOnce()
     expect(next).not.toHaveBeenCalled()
     expect(c.json).toHaveBeenCalledWith({ error: 'Unauthorized' }, 401)
   })
@@ -53,9 +66,11 @@ describe('requireAuth middleware', () => {
     const mockDb = {
       prepare: () => ({
         bind: () => ({
-          first: async () => { throw new Error('DB failure') }
-        })
-      })
+          first: async () => {
+            throw new Error('DB failure')
+          },
+        }),
+      }),
     }
     const c = buildMockContext(`session=${token}`, mockDb)
     const next = vi.fn()
