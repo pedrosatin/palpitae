@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import * as v from 'valibot'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { AppContext } from '../types'
 import { validateJson } from './validateJson'
 
@@ -113,5 +113,60 @@ describe('validateJson', () => {
     })
     expect(bad.status).toBe(400)
     expect(await bad.json()).toEqual({ error: 'Body JSON inválido' })
+  })
+
+  it('tipa c.req.valid(json) com AppContext e Env customizado sem cast', async () => {
+    const typedSchema = v.object({
+      name: v.pipe(v.string(), v.minLength(1)),
+      count: v.pipe(
+        v.string(),
+        v.transform((value) => Number(value)),
+      ),
+    })
+
+    const typedApp = new Hono<AppContext>()
+    typedApp.post(
+      '/typed',
+      validateJson(typedSchema, () => 'payload inválido'),
+      (c) => {
+        const body = c.req.valid('json')
+        expectTypeOf(body).toEqualTypeOf<{ name: string; count: number }>()
+        expectTypeOf(c.env).toEqualTypeOf<AppContext['Bindings']>()
+        return c.json(body)
+      },
+    )
+
+    const res = await typedApp.request('http://test/typed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'ok', count: '42' }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ name: 'ok', count: 42 })
+
+    type CustomEnv = { Bindings: { CUSTOM_KEY: string }; Variables: { customVar: number } }
+    const customApp = new Hono<CustomEnv>()
+    customApp.post(
+      '/custom',
+      validateJson(typedSchema, () => 'payload inválido'),
+      (c) => {
+        const body = c.req.valid('json')
+        expectTypeOf(body).toEqualTypeOf<{ name: string; count: number }>()
+        expectTypeOf(c.env).toEqualTypeOf<CustomEnv['Bindings']>()
+        return c.json({ body, key: c.env.CUSTOM_KEY })
+      },
+    )
+
+    const customRes = await customApp.request(
+      'http://test/custom',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'ok', count: '7' }),
+      },
+      { CUSTOM_KEY: 'secret' },
+    )
+    expect(customRes.status).toBe(200)
+    expect(await customRes.json()).toEqual({ body: { name: 'ok', count: 7 }, key: 'secret' })
   })
 })
