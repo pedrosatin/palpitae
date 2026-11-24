@@ -1,7 +1,6 @@
 import { sValidator } from '@hono/standard-validator'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Context, Input, MiddlewareHandler } from 'hono'
-import type { AppContext } from '../types'
+import type { Context, Env, Input, MiddlewareHandler } from 'hono'
 import { INVALID_BODY, readJsonObject } from './jsonBody'
 
 /**
@@ -9,10 +8,7 @@ import { INVALID_BODY, readJsonObject } from './jsonBody'
  * Recebe as issues do Standard Schema e o corpo lido, que é objeto no modo
  * `object` e qualquer valor JSON no modo `value`.
  */
-export type JsonErrorMapper = (
-  data: unknown,
-  issues: readonly StandardSchemaV1.Issue[],
-) => string
+export type JsonErrorMapper = (data: unknown, issues: readonly StandardSchemaV1.Issue[]) => string
 
 type JsonValidated<Schema extends StandardSchemaV1> = {
   in: { json: StandardSchemaV1.InferInput<Schema> }
@@ -20,8 +16,7 @@ type JsonValidated<Schema extends StandardSchemaV1> = {
 }
 
 /** Mesma regex que o validator JSON do Hono usa para aceitar o Content-Type. */
-const JSON_CONTENT_TYPE =
-  /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i
+const JSON_CONTENT_TYPE = /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i
 
 export type ValidateJsonOptions = {
   /**
@@ -49,15 +44,15 @@ export type ValidateJsonOptions = {
  *
  * O valor validado fica em `c.req.valid('json')` para o handler.
  */
-export function validateJson<Schema extends StandardSchemaV1>(
+export function validateJson<Schema extends StandardSchemaV1, E extends Env = Env>(
   schema: Schema,
   mapError: JsonErrorMapper,
   options?: ValidateJsonOptions,
-): MiddlewareHandler<AppContext, string, JsonValidated<Schema> & Input> {
+): MiddlewareHandler<E, string, JsonValidated<Schema> & Input> {
   const invalidBodyError = options?.invalidBodyError ?? INVALID_BODY
   const bodyMode = options?.body ?? 'object'
 
-  const validate = sValidator('json', schema, (result, c) => {
+  const validate = sValidator('json', schema, (result, c: Context<E, string>) => {
     if (!result.success) {
       return c.json({ error: mapError(result.data, result.error) }, 400)
     }
@@ -75,7 +70,7 @@ export function validateJson<Schema extends StandardSchemaV1>(
       body = parsed
     }
     ensureJsonContentTypeForValidator(c, body)
-    return validate(c as never, next)
+    return validate(c, next)
   }
 }
 
@@ -84,8 +79,8 @@ export function validateJson<Schema extends StandardSchemaV1>(
  * Troca `c.req.raw` por uma cópia com Content-Type JSON e o corpo serializado.
  * A cópia não leva `cf` nem `signal`; nenhum código da API lê esses campos.
  */
-function ensureJsonContentTypeForValidator(
-  c: Context<AppContext>,
+function ensureJsonContentTypeForValidator<E extends Env = Env>(
+  c: Context<E>,
   body: unknown,
 ): void {
   const contentType = c.req.header('Content-Type')
