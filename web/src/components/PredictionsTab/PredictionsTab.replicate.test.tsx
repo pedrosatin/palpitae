@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { replicatePreferenceKey } from '../../lib/replicatePreference'
 import { resetReplicateStatus } from '../../lib/replicateStatus'
 import { makeMatch } from '../matchFixtures'
-import type { Prediction } from '../MatchCard'
+import type { Prediction } from '../MatchCard/types'
 import PredictionsTab from './PredictionsTab'
 import { renderWithQuery as render } from '../../test-utils'
 

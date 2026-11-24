@@ -1,4 +1,4 @@
-import type { Match } from './MatchCard'
+import type { Match } from './MatchCard/types'
 
 export function makeMatch(overrides: Partial<Match> = {}): Match {
   const status = overrides.status ?? 'scheduled'

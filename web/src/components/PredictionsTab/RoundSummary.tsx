@@ -20,7 +20,7 @@ import {
   tallyRound,
   type GroupRoundPick,
 } from '../../lib/roundSummary'
-import type { Match, Prediction } from '../MatchCard'
+import type { Match, Prediction } from '../MatchCard/types'
 import { RoundShareActions } from './RoundShareActions'
 import { RoundSummaryStats } from './RoundSummaryStats'
 import styles from './RoundSummary.module.css'

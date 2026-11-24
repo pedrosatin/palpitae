@@ -4,7 +4,7 @@ import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
 import { groupsListQueryKey } from '../../lib/groupsList'
 import { createTestQueryClient, renderHookWithQuery as renderHook } from '../../test-utils'
 import { useMatchCard } from './useMatchCard'
-import type { Match, Prediction } from './MatchCard'
+import type { Match, Prediction } from './types'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 vi.mock('../../config', () => ({ buildApiUrl: (path: string) => `mockApiUrl${path}` }))

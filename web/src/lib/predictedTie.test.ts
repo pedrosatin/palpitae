@@ -6,7 +6,7 @@ import {
   predictedClassified,
   predictedTieScore,
 } from './predictedTie'
-import type { Prediction } from '../components/MatchCard'
+import type { Prediction } from '../components/MatchCard/types'
 
 describe('salvar ida e volta no mesmo lote', () => {
   it('usa a ida em edição mesmo quando a volta vem antes no lote', () => {

@@ -10,8 +10,6 @@ import { PREDICTION_STATUS_LABEL, type PredictionStatus } from './predictionStat
 import { useMatchCard, type UseMatchCardProps } from './useMatchCard'
 import { teamShortName, type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
-export { OUTCOMES }
-export type { Match, Prediction }
 
 interface MatchCardProps extends UseMatchCardProps {
   leg1Match?: Match

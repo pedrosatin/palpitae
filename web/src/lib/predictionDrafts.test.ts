@@ -8,7 +8,7 @@ import {
   savedBase,
   type DraftEntry,
 } from './predictionDrafts'
-import type { Prediction } from '../components/MatchCard'
+import type { Prediction } from '../components/MatchCard/types'
 
 const past = new Date(Date.now() - 3_600_000).toISOString()
 const future = new Date(Date.now() + 3_600_000).toISOString()

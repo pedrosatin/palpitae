@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeMatch } from '../components/matchFixtures'
-import type { Match } from '../components/MatchCard'
+import type { Match } from '../components/MatchCard/types'
 import {
   highlightText,
   pickPoints,

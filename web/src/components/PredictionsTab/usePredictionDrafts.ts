@@ -11,7 +11,7 @@ import {
   type PenaltyWinner,
 } from '../../lib/predictionDrafts'
 import { emptyDrafts, readStoredDrafts, writeStoredDrafts } from '../../lib/predictionDraftStorage'
-import type { Match, Prediction } from '../MatchCard'
+import type { Match, Prediction } from '../MatchCard/types'
 
 function lastStartUpTo(matches: Match[], now: number): number {
   let last = 0

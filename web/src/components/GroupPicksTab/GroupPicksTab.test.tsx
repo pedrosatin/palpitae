@@ -4,7 +4,7 @@ import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import GroupPicksTab from './GroupPicksTab'
 import { makeMatch } from '../matchFixtures'
-import { type Match } from '../MatchCard'
+import { type Match } from '../MatchCard/types'
 import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))

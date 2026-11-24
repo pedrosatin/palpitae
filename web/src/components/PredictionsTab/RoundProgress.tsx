@@ -1,7 +1,7 @@
 import { closingText } from '../../lib/matchTime'
 import { progressLabel, roundProgress } from '../../lib/roundProgress'
 import CheckIcon from '../CheckIcon'
-import type { Match, Prediction } from '../MatchCard'
+import type { Match, Prediction } from '../MatchCard/types'
 import styles from './PredictionsTab.module.css'
 
 interface RoundProgressProps {

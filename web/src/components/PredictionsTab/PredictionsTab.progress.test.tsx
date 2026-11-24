@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatClosingDate } from '../../lib/matchTime'
 import { makeMatch } from '../matchFixtures'
-import type { Match, Prediction } from '../MatchCard'
+import type { Match, Prediction } from '../MatchCard/types'
 import PredictionsTab from './PredictionsTab'
 import { renderWithQuery as render } from '../../test-utils'
 
