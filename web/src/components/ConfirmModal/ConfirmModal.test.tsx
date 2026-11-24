@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import ConfirmModal from './ConfirmModal'
+import styles from './ConfirmModal.module.css'
 
 describe('ConfirmModal', () => {
   const defaultProps = {
@@ -74,11 +75,18 @@ describe('ConfirmModal', () => {
     expect(confirmButton).toBeDisabled()
   })
 
-  it('applies danger styling when danger is true', () => {
+  it('applies danger class to confirm button when danger is true', () => {
     render(<ConfirmModal {...defaultProps} danger={true} />)
 
-    const confirmButton = screen.getByRole('button', { name: 'Confirmar' })
-    expect(confirmButton).toBeInTheDocument()
-    expect(confirmButton).toHaveClass('danger')
+    expect(styles.danger).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Confirmar' })).toHaveClass(styles.danger)
+    expect(screen.getByRole('button', { name: 'Cancelar' })).not.toHaveClass(styles.danger)
+  })
+
+  it('does not apply danger class to confirm button by default', () => {
+    render(<ConfirmModal {...defaultProps} />)
+
+    expect(styles.danger).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Confirmar' })).not.toHaveClass(styles.danger)
   })
 })
