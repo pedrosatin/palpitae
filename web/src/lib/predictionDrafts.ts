@@ -5,7 +5,7 @@
  * testable place instead of a single 40-line closure.
  */
 import { needsPenaltyPick } from './predictedTie'
-import type { Match, Prediction } from '../components/MatchCard'
+import type { Match, Prediction } from '../components/MatchCard/types'
 
 export type ScoreDraft = { home: string; away: string }
 export type PenaltyWinner = 'home' | 'away' | null

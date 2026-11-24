@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import type { Match } from '../components/MatchCard'
+import type { Match } from '../components/MatchCard/types'
 import { rescheduledOpenByRound } from '../lib/rounds'
 import { useRoundNav, type RoundNavEvents } from './useRoundNav'
 

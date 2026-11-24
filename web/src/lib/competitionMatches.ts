@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { buildApiUrl } from '../config'
-import type { Match } from '../components/MatchCard'
+import type { Match } from '../components/MatchCard/types'
 import { apiFetch } from './api'
 import { applyDefaultRound } from './rounds'
 

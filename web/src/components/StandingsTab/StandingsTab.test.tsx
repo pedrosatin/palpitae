@@ -10,7 +10,7 @@ import StandingsTab, {
   standingsBucket,
 } from './StandingsTab'
 import { GENERAL_RANKING, LEAGUE, FORM_SIZE } from './StandingsTab'
-import { type Match } from '../MatchCard'
+import { type Match } from '../MatchCard/types'
 import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))

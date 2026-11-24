@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
-import MatchCard, { type Match, type Prediction, OUTCOMES } from './MatchCard'
-import { teamShortName } from './types'
+import MatchCard from './MatchCard'
+import { OUTCOMES, teamShortName, type Match, type Prediction } from './types'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)

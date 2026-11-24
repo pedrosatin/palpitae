@@ -1,4 +1,4 @@
-import type { Match, Prediction } from '../components/MatchCard'
+import type { Match, Prediction } from '../components/MatchCard/types'
 import { needsPenaltyPick } from './predictedTie'
 import { isMatchLocked } from './predictionDrafts'
 

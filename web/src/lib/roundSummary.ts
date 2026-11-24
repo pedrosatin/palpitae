@@ -1,4 +1,4 @@
-import type { Match } from '../components/MatchCard'
+import type { Match } from '../components/MatchCard/types'
 import { joinNames, type GroupMember } from './groupReminder'
 import { isGroupStageRound } from './rounds'
 

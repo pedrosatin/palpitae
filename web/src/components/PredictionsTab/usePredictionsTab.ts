@@ -29,7 +29,7 @@ import {
 } from '../../lib/predictionOptimistic'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import { acceptsFrom } from '../../lib/predictionCopy'
-import type { Match, Prediction } from '../MatchCard'
+import type { Match, Prediction } from '../MatchCard/types'
 import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 import { usePredictionsReplicate } from './usePredictionsReplicate'

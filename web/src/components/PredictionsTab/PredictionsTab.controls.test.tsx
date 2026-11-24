@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import PredictionsTab from './PredictionsTab'
 import { makeMatch } from '../matchFixtures'
-import type { Match, Prediction } from '../MatchCard'
+import type { Match, Prediction } from '../MatchCard/types'
 import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))

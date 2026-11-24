@@ -14,7 +14,7 @@ import {
   type PredictionUpdate,
 } from '../../lib/predictionOptimistic'
 import { plural } from '../../lib/replicateToGroups'
-import type { Match } from '../MatchCard'
+import type { Match } from '../MatchCard/types'
 
 type BulkSaveResponse = { saved: string[]; locked?: string[]; not_found?: string[] }
 

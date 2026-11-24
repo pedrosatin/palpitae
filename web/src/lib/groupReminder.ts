@@ -1,4 +1,4 @@
-import type { Match } from '../components/MatchCard'
+import type { Match } from '../components/MatchCard/types'
 import { formatClosingDate } from './matchTime'
 
 export interface GroupMember {

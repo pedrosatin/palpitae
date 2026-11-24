@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeMatch } from '../components/matchFixtures'
-import type { Prediction } from '../components/MatchCard'
+import type { Prediction } from '../components/MatchCard/types'
 import {
   applyPredictionUpdates,
   buildOptimisticPrediction,

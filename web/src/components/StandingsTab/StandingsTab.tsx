@@ -14,7 +14,7 @@ import {
   isStandingsTabEligible,
 } from '../../lib/standings'
 import ErrorState from '../ErrorState'
-import { type Match } from '../MatchCard'
+import { type Match } from '../MatchCard/types'
 import Modal from '../Modal'
 import styles from './StandingsTab.module.css'
 
