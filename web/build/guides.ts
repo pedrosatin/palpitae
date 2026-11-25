@@ -161,8 +161,20 @@ export const guides: Guide[] = [
         ],
       },
     ],
+    faq: [
+      {
+        question: 'Como funciona um bolão entre amigos?',
+        answer:
+          'Antes de cada jogo, cada participante registra um palpite de placar. Quando a partida termina, quem cravou o placar ganha mais pontos e quem acertou só o vencedor ou o empate ganha menos (no modo Clássico do Palpitae, 3 e 1). A soma dos pontos forma o ranking do grupo, e quem estiver na frente no fim do campeonato vence.',
+      },
+      {
+        question: 'Bolão entre amigos precisa envolver dinheiro?',
+        answer:
+          'Não. A disputa pode ser só de pontos e classificação. O Palpitae não recebe depósito nem Pix, não usa odds e não paga prêmio em dinheiro.',
+      },
+    ],
     published: '2026-06-20',
-    updated: '2026-10-04',
+    updated: '2026-11-25',
   },
   {
     slug: 'regras-e-pontuacao-de-bolao',
